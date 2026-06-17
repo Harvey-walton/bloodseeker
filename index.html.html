@@ -1,0 +1,1406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Blood Seeker</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;overflow:hidden}
+:root{
+  --parch:#f5ede0;--parch2:#efe4ce;--parch3:#e8d9b8;--parch4:#ddc99a;
+  --dark:#1a1208;--dark2:#2a1e0a;--ink:#2c1a06;--ink2:#5a3e1b;--ink3:#8a6a3a;
+  --gold:#9a7020;--gold2:#c49a30;--gold3:#e8c860;
+  --red:#8b1a1a;--red2:#c0392b;--border:rgba(154,112,32,0.3);--border2:rgba(154,112,32,0.6);
+  --sheet-bg:#f0ebe0;--sheet-border:#b8a070;--sheet-head:#2a2a3a;
+}
+body{background:var(--dark);color:var(--ink);font-family:'Crimson Pro',serif;font-size:15px}
+h1,h2,h3,h4,h5{font-family:'Cinzel',serif;letter-spacing:.05em}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--parch2)}::-webkit-scrollbar-thumb{background:var(--gold2);border-radius:3px}
+/* Sheet styles */
+.sh{background:var(--sheet-bg);border:2px solid var(--sheet-border);border-radius:4px;padding:6px 8px}
+.sh-label{font-size:8px;font-family:'Cinzel',serif;color:#555;letter-spacing:0.07em;text-transform:uppercase;display:block;margin-bottom:2px}
+.sh-val{font-size:15px;font-family:'Cinzel',serif;color:var(--sheet-head);font-weight:600}
+.sh-big{font-size:28px;font-family:'Cinzel',serif;color:var(--sheet-head);font-weight:700;line-height:1}
+.sh-input{font-family:'Crimson Pro',serif;background:transparent;border:none;border-bottom:1px solid var(--sheet-border);color:var(--sheet-head);font-size:14px;width:100%;padding:2px 0;outline:none}
+.sh-input-box{font-family:'Crimson Pro',serif;background:rgba(255,255,255,0.6);border:1px solid var(--sheet-border);color:var(--sheet-head);font-size:13px;width:100%;padding:3px 6px;outline:none;border-radius:2px}
+.sh-input-box:focus{border-color:#888;background:white}
+.sh-num{font-family:'Cinzel',serif;background:rgba(255,255,255,0.6);border:1px solid var(--sheet-border);color:var(--sheet-head);font-size:16px;width:100%;padding:2px 4px;outline:none;border-radius:2px;text-align:center}
+.sh-num:focus{border-color:#888}
+.sh-big-num{font-family:'Cinzel',serif;background:rgba(255,255,255,0.5);border:1px solid var(--sheet-border);color:var(--sheet-head);font-size:26px;width:100%;padding:2px 4px;outline:none;border-radius:3px;text-align:center;font-weight:700}
+.sh-big-num:focus{border-color:#888}
+.sh-section{background:var(--sheet-head);color:white;font-family:'Cinzel',serif;font-size:10px;letter-spacing:0.1em;text-align:center;padding:3px 6px;margin-bottom:6px;border-radius:2px}
+.prof-dot{width:11px;height:11px;border-radius:50%;border:1.5px solid #888;background:transparent;display:inline-block;cursor:pointer;flex-shrink:0;transition:background .15s}
+.prof-dot.filled{background:var(--sheet-head)}
+.death-box{width:22px;height:22px;border:2px solid #aaa;border-radius:3px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;background:rgba(255,255,255,0.5);transition:all .15s;flex-shrink:0}
+.death-box.red{background:rgba(160,0,0,0.2);border-color:#8b1a1a;box-shadow:inset 0 0 5px rgba(200,0,0,0.4)}
+.death-box.black{background:#111;border-color:#000}
+.armor-check{width:14px;height:14px;border:1.5px solid #888;border-radius:2px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:9px;background:rgba(255,255,255,0.5)}
+.armor-check.on{background:var(--sheet-head);border-color:var(--sheet-head);color:white}
+/* lore + map styles */
+.btn{font-family:'Crimson Pro',serif;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--ink2);border-radius:4px;padding:5px 13px;font-size:13px;transition:all .12s;white-space:nowrap}
+.btn:hover{background:rgba(154,112,32,0.1)}
+.btn.act{background:rgba(154,112,32,0.2);border-color:var(--gold2);color:var(--gold3)}
+.btn.red-btn{border-color:var(--red);color:var(--red)}
+/* Marker popup on map */
+.map-popup{position:absolute;background:rgba(20,12,4,0.97);border:1px solid var(--gold2);border-radius:8px;padding:14px;width:220px;z-index:50;box-shadow:0 4px 20px rgba(0,0,0,0.5);pointer-events:all}
+</style>
+</head>
+<body><div id="root"></div>
+<script type="text/babel">
+const {useState,useRef,useEffect,useCallback,useMemo,memo}=React;
+
+/* ─── Supabase config ─── */
+const SB_KEY="bs_supabase_v1";
+const getSBConfig=()=>{try{const r=localStorage.getItem(SB_KEY);return r?JSON.parse(r):null}catch{return null}};
+const saveSBConfig=c=>{try{localStorage.setItem(SB_KEY,JSON.stringify(c))}catch{}};
+
+/* Minimal Supabase REST client - no npm needed */
+let _sbConfig=null;
+const getSB=()=>_sbConfig;
+const initSB=(url,key)=>{_sbConfig={url:url.replace(/\/$/,""),key};return _sbConfig;};
+
+const CAMPAIGN_ID="main";
+/* Supabase headers — works with both old eyJ anon keys AND new sb_publishable_ keys */
+function sbHeaders(sb,extra){
+  const h={"apikey":sb.key,"Authorization":`Bearer ${sb.key}`,...(extra||{})};
+  return h;
+}
+async function dbLoad(sb){
+  try{
+    const r=await fetch(`${sb.url}/rest/v1/campaign?id=eq.${CAMPAIGN_ID}&select=data`,{
+      headers:sbHeaders(sb)
+    });
+    if(!r.ok)return null;
+    const rows=await r.json();
+    return(rows&&rows.length&&rows[0].data)?rows[0].data:null;
+  }catch{return null;}
+}
+async function dbSave(sb,data){
+  try{
+    await fetch(`${sb.url}/rest/v1/campaign`,{
+      method:"POST",
+      headers:sbHeaders(sb,{"Content-Type":"application/json","Prefer":"resolution=merge-duplicates"}),
+      body:JSON.stringify({id:CAMPAIGN_ID,data,updated_at:new Date().toISOString()})
+    });
+  }catch{}
+}
+
+/* Local fallback */
+const LOCAL_STORE="bs_v6_local";
+const load=()=>{try{const r=localStorage.getItem(LOCAL_STORE);return r?JSON.parse(r):null}catch{return null}};
+const persist=d=>{try{localStorage.setItem(LOCAL_STORE,JSON.stringify(d))}catch{}};
+
+/* ─── terrain ─── */
+const TERRAINS=[
+  {id:"city",label:"City",color:"#c0392b",icon:"⚏"},
+  {id:"town",label:"Town",color:"#d35400",icon:"⌂"},
+  {id:"village",label:"Village",color:"#7f6a40",icon:"△"},
+  {id:"dungeon",label:"Dungeon",color:"#6c3483",icon:"☠"},
+  {id:"forest",label:"Forest",color:"#1e8449",icon:"♧"},
+  {id:"mountain",label:"Mountain",color:"#566573",icon:"▲"},
+  {id:"ruins",label:"Ruins",color:"#784212",icon:"⛫"},
+  {id:"landmark",label:"Landmark",color:"#1a5276",icon:"★"},
+  {id:"road",label:"Road",color:"#7d6608",icon:"—"},
+  {id:"water",label:"Water",color:"#1a6fa0",icon:"〜"},
+];
+
+/* ─── lore sections ─── */
+const LORE_SECTIONS=[
+  {id:"allies",label:"Allies",icon:"🤝"},
+  {id:"enemies",label:"Enemies",icon:"💀"},
+  {id:"factions",label:"Factions",icon:"⚔️"},
+  {id:"settlements",label:"Settlements",icon:"🏰"},
+  {id:"history",label:"History",icon:"📖"},
+  {id:"sessions",label:"Session Details",icon:"📋"},
+];
+const EMPTY_LORE=()=>({
+  id:Date.now()+Math.random(),name:"",portrait:null,
+  raceSp:"",age:"",hairColour:"",eyeColour:"",build:"",clothing:"",voiceAccent:"",personality:"",goalSecret:"",
+  creatureType:"",description:"",lore:"",abilities:"",relationships:"",featsWithParty:"",
+  threatLevel:"",tactics:"",tags:"",
+  sessionNumber:"",sessionDate:"",summary:"",keyEvents:"",fileName:"",fileData:"",
+  linkedCharId:null,
+});
+
+/* ─── ability helpers ─── */
+const ABILITIES=["str","dex","con","int","wis","cha"];
+const AB_FULL={str:"Strength",dex:"Dexterity",con:"Constitution",int:"Intelligence",wis:"Wisdom",cha:"Charisma"};
+const SKILLS_BY_AB={
+  str:["Athletics"],
+  dex:["Acrobatics","Sleight of Hand","Stealth"],
+  con:[],
+  int:["Arcana","History","Investigation","Nature","Religion"],
+  wis:["Animal Handling","Insight","Medicine","Perception","Survival"],
+  cha:["Deception","Intimidation","Performance","Persuasion"],
+};
+const calcMod=s=>Math.floor((s-10)/2);
+const fmtMod=m=>(m>=0?"+":"")+m;
+const modStr=s=>fmtMod(calcMod(s));
+
+/* ─── default character ─── */
+const DC=id=>({
+  id,name:"",background:"",charClass:"",species:"",subclass:"",level:1,ac:10,shield:false,
+  hpCurrent:0,hpTemp:0,hpMax:0,hitDieMax:"d8",hitDieSpent:0,
+  deathMarks:Array(10).fill(0),
+  statRows:[
+    {id:1,label:"INITIATIVE",value:""},
+    {id:2,label:"SPEED",value:"30"},
+    {id:3,label:"SIZE",value:"Medium"},
+    {id:4,label:"PASSIVE PERCEPTION",value:""},
+    {id:5,label:"EXPLOITS KNOWN",value:""},
+    {id:6,label:"EXPLOIT DIE",value:"d6"},
+    {id:7,label:"EXPLOIT DICE AVAIL",value:""},
+    {id:8,label:"KNACKS KNOWN",value:""},
+    {id:9,label:"PROF BONUS",value:"2"},
+  ],
+  profBonus:2,
+  str:10,dex:10,con:10,int:10,wis:10,cha:10,
+  // All modifiers and skills are fully manual
+  strMod:0,dexMod:0,conMod:0,intMod:0,wisMod:0,chaMod:0,
+  savingThrows:{str:null,dex:null,con:null,int:null,wis:null,cha:null},// null=not prof, number=override bonus
+  skills:{}, // skill -> {prof:bool, override:null|number}
+  weapons:[
+    {id:1,name:"",attackBonus:"",damage:"",notes:""},
+    {id:2,name:"",attackBonus:"",damage:"",notes:""},
+    {id:3,name:"",attackBonus:"",damage:"",notes:""},
+  ],
+  classFeatures:[],knacks:[],exploits:[],exploitDC:10,
+  speciesTraits:"",feats:"",
+  armorProf:{light:false,medium:false,heavy:false,shields:false},
+  weaponsProf:"",toolsProf:"",
+  spellcastingAbility:"",spellcastingMod:"",spellDC:"",spellAtkMod:"",
+  spellSlots:[
+    {level:1,total:"",used:""},
+    {level:2,total:"",used:""},
+    {level:3,total:"",used:""},
+    {level:4,total:"",used:""},
+    {level:5,total:"",used:""},
+    {level:6,total:"",used:""},
+    {level:7,total:"",used:""},
+    {level:8,total:"",used:""},
+    {level:9,total:"",used:""},
+  ],
+  spells:[],
+  currency:{pp:0,gp:0,sp:0,cp:0},valuables:"",inventory:"",magicAttunements:["","",""],
+  portrait:null,
+  charAge:"",charHair:"",charEyes:"",charBuild:"",charClothing:"",charVoice:"",charPersonality:"",charGoal:"",
+  historyPersonality:"",alignment:"",languages:"",notes:"",
+});
+
+const DS={
+  mapItems:[],mapImage:null,
+  lore:{allies:[],enemies:[],factions:[],settlements:[],history:[],sessions:[]},
+  characters:[DC(1),DC(2),DC(3)],
+};
+
+/* ════════════════════════════════════════════════════
+   SHARED HELPERS
+════════════════════════════════════════════════════ */
+function Ornament(){return(<div style={{display:"flex",alignItems:"center",gap:8,margin:"8px 0"}}>
+  <div style={{flex:1,height:1,background:"linear-gradient(to right,transparent,var(--gold2))"}}/>
+  <span style={{color:"var(--gold2)",fontSize:11}}>✦</span>
+  <div style={{flex:1,height:1,background:"linear-gradient(to left,transparent,var(--gold2))"}}/>
+</div>);}
+
+function DelModal({name,onOk,onNo}){
+  const [t,setT]=useState("");
+  const needs=name&&name.trim();const can=!needs||t.trim().toLowerCase()==="delete";
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:8,padding:26,width:380,boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
+      <h3 style={{fontFamily:"Cinzel",fontSize:15,marginBottom:10,color:"var(--red)"}}>⚠ Confirm Deletion</h3>
+      {needs?(<><p style={{fontSize:14,color:"var(--ink2)",marginBottom:12,lineHeight:1.6}}>Permanently delete <strong>{name}</strong>?</p>
+        <p style={{fontSize:12,color:"var(--ink3)",marginBottom:6}}>Type <em>delete</em> to confirm:</p>
+        <input autoFocus value={t} onChange={e=>setT(e.target.value)} onKeyDown={e=>e.key==="Enter"&&can&&onOk()} placeholder="delete"
+          style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 10px",width:"100%",fontSize:14,outline:"none",marginBottom:12}}/></>)
+        :<p style={{fontSize:14,color:"var(--ink2)",marginBottom:16}}>Delete this entry?</p>}
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button className="btn" onClick={onNo}>Cancel</button>
+        <button className="btn red-btn" onClick={onOk} disabled={!can} style={{opacity:can?1:0.4}}>Delete</button>
+      </div>
+    </div>
+  </div>);
+}
+
+/* ── @ mention / hyperlink picker ── */
+function MentionPicker({lore,onSelect,onAddNew,onClose}){
+  const [q,setQ]=useState("");
+  const all=useMemo(()=>{
+    const out=[];
+    LORE_SECTIONS.forEach(s=>{
+      (lore[s.id]||[]).forEach(e=>{
+        if(e.name?.trim())out.push({section:s.id,sectionLabel:s.label,icon:s.icon,id:e.id,name:e.name});
+      });
+    });
+    return out;
+  },[lore]);
+  const filtered=q.trim()?all.filter(x=>x.name.toLowerCase().includes(q.toLowerCase())):all;
+  return(<div style={{position:"absolute",top:"100%",left:0,zIndex:500,background:"var(--parch)",border:"1px solid var(--border2)",borderRadius:6,width:280,maxHeight:220,overflow:"hidden",boxShadow:"0 4px 16px rgba(0,0,0,0.3)",display:"flex",flexDirection:"column"}}>
+    <div style={{padding:"6px 8px",borderBottom:"1px solid var(--border)"}}>
+      <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search lore entries..." style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"4px 8px",width:"100%",fontSize:13,outline:"none"}}/>
+    </div>
+    <div style={{overflowY:"auto",flex:1}}>
+      {filtered.map(x=><div key={x.id} onClick={()=>onSelect(x)} style={{padding:"7px 12px",cursor:"pointer",fontSize:13,display:"flex",gap:7,alignItems:"center",borderBottom:"1px solid var(--border)"}} onMouseOver={e=>e.currentTarget.style.background="var(--parch2)"} onMouseOut={e=>e.currentTarget.style.background=""}>
+        <span>{x.icon}</span><span style={{flex:1,fontFamily:"Crimson Pro"}}>{x.name}</span><span style={{fontSize:10,color:"var(--ink3)"}}>{x.sectionLabel}</span>
+      </div>)}
+      {filtered.length===0&&<div style={{padding:"8px 12px",fontSize:12,color:"var(--ink3)",fontStyle:"italic"}}>No entries found</div>}
+    </div>
+    <div style={{borderTop:"1px solid var(--border)",padding:"6px 8px"}}>
+      <button className="btn" onClick={onAddNew} style={{width:"100%",fontSize:12,padding:"4px"}}>+ Add New Entry</button>
+    </div>
+  </div>);
+}
+
+/* Add New Entry Modal */
+function AddNewModal({lore,setLore,onClose,onCreated}){
+  const [section,setSection]=useState("settlements");
+  const [name,setName]=useState("");
+  const create=()=>{
+    if(!name.trim())return;
+    const item={...EMPTY_LORE(),id:Date.now(),name:name.trim()};
+    setLore(prev=>({...prev,[section]:[...prev[section],item]}));
+    onCreated({section,id:item.id,name:item.name,sectionLabel:LORE_SECTIONS.find(s=>s.id===section)?.label,icon:LORE_SECTIONS.find(s=>s.id===section)?.icon});
+  };
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:4000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:8,padding:24,width:360,boxShadow:"0 8px 40px rgba(0,0,0,0.5)"}}>
+      <h3 style={{fontFamily:"Cinzel",fontSize:15,marginBottom:14,color:"var(--gold)"}}>Add New Entry</h3>
+      <label style={{fontSize:10,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.06em",display:"block",marginBottom:4}}>SECTION</label>
+      <select value={section} onChange={e=>setSection(e.target.value)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 8px",width:"100%",fontSize:14,outline:"none",marginBottom:12}}>
+        {LORE_SECTIONS.map(s=><option key={s.id} value={s.id}>{s.icon} {s.label}</option>)}
+      </select>
+      <label style={{fontSize:10,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.06em",display:"block",marginBottom:4}}>NAME</label>
+      <input autoFocus value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&create()} placeholder="Entry name..."
+        style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 8px",width:"100%",fontSize:14,outline:"none",marginBottom:16}}/>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn act" onClick={create}>Create</button>
+      </div>
+    </div>
+  </div>);
+}
+
+/* ── Render lore text with clickable [@Name](lore:section:id) links ── */
+function renderLinks(text,onNavigate){
+  if(!text||!text.includes("[@"))return text;
+  const parts=[];
+  const regex=/\[@([^\]]+)\]\(lore:([^:]+):([^)]+)\)/g;
+  let last=0,m;
+  while((m=regex.exec(text))!==null){
+    if(m.index>last)parts.push(<span key={`t${last}`}>{text.slice(last,m.index)}</span>);
+    const [,name,section,id]=m;
+    parts.push(
+      <span key={`l${m.index}`}
+        onClick={()=>onNavigate&&onNavigate(section,id)}
+        style={{color:"var(--gold)",cursor:onNavigate?"pointer":"default",textDecoration:"underline",fontWeight:"bold",display:"inline-flex",alignItems:"center",gap:2}}>
+        🔗{name}
+      </span>
+    );
+    last=m.index+m[0].length;
+  }
+  if(last<text.length)parts.push(<span key={`t${last}`}>{text.slice(last)}</span>);
+  return parts.length?parts:text;
+}
+
+/* ── MentionTextarea: fully UNCONTROLLED internally, syncs to parent on blur ──
+   Typing never triggers a parent re-render. @ opens picker without losing focus. */
+const MentionTextarea=memo(function MentionTextarea({value,onCommit,lore,setLore,onNavigate,style,placeholder}){
+  const taRef=useRef(null);
+  const [showPicker,setShowPicker]=useState(false);
+  const [showAddNew,setShowAddNew]=useState(false);
+  const atPosRef=useRef(-1);
+
+  // Sync external value → textarea only when not focused
+  useEffect(()=>{
+    if(taRef.current&&document.activeElement!==taRef.current){
+      taRef.current.value=value||"";
+    }
+  },[value]);
+
+  const handleChange=e=>{
+    const v=e.target.value;
+    const cur=e.target.selectionStart;
+    const before=v.slice(0,cur);
+    const lastAt=before.lastIndexOf("@");
+    const afterAt=before.slice(lastAt+1);
+    if(lastAt>=0&&!afterAt.includes(" ")&&!afterAt.includes("\n")){
+      atPosRef.current=lastAt;
+      setShowPicker(true);
+    } else if(showPicker){
+      setShowPicker(false);
+      atPosRef.current=-1;
+    }
+  };
+
+  const handleBlur=e=>{
+    // Don't commit if picker is open (user clicked a result)
+    if(!showPicker&&!showAddNew){
+      onCommit(e.target.value);
+    }
+  };
+
+  const insertMention=entry=>{
+    const ta=taRef.current;
+    if(!ta)return;
+    const cur=ta.selectionStart;
+    const v=ta.value;
+    const before=v.slice(0,atPosRef.current);
+    const after=v.slice(cur);
+    const tag=`[@${entry.name}](lore:${entry.section}:${entry.id})`;
+    const newVal=before+tag+after;
+    ta.value=newVal;
+    onCommit(newVal);
+    setShowPicker(false);
+    atPosRef.current=-1;
+    ta.focus();
+    const pos=before.length+tag.length;
+    ta.setSelectionRange(pos,pos);
+  };
+
+  return(
+    <div style={{position:"relative"}}>
+      <textarea
+        ref={taRef}
+        defaultValue={value||""}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        placeholder={placeholder}
+        style={{...style,fontFamily:"Crimson Pro,serif"}}
+      />
+      {showPicker&&(
+        <MentionPicker
+          lore={lore}
+          onSelect={e=>{insertMention(e);}}
+          onAddNew={()=>{setShowPicker(false);setShowAddNew(true);}}
+          onClose={()=>{setShowPicker(false);atPosRef.current=-1;taRef.current?.focus();}}
+        />
+      )}
+      {showAddNew&&(
+        <AddNewModal
+          lore={lore} setLore={setLore}
+          onClose={()=>{setShowAddNew(false);taRef.current?.focus();}}
+          onCreated={e=>{setShowAddNew(false);insertMention(e);}}
+        />
+      )}
+    </div>
+  );
+});
+
+/* ════════════════════════════════════════════════════
+   MAP EDITOR
+════════════════════════════════════════════════════ */
+function MapEditor({mapItems,setMapItems,mapImage,setAppData,sideOpen,setSideOpen,lore,setLore,onNavigate}){
+  const [edit,setEdit]=useState(false);
+  const [tool,setTool]=useState("city");
+  const [sel,setSel]=useState(null);
+  const [drag,setDrag]=useState(null);
+  const [dragOff,setDragOff]=useState({x:0,y:0});
+  const [moved,setMoved]=useState(false);
+  const [lasso,setLasso]=useState(null);
+  const [selIds,setSelIds]=useState(new Set());
+  const [delT,setDelT]=useState(null);
+  const [viewPopup,setViewPopup]=useState(null); // {id, x, y} for view mode popup
+  const cvs=useRef(null);
+  const lsRef=useRef(null);
+  const itemMD=useRef(false);
+
+  const gp=e=>{const r=cvs.current.getBoundingClientRect();return{x:((e.clientX-r.left)/r.width)*100,y:((e.clientY-r.top)/r.height)*100};};
+  const gpPx=e=>{const r=cvs.current.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
+
+  const onCMD=e=>{
+    if(e.button!==0)return;
+    if(viewPopup){setViewPopup(null);return;}
+    if(!edit)return;
+    if(itemMD.current){itemMD.current=false;return;}
+    const p=gp(e);lsRef.current=p;setLasso({x1:p.x,y1:p.y,x2:p.x,y2:p.y});setSel(null);setSelIds(new Set());
+  };
+  const onMM=e=>{
+    if(!edit)return;
+    if(drag){setMoved(true);const p=gp(e);setMapItems(prev=>prev.map(i=>i.id===drag?{...i,x:Math.max(0,Math.min(100,p.x-dragOff.x)),y:Math.max(0,Math.min(100,p.y-dragOff.y))}:i));}
+    else if(lsRef.current){const p=gp(e);setLasso({x1:lsRef.current.x,y1:lsRef.current.y,x2:p.x,y2:p.y});}
+  };
+  const onCMU=e=>{
+    if(!edit){return;}
+    if(drag){setDrag(null);setMoved(false);return;}
+    if(lsRef.current&&lasso){
+      const dx=lasso.x2-lasso.x1,dy=lasso.y2-lasso.y1;
+      if(Math.sqrt(dx*dx+dy*dy)>1.5){
+        const x1=Math.min(lasso.x1,lasso.x2),x2=Math.max(lasso.x1,lasso.x2),y1=Math.min(lasso.y1,lasso.y2),y2=Math.max(lasso.y1,lasso.y2);
+        setSelIds(new Set(mapItems.filter(i=>i.x>=x1&&i.x<=x2&&i.y>=y1&&i.y<=y2).map(i=>i.id)));
+      } else if(!moved){
+        const p=gp(e);const t=TERRAINS.find(t=>t.id===tool);
+        const ni={id:Date.now(),type:tool,x:p.x,y:p.y,label:t.label,color:t.color,icon:t.icon,notes:""};
+        setMapItems(prev=>[...prev,ni]);setSel(ni.id);
+      }
+    }
+    setLasso(null);lsRef.current=null;setMoved(false);
+  };
+  const onIMD=(e,id)=>{
+    e.stopPropagation();
+    if(!edit){
+      // View mode: show popup
+      const px=gpPx(e);
+      setViewPopup({id,x:px.x,y:px.y});
+      return;
+    }
+    itemMD.current=true;lsRef.current=null;setLasso(null);
+    const p=gp(e);const item=mapItems.find(i=>i.id===id);
+    setDrag(id);setSel(id);setSelIds(new Set());setMoved(false);
+    setDragOff({x:p.x-item.x,y:p.y-item.y});
+  };
+  const updI=(f,v)=>setMapItems(prev=>prev.map(i=>i.id===sel?{...i,[f]:v}:i));
+  const selItem=mapItems.find(i=>i.id===sel);
+  const viewItem=viewPopup?mapItems.find(i=>i.id===viewPopup.id):null;
+  const ls=lasso?{left:`${Math.min(lasso.x1,lasso.x2)}%`,top:`${Math.min(lasso.y1,lasso.y2)}%`,width:`${Math.abs(lasso.x2-lasso.x1)}%`,height:`${Math.abs(lasso.y2-lasso.y1)}%`}:null;
+  const reqDel=()=>{
+    if(selIds.size>0){const ids=[...selIds];const hasC=ids.some(id=>{const i=mapItems.find(x=>x.id===id);const def=TERRAINS.find(t=>t.id===i?.type)?.label;return i&&((i.label&&i.label!==def)||i.notes?.trim());});setDelT({ids,label:hasC?ids.map(id=>mapItems.find(x=>x.id===id)?.label).filter(Boolean).join(", "):""});return;}
+    if(!sel)return;const item=mapItems.find(i=>i.id===sel);const def=TERRAINS.find(t=>t.id===item?.type)?.label;
+    setDelT({ids:[item.id],label:((item.label&&item.label!==def)||item.notes?.trim())?item.label:""});
+  };
+  const confirmDel=()=>{setMapItems(p=>p.filter(i=>!delT.ids.includes(i.id)));setSel(null);setSelIds(new Set());setDelT(null);};
+  const handleMapUp=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>setAppData(d=>({...d,mapImage:ev.target.result}));r.readAsDataURL(f);};
+
+  return(<div style={{position:"relative",width:"100%",height:"100%",display:"flex"}}>
+    {delT&&<DelModal name={delT.label} onOk={confirmDel} onNo={()=>setDelT(null)}/>}
+    <div style={{flex:1,position:"relative",overflow:"hidden",borderRadius:8}}>
+      <div ref={cvs} style={{position:"absolute",inset:0,background:mapImage?"#000":"linear-gradient(160deg,#1a4a1a,#0d3d0d 30%,#0a2a5a 70%,#0d1a4a)",cursor:edit?(drag?"grabbing":"crosshair"):"default",userSelect:"none",overflow:"hidden"}}
+        onMouseDown={onCMD} onMouseMove={onMM} onMouseUp={onCMU} onMouseLeave={()=>{setDrag(null);setLasso(null);lsRef.current=null;}}>
+        {mapImage&&<img src={mapImage} alt="map" style={{width:"100%",height:"100%",objectFit:"cover",pointerEvents:"none"}}/>}
+        {!mapImage&&<svg style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:.08,pointerEvents:"none"}}><defs><pattern id="hx" width="60" height="52" patternUnits="userSpaceOnUse"><polygon points="30,0 60,15 60,37 30,52 0,37 0,15" fill="none" stroke="#4a9e4a" strokeWidth="0.5"/></pattern></defs><rect width="100%" height="100%" fill="url(#hx)"/></svg>}
+        {lasso&&ls&&<div style={{position:"absolute",...ls,pointerEvents:"none",border:"2px dashed rgba(200,180,80,0.8)",background:"rgba(200,180,80,0.08)",zIndex:20}}/>}
+        {mapItems.map(item=>{const iS=sel===item.id,inL=selIds.has(item.id);return(
+          <div key={item.id} style={{position:"absolute",left:`${item.x}%`,top:`${item.y}%`,transform:"translate(-50%,-50%)",cursor:edit?(drag===item.id?"grabbing":"grab"):"pointer",zIndex:iS?15:inL?12:5,pointerEvents:"all"}} onMouseDown={e=>onIMD(e,item.id)}>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+              <div style={{width:28,height:28,borderRadius:"50%",background:iS||inL?item.color:`${item.color}cc`,border:iS?"3px solid #fff":inL?"2px dashed #fff":`2px solid ${item.color}88`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:"#fff",boxShadow:iS?`0 0 10px ${item.color}`:"0 1px 4px rgba(0,0,0,0.4)",transition:"transform .1s"}}>{item.icon}</div>
+              <div style={{fontSize:10,fontFamily:"Cinzel",color:"#fff",background:"rgba(0,0,0,0.7)",padding:"1px 5px",borderRadius:3,border:`1px solid ${item.color}55`,whiteSpace:"nowrap"}}>{item.label}</div>
+            </div>
+          </div>
+        );})}
+        {!mapImage&&mapItems.length===0&&<div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+          <div style={{fontSize:52,opacity:.18}}>🗺</div>
+          <p style={{color:"rgba(255,255,255,0.22)",fontSize:13,marginTop:12,fontFamily:"Cinzel",letterSpacing:"0.1em"}}>YOUR WORLD AWAITS</p>
+          <p style={{color:"rgba(255,255,255,0.14)",fontSize:11,marginTop:6}}>Click ✏️ to place markers · Click 📜 for lore</p>
+        </div>}
+        {/* View mode popup */}
+        {!edit&&viewItem&&<div className="map-popup" style={{left:Math.min(viewPopup.x+10,cvs.current?.clientWidth-230||500),top:Math.min(viewPopup.y-10,cvs.current?.clientHeight-200||400)}} onMouseDown={e=>e.stopPropagation()}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontSize:16}}>{viewItem.icon}</span>
+              <span style={{fontFamily:"Cinzel",fontSize:13,color:"var(--gold3)"}}>{viewItem.label}</span>
+            </div>
+            <button onClick={()=>setViewPopup(null)} style={{background:"none",border:"none",color:"var(--ink3)",cursor:"pointer",fontSize:14}}>✕</button>
+          </div>
+          <div style={{fontSize:9,color:"var(--ink3)",fontFamily:"Cinzel",letterSpacing:"0.06em",marginBottom:4}}>{TERRAINS.find(t=>t.id===viewItem.type)?.label.toUpperCase()}</div>
+          {viewItem.notes?<p style={{fontSize:12,color:"rgba(240,220,180,0.85)",lineHeight:1.6,marginBottom:8}}>{viewItem.notes}</p>:<p style={{fontSize:11,color:"rgba(200,180,140,0.4)",fontStyle:"italic",marginBottom:8}}>No notes for this location.</p>}
+          <button className="btn" onClick={()=>{setViewPopup(null);}} style={{fontSize:11,padding:"3px 8px",width:"100%"}}>Close</button>
+        </div>}
+      </div>
+      {/* Edit toolbar */}
+      {edit&&<div style={{position:"absolute",bottom:56,left:"50%",transform:"translateX(-50%)",background:"rgba(18,10,2,0.97)",borderRadius:8,border:"1px solid var(--gold2)",padding:"7px 10px",display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",boxShadow:"0 4px 20px rgba(0,0,0,0.5)",zIndex:30,maxWidth:"96%"}}>
+        <span style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",marginRight:2}}>PLACE:</span>
+        {TERRAINS.map(t=><button key={t.id} onClick={()=>setTool(t.id)} className={`btn${tool===t.id?" act":""}`} style={{padding:"2px 7px",fontSize:11,display:"flex",alignItems:"center",gap:3}}><span style={{color:tool===t.id?"var(--gold3)":t.color}}>{t.icon}</span>{t.label}</button>)}
+        <div style={{width:1,height:18,background:"var(--border2)",margin:"0 2px"}}/>
+        {(selIds.size>0||sel)&&<button className="btn red-btn" onClick={reqDel} style={{padding:"2px 7px",fontSize:11}}>🗑 {selIds.size>0?`Delete ${selIds.size}`:"Delete"}</button>}
+        <label className="btn" style={{cursor:"pointer",padding:"2px 7px",fontSize:11}}>🖼 Upload Map<input type="file" accept="image/*" onChange={handleMapUp} style={{display:"none"}}/></label>
+      </div>}
+      {/* Edit inspector */}
+      {edit&&selItem&&!selIds.size&&<div style={{position:"absolute",top:10,right:10,background:"rgba(18,10,2,0.97)",borderRadius:8,border:"1px solid var(--gold2)",padding:12,width:200,zIndex:30}}>
+        <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",marginBottom:7,letterSpacing:"0.06em"}}>EDIT MARKER</div>
+        <div style={{marginBottom:6}}><div style={{fontSize:9,color:"var(--ink3)",fontFamily:"Cinzel",marginBottom:2}}>LABEL</div>
+          <input value={selItem.label} onChange={e=>updI("label",e.target.value)} style={{fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.08)",border:"1px solid var(--border2)",color:"rgba(240,220,180,.9)",borderRadius:3,padding:"4px 7px",width:"100%",fontSize:12,outline:"none"}}/></div>
+        <div style={{marginBottom:6}}><div style={{fontSize:9,color:"var(--ink3)",fontFamily:"Cinzel",marginBottom:2}}>TYPE</div>
+          <select value={selItem.type} onChange={e=>{const t=TERRAINS.find(t=>t.id===e.target.value);setMapItems(p=>p.map(i=>i.id===selItem.id?{...i,type:t.id,color:t.color,icon:t.icon}:i));}} style={{fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.08)",border:"1px solid var(--border2)",color:"rgba(240,220,180,.9)",borderRadius:3,padding:"4px 7px",width:"100%",fontSize:12,outline:"none"}}>
+            {TERRAINS.map(t=><option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}
+          </select></div>
+        <div><div style={{fontSize:9,color:"var(--ink3)",fontFamily:"Cinzel",marginBottom:2}}>NOTES</div>
+          <textarea value={selItem.notes} onChange={e=>updI("notes",e.target.value)} style={{fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.08)",border:"1px solid var(--border2)",color:"rgba(240,220,180,.9)",borderRadius:3,padding:"4px 7px",width:"100%",fontSize:12,outline:"none",resize:"vertical",minHeight:60}}/></div>
+      </div>}
+      {/* FABs */}
+      <button onClick={()=>{setEdit(m=>!m);setSel(null);setSelIds(new Set());setViewPopup(null);}} style={{position:"absolute",bottom:12,right:12,zIndex:30,width:42,height:42,borderRadius:"50%",padding:0,fontSize:16,background:edit?"var(--gold2)":"rgba(18,10,2,0.85)",border:`2px solid ${edit?"var(--gold3)":"var(--gold2)"}`,color:edit?"var(--dark)":"var(--gold3)",boxShadow:"0 2px 10px rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} title={edit?"Exit edit":"Edit map"}>{edit?"✕":"✏️"}</button>
+      <button onClick={()=>setSideOpen(o=>!o)} style={{position:"absolute",bottom:12,right:62,zIndex:30,width:42,height:42,borderRadius:"50%",padding:0,fontSize:16,background:sideOpen?"var(--gold2)":"rgba(18,10,2,0.85)",border:`2px solid ${sideOpen?"var(--gold3)":"var(--gold2)"}`,color:sideOpen?"var(--dark)":"var(--gold3)",boxShadow:"0 2px 10px rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} title="Lore panel">📜</button>
+      {!edit&&<div style={{position:"absolute",bottom:18,left:"50%",transform:"translateX(-50%)",background:"rgba(18,10,2,0.7)",color:"rgba(200,180,120,0.6)",borderRadius:4,padding:"3px 10px",fontSize:10,fontFamily:"Cinzel",letterSpacing:"0.06em",pointerEvents:"none"}}>VIEW MODE · Click a marker to inspect · ✏️ to edit</div>}
+    </div>
+    {sideOpen&&<div style={{width:300,height:"100%",background:"var(--parch)",borderLeft:"2px solid var(--gold2)",display:"flex",flexDirection:"column",overflow:"hidden",flexShrink:0}}><MapLoreSide lore={lore} onNavigate={onNavigate}/></div>}
+  </div>);
+}
+
+function MapLoreSide({lore,onNavigate}){
+  const [open,setOpen]=useState(null);
+  const [sel,setSel]=useState({s:null,id:null});
+  const item=sel.s?lore[sel.s]?.find(i=>i.id===sel.id):null;
+  return(<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+    <div style={{padding:"9px 14px",background:"var(--parch3)",borderBottom:"1px solid var(--border2)",fontFamily:"Cinzel",fontSize:11,color:"var(--gold)",letterSpacing:"0.08em"}}>📜 LORE</div>
+    <div style={{flex:1,display:"flex",overflow:"hidden"}}>
+      <div style={{width:120,background:"var(--parch2)",borderRight:"1px solid var(--border)",overflowY:"auto",flexShrink:0}}>
+        {LORE_SECTIONS.map(s=>{const items=lore[s.id]||[];const isO=open===s.id;return(<div key={s.id}>
+          <div onClick={()=>setOpen(o=>o===s.id?null:s.id)} style={{padding:"8px 10px",cursor:"pointer",fontSize:11,fontFamily:"Cinzel",color:isO?"var(--gold)":"var(--ink2)",background:isO?"var(--parch3)":"transparent",borderBottom:"1px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center",userSelect:"none"}}>
+            <span>{s.icon} {s.label}</span>
+          </div>
+          {isO&&items.map(it=><div key={it.id} onClick={()=>setSel({s:s.id,id:it.id})} style={{padding:"5px 8px 5px 14px",cursor:"pointer",fontSize:11,borderBottom:"1px solid var(--border)",background:sel.id===it.id&&sel.s===s.id?"var(--parch4)":"transparent",color:sel.id===it.id&&sel.s===s.id?"var(--gold)":"var(--ink2)",borderLeft:sel.id===it.id&&sel.s===s.id?"3px solid var(--gold2)":"3px solid transparent"}}>{it.name||<em style={{opacity:.5}}>Unnamed</em>}</div>)}
+        </div>);})}
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:10}}>
+        {!item?<div style={{color:"var(--ink3)",fontSize:11,fontStyle:"italic",textAlign:"center",marginTop:24}}>Select an entry</div>:(<div>
+          {item.portrait&&<img src={item.portrait} alt="" style={{width:"100%",maxHeight:120,objectFit:"cover",borderRadius:4,marginBottom:7,border:"1px solid var(--border2)"}}/>}
+          <h4 style={{fontSize:13,color:"var(--gold)",marginBottom:4}}>{item.name||"Unnamed"}</h4>
+          {item.raceSp&&<p style={{fontSize:11,color:"var(--ink3)",fontStyle:"italic",marginBottom:4}}>{item.raceSp}{item.age?` · Age ${item.age}`:""}</p>}
+          <Ornament/>
+          {item.description&&<p style={{fontSize:12,color:"var(--ink2)",lineHeight:1.6,marginBottom:6}}>{item.description}</p>}
+          {onNavigate&&<button className="btn" onClick={()=>onNavigate(sel.s,sel.id)} style={{width:"100%",fontSize:11,padding:"3px",marginTop:6}}>Open in Lore →</button>}
+        </div>)}
+      </div>
+    </div>
+  </div>);
+}
+
+/* ── Lore view/edit field — hoisted outside LorePanel to prevent remounting ── */
+const LoreVF=memo(function LoreVF({label,value,field,multi,height,editMode,onCommit,lore,setLore,onNavigate}){
+  if(!editMode&&!value?.trim())return null;
+  const taStyle={fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 9px",fontSize:14,width:"100%",resize:"vertical",minHeight:height||80,lineHeight:1.6,outline:"none"};
+  const inpStyle={fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 9px",fontSize:14,width:"100%",outline:"none"};
+  return(
+    <div style={{marginBottom:12}}>
+      <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>{label.toUpperCase()}</div>
+      {editMode
+        ?(multi
+          ?<MentionTextarea value={value||""} onCommit={v=>onCommit(field,v)} lore={lore} setLore={setLore} onNavigate={onNavigate} style={taStyle}/>
+          :<ShInput value={value||""} onCommit={v=>onCommit(field,v)} style={inpStyle} className=""/>)
+        :<p style={{fontSize:15,color:"var(--ink)",lineHeight:1.7,fontFamily:"Crimson Pro",whiteSpace:"pre-wrap"}}>{renderLinks(value,onNavigate)}</p>}
+    </div>
+  );
+});
+
+const LoreIF=memo(function LoreIF({label,value,field,editMode,onCommit}){
+  if(!editMode&&!value?.trim())return null;
+  return(
+    <div style={{flex:"1 1 120px"}}>
+      <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>{label.toUpperCase()}</div>
+      {editMode
+        ?<ShInput value={value||""} onCommit={v=>onCommit(field,v)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"4px 7px",fontSize:13,width:"100%",outline:"none"}} className=""/>
+        :<div style={{fontSize:14,color:"var(--ink)",fontFamily:"Crimson Pro"}}>{value||"—"}</div>}
+    </div>
+  );
+});
+
+/* ════════════════════════════════════════════════════
+   LORE PANEL
+════════════════════════════════════════════════════ */
+function LorePanel({lore,setLore,characters,initialSel,onClearSel,onNavigate}){
+  const [openSection,setOpenSection]=useState(initialSel?.section||null);
+  const [sel,setSel]=useState(initialSel||{s:null,id:null});
+  const [creating,setCreating]=useState(null);
+  const [newName,setNewName]=useState("");
+  const [editMode,setEditMode]=useState(false);
+  const [delT,setDelT]=useState(null);
+  const [search,setSearch]=useState("");
+  // local is purely for reactive display of portrait/name — text fields are uncontrolled
+  const [local,setLocal]=useState(null);
+
+  useEffect(()=>{
+    if(initialSel?.s&&initialSel?.id){
+      setSel(initialSel);setOpenSection(initialSel.s);
+      const found=lore[initialSel.s]?.find(i=>i.id===initialSel.id);
+      if(found)setLocal({...found});
+    }
+  },[initialSel?.s,initialSel?.id]);
+
+  const selItem=sel.s?lore[sel.s]?.find(i=>i.id===sel.id):null;
+  useEffect(()=>{setLocal(selItem?{...selItem}:null);},[sel.s,sel.id]);
+
+  // Direct commit — no debounce needed since fields are uncontrolled (blur-only)
+  const commitField=useCallback((field,value)=>{
+    setLore(prev=>({...prev,[sel.s]:prev[sel.s].map(i=>i.id===sel.id?{...i,[field]:value}:i)}));
+    setLocal(prev=>prev?{...prev,[field]:value}:prev);
+  },[sel.s,sel.id,setLore]);
+
+  const createItem=s=>{
+    if(!newName.trim())return;
+    const item={...EMPTY_LORE(),id:Date.now(),name:newName.trim()};
+    setLore(prev=>({...prev,[s]:[...prev[s],item]}));
+    setSel({s,id:item.id});setLocal({...item});setCreating(null);setNewName("");setEditMode(true);
+  };
+  const reqDel=()=>{if(!selItem)return;setDelT({label:selItem.description?.trim()||selItem.lore?.trim()?selItem.name:""});};
+  const confirmDel=()=>{
+    setLore(prev=>({...prev,[sel.s]:prev[sel.s].filter(i=>i.id!==sel.id)}));
+    setSel({s:null,id:null});setLocal(null);setDelT(null);setEditMode(false);
+  };
+  const handlePortrait=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>commitField("portrait",ev.target.result);r.readAsDataURL(f);};
+  const handleFile=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>commitField("fileData",ev.target.result);r.readAsDataURL(f);commitField("fileName",f.name);};
+
+  const hasPhys=s=>["allies","enemies"].includes(s);
+  const filteredItems=useMemo(()=>{
+    const s=openSection;if(!s)return[];
+    const items=lore[s]||[];
+    return search.trim()?items.filter(i=>i.name?.toLowerCase().includes(search.toLowerCase())):items;
+  },[lore,openSection,search]);
+
+  return(<div style={{display:"flex",height:"100%",background:"var(--dark)"}}>
+    {delT&&<DelModal name={delT.label} onOk={confirmDel} onNo={()=>setDelT(null)}/>}
+    {/* LEFT */}
+    <div style={{width:220,display:"flex",flexDirection:"column",background:"var(--parch2)",borderRight:"2px solid var(--gold2)",flexShrink:0,overflow:"hidden"}}>
+      <div style={{overflowY:"auto",flex:1}}>
+        {LORE_SECTIONS.map(s=>{
+          const items=lore[s.id]||[];const isO=openSection===s.id;
+          return(<div key={s.id} style={{borderBottom:"1px solid var(--border)"}}>
+            <div onClick={()=>{setOpenSection(o=>o===s.id?null:s.id);setSearch("");}} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,fontFamily:"Cinzel",letterSpacing:"0.04em",color:isO?"var(--gold)":"var(--ink2)",background:isO?"var(--parch3)":"var(--parch2)",borderLeft:isO?"3px solid var(--gold2)":"3px solid transparent",display:"flex",alignItems:"center",gap:8,userSelect:"none"}}>
+              <span style={{fontSize:13}}>{s.icon}</span><span style={{flex:1}}>{s.label}</span>
+              {items.length>0&&<span style={{fontSize:9,background:"var(--gold2)",color:"var(--dark)",borderRadius:10,padding:"0 5px",fontFamily:"Cinzel"}}>{items.length}</span>}
+              <span style={{fontSize:9,color:"var(--ink3)",transform:isO?"rotate(180deg)":"none",display:"inline-block",transition:"transform .2s"}}>▼</span>
+            </div>
+            {isO&&<div style={{background:"var(--parch)"}}>
+              <div style={{padding:"5px 8px",borderBottom:"1px solid var(--border)"}}>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",width:"100%",fontSize:11,outline:"none"}}/>
+              </div>
+              {filteredItems.length===0&&<div style={{padding:"7px 14px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>No entries</div>}
+              {filteredItems.map(item=><div key={item.id} onClick={()=>{setSel({s:s.id,id:item.id});setEditMode(false);}} style={{padding:"7px 12px 7px 20px",cursor:"pointer",fontSize:13,fontFamily:"Crimson Pro",background:sel.id===item.id&&sel.s===s.id?"var(--parch4)":"transparent",color:sel.id===item.id&&sel.s===s.id?"var(--gold)":"var(--ink)",borderLeft:sel.id===item.id&&sel.s===s.id?"3px solid var(--gold2)":"3px solid transparent",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:6}}>
+                {item.portrait&&<img src={item.portrait} alt="" style={{width:18,height:18,borderRadius:"50%",objectFit:"cover",border:"1px solid var(--border2)",flexShrink:0}}/>}
+                <span>{item.name||<em style={{opacity:.5,fontSize:11}}>Unnamed</em>}</span>
+              </div>)}
+              {creating===s.id?<div style={{padding:"6px 8px",display:"flex",gap:4,borderTop:"1px solid var(--border)"}}>
+                <input autoFocus placeholder="Name..." value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")createItem(s.id);if(e.key==="Escape")setCreating(null);}} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",flex:1,fontSize:12,outline:"none"}}/>
+                <button className="btn" onClick={()=>createItem(s.id)} style={{padding:"2px 7px",fontSize:11}}>✓</button>
+                <button className="btn" onClick={()=>setCreating(null)} style={{padding:"2px 7px",fontSize:11}}>✕</button>
+              </div>:<div style={{padding:"5px 8px",borderTop:"1px solid var(--border)"}}>
+                <button className="btn" onClick={()=>setCreating(s.id)} style={{width:"100%",fontSize:11,border:"1px dashed var(--border2)",padding:"3px"}}>+ Add {s.label.replace(/s$/,"")}</button>
+              </div>}
+            </div>}
+          </div>);
+        })}
+      </div>
+    </div>
+    {/* RIGHT DETAIL */}
+    <div style={{flex:1,overflowY:"auto",background:"var(--parch)"}}>
+      {!local?<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",color:"var(--ink3)",textAlign:"center",padding:40}}>
+        <div style={{fontSize:50,marginBottom:14,opacity:.28}}>{LORE_SECTIONS.find(s=>s.id===openSection)?.icon||"📜"}</div>
+        <h3 style={{fontFamily:"Cinzel",fontSize:16,color:"var(--ink3)",marginBottom:8}}>{LORE_SECTIONS.find(s=>s.id===openSection)?.label||"Lore"}</h3>
+        <p style={{fontSize:14,color:"var(--ink3)",fontStyle:"italic"}}>Select or create an entry</p>
+      </div>:
+      <div style={{padding:"24px 32px",maxWidth:820,margin:"0 auto"}}>
+        {/* Title row */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+          <div style={{flex:1,marginRight:14}}>
+            {editMode
+              ?<ShInput value={local.name||""} onCommit={v=>commitField("name",v)} style={{fontSize:24,fontFamily:"Cinzel",color:"var(--gold)",background:"transparent",border:"none",borderBottom:"2px solid var(--gold2)",padding:"2px 0",width:"100%",outline:"none"}} className=""/>
+              :<h2 style={{fontSize:24,color:"var(--gold)",letterSpacing:"0.06em"}}>{local.name||"Unnamed"}</h2>}
+            {!editMode&&local.raceSp&&<p style={{fontSize:13,color:"var(--ink3)",marginTop:3,fontStyle:"italic",fontFamily:"Cinzel"}}>{local.raceSp}{local.age?` · Age ${local.age}`:""}</p>}
+          </div>
+          <div style={{display:"flex",gap:5,flexShrink:0}}>
+            <button className={`btn${editMode?" act":""}`} onClick={()=>setEditMode(m=>!m)} style={{fontSize:12,padding:"4px 11px"}}>{editMode?"✓ Done":"✏️ Edit"}</button>
+            {editMode&&<button className="btn red-btn" onClick={reqDel} style={{fontSize:12,padding:"4px 9px"}}>🗑</button>}
+          </div>
+        </div>
+        <Ornament/>
+
+        {/* Portrait + physical */}
+        <div style={{display:"flex",gap:20,marginBottom:18,flexWrap:"wrap"}}>
+          <div style={{flexShrink:0}}>
+            <div style={{width:140,height:180,background:"var(--parch2)",border:"2px solid var(--border2)",borderRadius:4,overflow:"hidden",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {local.portrait?<img src={local.portrait} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{color:"var(--ink3)",fontSize:11,fontStyle:"italic",textAlign:"center",padding:8}}>No portrait</div>}
+              {editMode&&<label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.65)",color:"var(--gold3)",fontSize:10,textAlign:"center",padding:"4px",cursor:"pointer",fontFamily:"Cinzel"}}>📷 Upload<input type="file" accept="image/*" onChange={handlePortrait} style={{display:"none"}}/></label>}
+            </div>
+            {editMode&&local.portrait&&<button className="btn" onClick={()=>commitField("portrait",null)} style={{width:140,marginTop:4,fontSize:10,padding:"2px 0"}}>Remove</button>}
+          </div>
+          {hasPhys(sel.s)&&<div style={{flex:1}}>
+            <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:8}}>PHYSICAL ATTRIBUTES</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+              <LoreIF label="Race / Species" value={local.raceSp} field="raceSp" editMode={editMode} onCommit={commitField}/>
+              <LoreIF label="Age" value={local.age} field="age" editMode={editMode} onCommit={commitField}/>
+              <LoreIF label="Eye Colour" value={local.eyeColour} field="eyeColour" editMode={editMode} onCommit={commitField}/>
+              <LoreIF label="Hair Colour" value={local.hairColour} field="hairColour" editMode={editMode} onCommit={commitField}/>
+              <LoreIF label="Build" value={local.build} field="build" editMode={editMode} onCommit={commitField}/>
+              <LoreIF label="Clothing / Appearance" value={local.clothing} field="clothing" editMode={editMode} onCommit={commitField}/>
+              <LoreIF label="Voice / Accent" value={local.voiceAccent} field="voiceAccent" editMode={editMode} onCommit={commitField}/>
+              <LoreIF label="Personality" value={local.personality} field="personality" editMode={editMode} onCommit={commitField}/>
+              <LoreIF label="Goal or Secret" value={local.goalSecret} field="goalSecret" editMode={editMode} onCommit={commitField}/>
+            </div>
+          </div>}
+          {sel.s==="sessions"&&<div style={{flex:1,display:"flex",flexDirection:"column",gap:10}}>
+            <LoreIF label="Session Number" value={local.sessionNumber} field="sessionNumber" editMode={editMode} onCommit={commitField}/>
+            <LoreIF label="Date" value={local.sessionDate} field="sessionDate" editMode={editMode} onCommit={commitField}/>
+          </div>}
+          {!hasPhys(sel.s)&&sel.s!=="sessions"&&<div style={{flex:1}}>
+            <LoreIF label="Tags / Type" value={local.tags} field="tags" editMode={editMode} onCommit={commitField}/>
+          </div>}
+        </div>
+
+        <Ornament/>
+
+        {/* Main text fields — all using hoisted LoreVF with uncontrolled inputs */}
+        <LoreVF label={sel.s==="sessions"?"Session Summary":"Description"} value={local.description} field="description" multi height={100} editMode={editMode} onCommit={commitField} lore={lore} setLore={setLore} onNavigate={onNavigate}/>
+        {sel.s!=="sessions"&&<LoreVF label="Background & Lore" value={local.lore} field="lore" multi height={120} editMode={editMode} onCommit={commitField} lore={lore} setLore={setLore} onNavigate={onNavigate}/>}
+        {["allies","enemies","factions"].includes(sel.s)&&<LoreVF label="Abilities & Powers" value={local.abilities} field="abilities" multi height={90} editMode={editMode} onCommit={commitField} lore={lore} setLore={setLore} onNavigate={onNavigate}/>}
+        {sel.s==="enemies"&&<>
+          <LoreVF label="Threat Level" value={local.threatLevel} field="threatLevel" editMode={editMode} onCommit={commitField} lore={lore} setLore={setLore} onNavigate={onNavigate}/>
+          <LoreVF label="Tactics & Weaknesses" value={local.tactics} field="tactics" multi height={90} editMode={editMode} onCommit={commitField} lore={lore} setLore={setLore} onNavigate={onNavigate}/>
+        </>}
+        {!["sessions","history"].includes(sel.s)&&<LoreVF label="Relationships & Connections" value={local.relationships} field="relationships" multi height={90} editMode={editMode} onCommit={commitField} lore={lore} setLore={setLore} onNavigate={onNavigate}/>}
+        {["allies","enemies"].includes(sel.s)&&<LoreVF label="Feats with the Party" value={local.featsWithParty} field="featsWithParty" multi height={90} editMode={editMode} onCommit={commitField} lore={lore} setLore={setLore} onNavigate={onNavigate}/>}
+
+        {sel.s==="sessions"&&<>
+          <LoreVF label="Key Events & Decisions" value={local.keyEvents} field="keyEvents" multi height={120} editMode={editMode} onCommit={commitField} lore={lore} setLore={setLore} onNavigate={onNavigate}/>
+          <Ornament/>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:5}}>SESSION LOG FILE</div>
+            {local.fileName&&<div style={{fontSize:13,color:"var(--ink2)",marginBottom:7,padding:"5px 9px",background:"var(--parch2)",borderRadius:4,border:"1px solid var(--border)"}}>📎 {local.fileName}{local.fileData&&<a href={local.fileData} download={local.fileName} style={{marginLeft:8,color:"var(--gold)",fontSize:12,textDecoration:"none"}}>⬇</a>}</div>}
+            {editMode&&<label className="btn" style={{cursor:"pointer",display:"inline-block",fontSize:11}}>📤 Upload Log<input type="file" onChange={handleFile} style={{display:"none"}}/></label>}
+          </div>
+        </>}
+
+        {sel.s!=="sessions"&&<LoreVF label="Tags" value={local.tags} field="tags" editMode={editMode} onCommit={commitField} lore={lore} setLore={setLore} onNavigate={onNavigate}/>}
+
+        {["allies","enemies"].includes(sel.s)&&<>
+          <Ornament/>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:5}}>LINKED CHARACTER SHEET</div>
+            {editMode
+              ?<select value={local.linkedCharId||""} onChange={e=>commitField("linkedCharId",e.target.value||null)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 8px",width:"100%",fontSize:14,outline:"none"}}>
+                <option value="">— None —</option>
+                {characters.map((c,i)=><option key={c.id} value={c.id}>{c.name||`Player ${i+1}`}</option>)}
+              </select>
+              :local.linkedCharId?<p style={{fontSize:14,color:"var(--ink)"}}>{characters.find(c=>String(c.id)===String(local.linkedCharId))?.name||"Unknown"}</p>:null}
+          </div>
+        </>}
+      </div>}
+    </div>
+  </div>);
+}
+
+/* ════════════════════════════════════════════════════
+   CHARACTER SHEET — sub-components defined OUTSIDE to
+   prevent remounting on every render (fixes typing bug)
+════════════════════════════════════════════════════ */
+
+/* Uncontrolled text input — commits on blur only */
+const ShInput=memo(({value,onCommit,placeholder,className,style,type})=>{
+  const ref=useRef(null);
+  useEffect(()=>{if(ref.current&&document.activeElement!==ref.current)ref.current.value=value??"";},[value]);
+  return <input ref={ref} type={type||"text"} defaultValue={value??""} onBlur={e=>onCommit(e.target.value)} placeholder={placeholder||""} className={className||"sh-input-box"} style={style}/>;
+});
+const ShNumInput=memo(({value,onCommit,className,style,placeholder})=>{
+  const ref=useRef(null);
+  useEffect(()=>{if(ref.current&&document.activeElement!==ref.current)ref.current.value=value??"";},[value]);
+  return <input ref={ref} type="number" defaultValue={value??""} onBlur={e=>onCommit(e.target.value)} placeholder={placeholder||""} className={className||"sh-num"} style={style}/>;
+});
+const ShTextarea=memo(({value,onCommit,placeholder,className,style})=>{
+  const ref=useRef(null);
+  useEffect(()=>{if(ref.current&&document.activeElement!==ref.current)ref.current.value=value??"";},[value]);
+  return <textarea ref={ref} defaultValue={value??""} onBlur={e=>onCommit(e.target.value)} placeholder={placeholder||""} className={className||"sh-input-box"} style={style}/>;
+});
+
+/* Section header bar */
+const ShSec=({label})=><div className="sh-section">{label}</div>;
+const ShBox=({children,style})=><div className="sh" style={style}>{children}</div>;
+
+/* Ability score column — hoisted outside CharSheet */
+const AbilCol=memo(({ab,score,saveVal,skills,skillData,profBonus,editMode,onScore,onSave,onSkillProf,onSkillOverride})=>{
+  const m=calcMod(score);
+  const saveBonus=saveVal!==null&&saveVal!==undefined&&saveVal!==""?parseInt(saveVal)||0:m;
+  const skList=SKILLS_BY_AB[ab]||[];
+  const getSkBonus=sk=>{const d=skillData?.[sk];if(!d)return m;if(d.override!==null&&d.override!==undefined&&d.override!=="")return parseInt(d.override)||0;return m+(d.prof?profBonus:0);};
+  return(<div style={{display:"flex",flexDirection:"column",gap:4,flex:1,minWidth:90}}>
+    <ShBox style={{textAlign:"center",padding:"6px 4px"}}>
+      <div className="sh-label" style={{textAlign:"center"}}>{AB_FULL[ab].toUpperCase()}</div>
+      {editMode
+        ?<ShNumInput value={score} onCommit={v=>onScore(ab,v)} style={{fontFamily:"Cinzel",background:"rgba(255,255,255,0.5)",border:"1px solid var(--sheet-border)",color:"var(--sheet-head)",fontSize:24,width:"100%",textAlign:"center",outline:"none",borderRadius:3,fontWeight:700,padding:"1px 0"}}/>
+        :<div style={{fontSize:24,fontFamily:"Cinzel",color:"var(--sheet-head)",fontWeight:700,padding:"2px 0"}}>{score}</div>}
+      <div style={{fontSize:9,color:"#777",marginBottom:2,fontFamily:"Cinzel"}}>SCORE</div>
+      <div style={{fontSize:18,fontFamily:"Cinzel",color:"var(--sheet-head)",fontWeight:700}}>{fmtMod(m)}</div>
+      <div style={{fontSize:8,color:"#777",fontFamily:"Cinzel"}}>MODIFIER</div>
+    </ShBox>
+    <ShBox style={{padding:"5px 6px"}}>
+      <div className="sh-label">SAVING THROW</div>
+      <div style={{display:"flex",alignItems:"center",gap:5}}>
+        <span style={{fontSize:13,fontFamily:"Cinzel",color:"var(--sheet-head)",flex:1}}>{fmtMod(saveBonus)}</span>
+        {editMode&&<ShNumInput value={saveVal??""} onCommit={v=>onSave(ab,v)} placeholder="auto" style={{width:44,fontSize:11,padding:"1px 3px"}} className="sh-num"/>}
+      </div>
+    </ShBox>
+    {skList.length>0&&<ShBox style={{padding:"5px 6px"}}>
+      <div className="sh-label">SKILLS</div>
+      {skList.map(sk=>{
+        const d=skillData?.[sk]||{prof:false,override:null};
+        const bonus=getSkBonus(sk);
+        return(<div key={sk} style={{marginBottom:5}}>
+          <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:2}}>
+            <span className={`prof-dot${d.prof?" filled":""}`} onClick={()=>editMode&&onSkillProf(sk)} title={editMode?"Toggle proficiency":""} style={{cursor:editMode?"pointer":"default"}}/>
+            <span style={{fontSize:11,color:"var(--sheet-head)",flex:1,lineHeight:1.2}}>{sk}</span>
+            <span style={{fontSize:11,fontFamily:"Cinzel",color:"var(--sheet-head)",fontWeight:600}}>{fmtMod(bonus)}</span>
+          </div>
+          {editMode&&<ShNumInput value={d.override??""} onCommit={v=>onSkillOverride(sk,v)} placeholder="auto" style={{fontSize:10,padding:"1px 4px",height:18}} className="sh-num"/>}
+        </div>);})}
+    </ShBox>}
+  </div>);
+});
+
+/* Expandable list item row — hoisted outside.
+   Header is ALWAYS just text + arrow (never an input) so clicking it only toggles.
+   Name and description are edited inside the expanded panel. */
+const ExpandRow=memo(({item,isOpen,onToggle,onName,onDesc,onDelete,editMode,lore,setLore})=>(
+  <div style={{marginBottom:5,border:"1px solid var(--sheet-border)",borderRadius:3,overflow:"hidden"}}>
+    {/* Header — click anywhere to toggle, never contains an input */}
+    <div style={{display:"flex",alignItems:"center",gap:5,padding:"5px 8px",background:"var(--parch3)",cursor:"pointer",userSelect:"none"}} onClick={onToggle}>
+      <span style={{flex:1,fontSize:12,color:"var(--sheet-head)",fontFamily:"Cinzel",letterSpacing:"0.03em"}}>
+        {item.name?.trim()||<em style={{opacity:.4,fontFamily:"Crimson Pro",fontStyle:"italic",fontWeight:"normal"}}>Unnamed — click ▼ to name</em>}
+      </span>
+      <span style={{fontSize:10,color:"#999",flexShrink:0,padding:"0 2px"}}>{isOpen?"▲":"▼"}</span>
+      {editMode&&<button
+        onClick={e=>{e.stopPropagation();onDelete();}}
+        style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:12,flexShrink:0,padding:"0 2px",lineHeight:1}}>✕</button>}
+    </div>
+    {/* Expanded panel — name field first, then description */}
+    {isOpen&&<div style={{padding:"8px 10px",background:"var(--sheet-bg)",display:"flex",flexDirection:"column",gap:7}}>
+      {editMode&&<>
+        <div>
+          <div className="sh-label">NAME</div>
+          <ShInput value={item.name||""} onCommit={onName} placeholder="Enter name..." style={{fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.7)",border:"1px solid var(--sheet-border)",color:"var(--sheet-head)",borderRadius:2,padding:"4px 7px",fontSize:13,width:"100%",outline:"none"}} className=""/>
+        </div>
+        <div>
+          <div className="sh-label">DESCRIPTION</div>
+          <MentionTextarea value={item.desc||""} onCommit={onDesc} lore={lore} setLore={setLore} style={{fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.6)",border:"1px solid var(--sheet-border)",color:"var(--sheet-head)",borderRadius:2,padding:"4px 6px",fontSize:12,width:"100%",resize:"vertical",minHeight:60,lineHeight:1.6,outline:"none"}} placeholder="Describe... (type @ to link a lore entry)"/>
+        </div>
+      </>}
+      {!editMode&&<p style={{fontSize:12,color:"var(--sheet-head)",lineHeight:1.6,whiteSpace:"pre-wrap",margin:0}}>{item.desc||<em style={{opacity:.4}}>No description yet.</em>}</p>}
+    </div>}
+  </div>
+));
+
+function CharSheet({char,onChange,lore,setLore,onNavigate}){
+  const [editMode,setEditMode]=useState(false);
+  // Stable data ref — actual source of truth lives in parent via onChange
+  // We keep a local copy only for reactive display values (modifiers etc.)
+  const [L,setL]=useState({...char});
+  useEffect(()=>{setL(prev=>({...prev,...char}));},[char.id]);
+
+  // Commit a single field change upward immediately
+  const commit=useCallback((field,value)=>{
+    setL(prev=>{const u={...prev,[field]:value};onChange(u);return u;});
+  },[onChange]);
+  const commitNum=useCallback((f,v)=>commit(f,v===""?0:parseInt(v)||0),[commit]);
+
+  const prof=parseInt(L.profBonus)||2;
+
+  // Death marks
+  const cycleMark=i=>{const m=[...(L.deathMarks||Array(10).fill(0))];m[i]=(m[i]+1)%3;commit("deathMarks",m);};
+
+  // Stat rows
+  const updSR=(id,f,v)=>commit("statRows",(L.statRows||[]).map(r=>r.id===id?{...r,[f]:v}:r));
+  const addSR=()=>commit("statRows",[...(L.statRows||[]),{id:Date.now(),label:"NEW STAT",value:""}]);
+  const delSR=id=>commit("statRows",(L.statRows||[]).filter(r=>r.id!==id));
+
+  // Weapons
+  const updW=(id,f,v)=>commit("weapons",(L.weapons||[]).map(w=>w.id===id?{...w,[f]:v}:w));
+  const addW=()=>commit("weapons",[...(L.weapons||[]),{id:Date.now(),name:"",attackBonus:"",damage:"",notes:""}]);
+  const delW=id=>commit("weapons",(L.weapons||[]).filter(w=>w.id!==id));
+
+  // Expandable lists
+  const [cfO,setCfO]=useState({});
+  const updCF=(id,f,v)=>commit("classFeatures",(L.classFeatures||[]).map(x=>x.id===id?{...x,[f]:v}:x));
+  const addCF=()=>commit("classFeatures",[...(L.classFeatures||[]),{id:Date.now(),name:"",desc:""}]);
+  const delCF=id=>commit("classFeatures",(L.classFeatures||[]).filter(x=>x.id!==id));
+  const [knO,setKnO]=useState({});
+  const updKn=(id,f,v)=>commit("knacks",(L.knacks||[]).map(x=>x.id===id?{...x,[f]:v}:x));
+  const addKn=()=>commit("knacks",[...(L.knacks||[]),{id:Date.now(),name:"",desc:""}]);
+  const delKn=id=>commit("knacks",(L.knacks||[]).filter(x=>x.id!==id));
+  const [exO,setExO]=useState({});
+  const updEx=(id,f,v)=>commit("exploits",(L.exploits||[]).map(x=>x.id===id?{...x,[f]:v}:x));
+  const addEx=()=>commit("exploits",[...(L.exploits||[]),{id:Date.now(),name:"",desc:""}]);
+  const delEx=id=>commit("exploits",(L.exploits||[]).filter(x=>x.id!==id));
+
+  // Skills / saves
+  const toggleSkillProf=useCallback(sk=>{const cur=L.skills?.[sk]||{prof:false,override:null};commit("skills",{...L.skills,[sk]:{...cur,prof:!cur.prof}});},[L.skills,commit]);
+  const setSkillOverride=useCallback((sk,v)=>{const cur=L.skills?.[sk]||{prof:false,override:null};commit("skills",{...L.skills,[sk]:{...cur,override:v===""?null:v}});},[L.skills,commit]);
+  const setSaveOverride=useCallback((ab,v)=>commit("savingThrows",{...L.savingThrows,[ab]:v===""?null:v}),[L.savingThrows,commit]);
+
+  const togAP=k=>commit("armorProf",{...L.armorProf,[k]:!L.armorProf?.[k]});
+  const setMagAtt=(i,v)=>{const a=[...(L.magicAttunements||["","",""])];a[i]=v;commit("magicAttunements",a);};
+
+  const handlePortrait=e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>commit("portrait",ev.target.result);r.readAsDataURL(f);};
+
+  // Expandable list renderer — uses hoisted ExpandRow component
+  const ExpandList=({items,open,setOpen,onUpd,onDel,onAdd,sec})=>(
+    <div>
+      {sec&&<ShSec label={sec}/>}
+      {(items||[]).map(x=><ExpandRow key={x.id} item={x} isOpen={!!open[x.id]} onToggle={()=>setOpen(o=>({...o,[x.id]:!o[x.id]}))} onName={v=>onUpd(x.id,"name",v)} onDesc={v=>onUpd(x.id,"desc",v)} onDelete={()=>onDel(x.id)} editMode={editMode} lore={lore} setLore={setLore}/>)}
+      {editMode&&<button onClick={onAdd} style={{fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.4)",border:"1px dashed var(--sheet-border)",color:"#666",borderRadius:3,padding:"3px 8px",fontSize:11,cursor:"pointer",width:"100%",marginTop:3}}>+ Add</button>}
+    </div>
+  );
+
+  // View-mode field display
+  const ViewField=({label,val,big})=>val?(
+    <div style={{marginBottom:6}}>
+      <div className="sh-label">{label}</div>
+      <div style={{fontSize:big?15:13,color:"var(--sheet-head)",fontFamily:"Crimson Pro",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{val}</div>
+    </div>
+  ):null;
+
+  return(<div style={{height:"100%",background:"var(--sheet-bg)",overflowY:"auto",fontFamily:"Crimson Pro,serif"}}>
+
+    {/* ══ TOP HEADER BANNER ══ */}
+    <div style={{background:"var(--sheet-head)",padding:"10px 20px",display:"flex",gap:16,alignItems:"center",flexWrap:"wrap",position:"relative"}}>
+      {/* Edit mode toggle — top right corner */}
+      <button onClick={()=>setEditMode(m=>!m)} style={{position:"absolute",top:10,right:12,fontFamily:"Cinzel",fontSize:11,padding:"4px 12px",background:editMode?"rgba(200,160,40,0.3)":"rgba(255,255,255,0.1)",border:`1px solid ${editMode?"var(--gold2)":"rgba(255,255,255,0.25)"}`,color:editMode?"var(--gold3)":"rgba(255,255,255,0.7)",borderRadius:4,cursor:"pointer",letterSpacing:"0.06em"}}>
+        {editMode?"✓ DONE":"✏️ EDIT"}
+      </button>
+
+      {/* Portrait */}
+      <div style={{position:"relative",width:80,height:96,background:"rgba(255,255,255,0.1)",border:"2px solid rgba(255,255,255,0.3)",borderRadius:3,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        {L.portrait?<img src={L.portrait} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{color:"rgba(255,255,255,0.2)",fontSize:10}}>Portrait</span>}
+        {editMode&&<label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.6)",color:"rgba(255,255,255,0.7)",fontSize:8,textAlign:"center",padding:"3px",cursor:"pointer",fontFamily:"Cinzel"}}>📷<input type="file" accept="image/*" onChange={handlePortrait} style={{display:"none"}}/></label>}
+      </div>
+
+      {/* Name + core fields */}
+      <div style={{flex:1,minWidth:260,paddingRight:80}}>
+        {editMode
+          ?<ShInput value={L.name||""} onCommit={v=>commit("name",v)} placeholder="Character Name" style={{fontFamily:"Cinzel",background:"transparent",border:"none",borderBottom:"2px solid rgba(255,255,255,0.4)",color:"white",fontSize:26,fontWeight:700,width:"100%",outline:"none",marginBottom:8,padding:"2px 0"}}/>
+          :<div style={{fontFamily:"Cinzel",color:"white",fontSize:26,fontWeight:700,marginBottom:8,padding:"2px 0",borderBottom:"2px solid rgba(255,255,255,0.15)"}}>{L.name||<span style={{opacity:.3}}>Unnamed Hero</span>}</div>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"4px 16px"}}>
+          {[["background","BACKGROUND"],["charClass","CLASS"],["species","SPECIES"],["subclass","SUBCLASS"]].map(([f,lbl])=><div key={f}>
+            <div style={{fontSize:8,color:"rgba(255,255,255,0.5)",fontFamily:"Cinzel",letterSpacing:"0.06em",marginBottom:1}}>{lbl}</div>
+            {editMode
+              ?<ShInput value={L[f]||""} onCommit={v=>commit(f,v)} style={{fontFamily:"Crimson Pro,serif",background:"transparent",border:"none",borderBottom:"1px solid rgba(255,255,255,0.25)",color:"rgba(255,255,255,0.9)",fontSize:13,width:"100%",outline:"none",padding:"1px 0"}}/>
+              :<div style={{fontSize:13,color:"rgba(255,255,255,0.8)",fontFamily:"Crimson Pro",borderBottom:"1px solid rgba(255,255,255,0.1)",padding:"1px 0",minHeight:20}}>{L[f]||<span style={{opacity:.3}}>—</span>}</div>}
+          </div>)}
+        </div>
+      </div>
+
+      {/* Level + AC */}
+      <div style={{display:"flex",gap:12,flexShrink:0}}>
+        {[["level","LEVEL"],["ac","AC"]].map(([f,lbl])=><div key={f} style={{textAlign:"center",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:4,padding:"8px 12px",minWidth:70}}>
+          <div style={{fontSize:9,color:"rgba(255,255,255,0.5)",fontFamily:"Cinzel",letterSpacing:"0.08em",marginBottom:4}}>{lbl}</div>
+          {editMode
+            ?<ShNumInput value={L[f]||0} onCommit={v=>commitNum(f,v)} style={{fontFamily:"Cinzel",background:"transparent",border:"none",color:"white",fontSize:30,textAlign:"center",width:60,outline:"none",fontWeight:700}}/>
+            :<div style={{fontFamily:"Cinzel",color:"white",fontSize:30,fontWeight:700,lineHeight:1.1}}>{L[f]||0}</div>}
+          {f==="ac"&&<div style={{fontSize:8,color:"rgba(255,255,255,0.4)",fontFamily:"Cinzel",marginTop:3,display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
+            <input type="checkbox" checked={L.shield||false} onChange={e=>commit("shield",e.target.checked)} disabled={!editMode}/> SHIELD
+          </div>}
+        </div>)}
+      </div>
+
+      {/* HP + Hit Dice */}
+      <div style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:4,padding:"8px 12px",flexShrink:0}}>
+        <div style={{fontSize:9,color:"rgba(255,255,255,0.5)",fontFamily:"Cinzel",letterSpacing:"0.08em",marginBottom:4}}>HIT POINTS</div>
+        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+          {[["hpCurrent","CURRENT",22],["hpMax","MAX",22],["hpTemp","TEMP",16]].map(([f,lbl,sz],i)=><React.Fragment key={f}>
+            {i>0&&<div style={{color:"rgba(255,255,255,0.3)",fontSize:16}}>{i===1?"/":"+"}</div>}
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:8,color:"rgba(255,255,255,0.4)",fontFamily:"Cinzel",marginBottom:1}}>{lbl}</div>
+              {editMode
+                ?<ShNumInput value={L[f]||0} onCommit={v=>commitNum(f,v)} style={{fontFamily:"Cinzel",background:"transparent",border:"none",color:f==="hpCurrent"&&L.hpCurrent>0&&L.hpMax>0&&L.hpCurrent<L.hpMax/2?"#ff8888":"white",fontSize:sz,textAlign:"center",width:f==="hpTemp"?38:50,outline:"none",fontWeight:700}}/>
+                :<div style={{fontFamily:"Cinzel",color:f==="hpCurrent"&&L.hpCurrent>0&&L.hpMax>0&&L.hpCurrent<L.hpMax/2?"#ff8888":"white",fontSize:sz,fontWeight:700,minWidth:f==="hpTemp"?38:50,textAlign:"center"}}>{L[f]||0}</div>}
+            </div>
+          </React.Fragment>)}
+        </div>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:8,color:"rgba(255,255,255,0.4)",fontFamily:"Cinzel",marginBottom:1}}>HIT DIE</div>
+            {editMode
+              ?<select value={L.hitDieMax||"d8"} onChange={e=>commit("hitDieMax",e.target.value)} style={{fontFamily:"Cinzel",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"white",fontSize:14,padding:"2px 4px",outline:"none",borderRadius:2}}>{["d4","d6","d8","d10","d12"].map(d=><option key={d} style={{background:"#333"}}>{d}</option>)}</select>
+              :<div style={{fontFamily:"Cinzel",color:"white",fontSize:14}}>{L.hitDieMax||"d8"}</div>}
+          </div>
+          <div>
+            <div style={{fontSize:8,color:"rgba(255,255,255,0.4)",fontFamily:"Cinzel",marginBottom:1}}>SPENT</div>
+            {editMode
+              ?<ShNumInput value={L.hitDieSpent||0} onCommit={v=>commitNum("hitDieSpent",v)} style={{fontFamily:"Cinzel",background:"transparent",border:"none",color:"white",fontSize:14,textAlign:"center",width:32,outline:"none"}}/>
+              :<div style={{fontFamily:"Cinzel",color:"white",fontSize:14,textAlign:"center",minWidth:32}}>{L.hitDieSpent||0}</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* Death Marks — always clickable */}
+      <div style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:4,padding:"8px 10px",flexShrink:0}}>
+        <div style={{fontSize:9,color:"rgba(255,255,255,0.5)",fontFamily:"Cinzel",letterSpacing:"0.08em",marginBottom:6}}>DEATH MARKS</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4,marginBottom:4}}>
+          {(L.deathMarks||Array(10).fill(0)).map((m,i)=><div key={i} className={`death-box${m===1?" red":m===2?" black":""}`} onClick={()=>cycleMark(i)} title={["Click to mark","Click for death","Click to clear"][m]}>
+            {m===1&&<span style={{color:"#900",fontWeight:"bold",textShadow:"0 0 3px rgba(255,0,0,0.5)"}}>✕</span>}
+            {m===2&&<span style={{color:"#eee"}}>☠</span>}
+          </div>)}
+        </div>
+        <div style={{fontSize:8,color:"rgba(255,255,255,0.3)",fontFamily:"Cinzel",textAlign:"center"}}>CLICK TO CYCLE</div>
+      </div>
+    </div>
+
+    {/* ══ STAT ROW ══ */}
+    <div style={{background:"var(--parch2)",borderBottom:"2px solid var(--sheet-border)",padding:"8px 14px",display:"flex",gap:6,flexWrap:"wrap",alignItems:"flex-start"}}>
+      {(L.statRows||[]).map(r=><div key={r.id} style={{textAlign:"center",background:"var(--sheet-bg)",border:"1px solid var(--sheet-border)",borderRadius:3,padding:"5px 8px",minWidth:70,position:"relative"}}>
+        {editMode
+          ?<><ShInput value={r.label} onCommit={v=>updSR(r.id,"label",v)} style={{fontFamily:"Cinzel",background:"transparent",border:"none",color:"#555",fontSize:8,textAlign:"center",width:"100%",outline:"none",letterSpacing:"0.05em",textTransform:"uppercase",marginBottom:3}}/>
+            <ShInput value={r.value} onCommit={v=>updSR(r.id,"value",v)} style={{fontFamily:"Cinzel",background:"rgba(255,255,255,0.6)",border:"1px solid var(--sheet-border)",color:"var(--sheet-head)",fontSize:15,textAlign:"center",width:"100%",outline:"none",borderRadius:2,padding:"1px 0",fontWeight:600}}/>
+            <button onClick={()=>delSR(r.id)} style={{background:"none",border:"none",color:"#bbb",cursor:"pointer",fontSize:9,marginTop:2,padding:0}}>✕ remove</button></>
+          :<><div style={{fontFamily:"Cinzel",color:"#555",fontSize:8,letterSpacing:"0.05em",textTransform:"uppercase",marginBottom:3}}>{r.label}</div>
+            <div style={{fontFamily:"Cinzel",color:"var(--sheet-head)",fontSize:15,fontWeight:600}}>{r.value||"—"}</div></>}
+      </div>)}
+      {editMode&&<button onClick={addSR} style={{alignSelf:"center",fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.4)",border:"1px dashed var(--sheet-border)",color:"#888",borderRadius:3,padding:"4px 8px",fontSize:11,cursor:"pointer",whiteSpace:"nowrap"}}>+ Stat</button>}
+    </div>
+
+    {/* ══ MAIN BODY ══ */}
+    <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:12}}>
+      {/* Ability scores */}
+      <div>
+        <ShSec label="ABILITY SCORES · SAVING THROWS · SKILLS"/>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6}}>
+          {ABILITIES.map(ab=><AbilCol key={ab} ab={ab}
+            score={L[ab]||10} saveVal={L.savingThrows?.[ab]}
+            skills={L.skills} skillData={L.skills} profBonus={prof}
+            editMode={editMode}
+            onScore={(a,v)=>commitNum(a,v)}
+            onSave={(a,v)=>setSaveOverride(a,v)}
+            onSkillProf={sk=>toggleSkillProf(sk)}
+            onSkillOverride={(sk,v)=>setSkillOverride(sk,v)}/>)}
+        </div>
+      </div>
+
+      {/* Weapons */}
+      <ShBox>
+        <ShSec label="WEAPONS & DAMAGE CANTRIPS"/>
+        <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 2fr auto",gap:5,marginBottom:4,paddingBottom:3,borderBottom:"1px solid var(--sheet-border)"}}>
+          {["NAME","ATK BONUS/DC","DAMAGE","NOTES",""].map((h,i)=><div key={i} className="sh-label">{h}</div>)}
+        </div>
+        {(L.weapons||[]).map(w=><div key={w.id} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 2fr auto",gap:5,marginBottom:4,alignItems:"center"}}>
+          {editMode?(<>
+            <ShInput value={w.name||""} onCommit={v=>updW(w.id,"name",v)} placeholder="Weapon..."/>
+            <ShInput value={w.attackBonus||""} onCommit={v=>updW(w.id,"attackBonus",v)} placeholder="+5"/>
+            <ShInput value={w.damage||""} onCommit={v=>updW(w.id,"damage",v)} placeholder="1d8+3"/>
+            <ShInput value={w.notes||""} onCommit={v=>updW(w.id,"notes",v)} placeholder="Notes..."/>
+            <button onClick={()=>delW(w.id)} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:13}}>✕</button>
+          </>):(<>
+            <div style={{fontSize:13,color:"var(--sheet-head)"}}>{w.name||"—"}</div>
+            <div style={{fontSize:13,fontFamily:"Cinzel",color:"var(--sheet-head)",fontWeight:600}}>{w.attackBonus||"—"}</div>
+            <div style={{fontSize:13,color:"var(--sheet-head)"}}>{w.damage||"—"}</div>
+            <div style={{fontSize:12,color:"#666"}}>{w.notes||""}</div>
+            <div/>
+          </>)}
+        </div>)}
+        {editMode&&<button onClick={addW} style={{fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.4)",border:"1px dashed var(--sheet-border)",color:"#888",borderRadius:3,padding:"3px 8px",fontSize:11,cursor:"pointer",marginTop:3}}>+ Add Weapon</button>}
+      </ShBox>
+
+      {/* Class features / Knacks / Exploits */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+        <ShBox><ExpandList items={L.classFeatures||[]} open={cfO} setOpen={setCfO} onUpd={updCF} onDel={delCF} onAdd={addCF} sec="CLASS FEATURES"/></ShBox>
+        <ShBox><ExpandList items={L.knacks||[]} open={knO} setOpen={setKnO} onUpd={updKn} onDel={delKn} onAdd={addKn} sec="KNACKS"/></ShBox>
+        <ShBox>
+          <ShSec label="EXPLOITS"/>
+          <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+            <div className="sh-label" style={{margin:0,flexShrink:0}}>EXPLOIT DC:</div>
+            {editMode
+              ?<ShNumInput value={L.exploitDC||10} onCommit={v=>commitNum("exploitDC",v)} style={{width:50,fontSize:14}} className="sh-num"/>
+              :<div style={{fontFamily:"Cinzel",fontSize:15,color:"var(--sheet-head)",fontWeight:700}}>{L.exploitDC||10}</div>}
+          </div>
+          <ExpandList items={L.exploits||[]} open={exO} setOpen={setExO} onUpd={updEx} onDel={delEx} onAdd={addEx} sec=""/>
+        </ShBox>
+      </div>
+
+      {/* Species Traits + Feats */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <ShBox>
+          <ShSec label="SPECIES TRAITS"/>
+          {editMode
+            ?<MentionTextarea value={L.speciesTraits||""} onCommit={v=>commit("speciesTraits",v)} lore={lore} setLore={setLore} onNavigate={onNavigate} style={{fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.6)",border:"1px solid var(--sheet-border)",color:"var(--sheet-head)",borderRadius:2,padding:"5px 7px",width:"100%",resize:"vertical",minHeight:80,fontSize:13,lineHeight:1.6,outline:"none"}} placeholder="Species traits... (@ to link)"/>
+            :<p style={{fontSize:13,color:"var(--sheet-head)",lineHeight:1.6,whiteSpace:"pre-wrap",minHeight:40}}>{L.speciesTraits||<em style={{opacity:.4}}>—</em>}</p>}
+        </ShBox>
+        <ShBox>
+          <ShSec label="FEATS"/>
+          {editMode
+            ?<ShTextarea value={L.feats||""} onCommit={v=>commit("feats",v)} style={{resize:"vertical",minHeight:80,fontSize:13,lineHeight:1.6}}/>
+            :<p style={{fontSize:13,color:"var(--sheet-head)",lineHeight:1.6,whiteSpace:"pre-wrap",minHeight:40}}>{L.feats||<em style={{opacity:.4}}>—</em>}</p>}
+        </ShBox>
+      </div>
+
+      {/* Equipment + Currency + Inventory */}
+      <div style={{display:"grid",gridTemplateColumns:"200px 1fr 1fr",gap:10}}>
+        <ShBox>
+          <ShSec label="EQUIPMENT TRAINING"/>
+          <div className="sh-label">ARMOR</div>
+          {[["light","Light"],["medium","Medium"],["heavy","Heavy"],["shields","Shields"]].map(([k,lab])=><div key={k} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+            <span className={`armor-check${L.armorProf?.[k]?" on":""}`} onClick={()=>editMode&&togAP(k)} style={{cursor:editMode?"pointer":"default"}}>{L.armorProf?.[k]?"✓":""}</span>
+            <span style={{fontSize:13,color:"var(--sheet-head)"}}>{lab}</span>
+          </div>)}
+          <div className="sh-label" style={{marginTop:8}}>WEAPONS</div>
+          {editMode?<ShTextarea value={L.weaponsProf||""} onCommit={v=>commit("weaponsProf",v)} style={{resize:"vertical",minHeight:50,fontSize:12,lineHeight:1.5}}/>
+            :<p style={{fontSize:12,color:"var(--sheet-head)",lineHeight:1.5,whiteSpace:"pre-wrap",minHeight:30}}>{L.weaponsProf||<em style={{opacity:.4}}>—</em>}</p>}
+          <div className="sh-label" style={{marginTop:6}}>TOOLS</div>
+          {editMode?<ShTextarea value={L.toolsProf||""} onCommit={v=>commit("toolsProf",v)} style={{resize:"vertical",minHeight:40,fontSize:12,lineHeight:1.5}}/>
+            :<p style={{fontSize:12,color:"var(--sheet-head)",lineHeight:1.5,whiteSpace:"pre-wrap",minHeight:24}}>{L.toolsProf||<em style={{opacity:.4}}>—</em>}</p>}
+        </ShBox>
+        <ShBox>
+          <ShSec label="COINS"/>
+          {[["pp","Platinum"],["gp","Gold"],["sp","Silver"],["cp","Copper"]].map(([k,lab])=><div key={k} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+            <span style={{fontSize:11,fontFamily:"Cinzel",color:"#777",width:52}}>{lab}</span>
+            {editMode?<ShNumInput value={L.currency?.[k]||0} onCommit={v=>commit("currency",{...L.currency,[k]:v})} style={{flex:1,fontSize:14}} className="sh-num"/>
+              :<div style={{fontFamily:"Cinzel",color:"var(--sheet-head)",fontSize:15,fontWeight:600,flex:1}}>{L.currency?.[k]||0}</div>}
+          </div>)}
+          <div className="sh-label" style={{marginTop:6}}>VALUABLES</div>
+          {editMode?<ShTextarea value={L.valuables||""} onCommit={v=>commit("valuables",v)} style={{resize:"vertical",minHeight:50,fontSize:12,lineHeight:1.5}}/>
+            :<p style={{fontSize:12,color:"var(--sheet-head)",lineHeight:1.5,whiteSpace:"pre-wrap",minHeight:30}}>{L.valuables||<em style={{opacity:.4}}>—</em>}</p>}
+          <div className="sh-label" style={{marginTop:6}}>MAGIC ITEM ATTUNEMENTS</div>
+          {(L.magicAttunements||["","",""]).map((v,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}>
+            <span style={{fontSize:11,color:"#999"}}>◇</span>
+            {editMode?<ShInput value={v||""} onCommit={nv=>setMagAtt(i,nv)} placeholder={`Attuned item ${i+1}...`} style={{flex:1,fontSize:12}} className="sh-input-box"/>
+              :<div style={{fontSize:12,color:"var(--sheet-head)",flex:1,minHeight:18}}>{v||<em style={{opacity:.3}}>—</em>}</div>}
+          </div>)}
+        </ShBox>
+        <ShBox>
+          <ShSec label="INVENTORY"/>
+          {editMode?<ShTextarea value={L.inventory||""} onCommit={v=>commit("inventory",v)} style={{resize:"vertical",minHeight:200,fontSize:13,lineHeight:1.7}}/>
+            :<p style={{fontSize:13,color:"var(--sheet-head)",lineHeight:1.7,whiteSpace:"pre-wrap",minHeight:100}}>{L.inventory||<em style={{opacity:.4}}>Empty.</em>}</p>}
+        </ShBox>
+      </div>
+
+      {/* Spellcasting */}
+      <ShBox>
+        <ShSec label="SPELLCASTING"/>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:10}}>
+          {[["spellcastingAbility","SPELLCASTING ABILITY"],["spellcastingMod","ABILITY MODIFIER"],["spellDC","SPELLCASTING DC"],["spellAtkMod","SPELL ATK MODIFIER"]].map(([f,lbl])=><div key={f}>
+            <div className="sh-label">{lbl}</div>
+            {editMode?<ShInput value={L[f]||""} onCommit={v=>commit(f,v)} style={{width:120,fontSize:13}} className="sh-input-box"/>
+              :<div style={{fontSize:13,color:"var(--sheet-head)",minWidth:80,minHeight:20}}>{L[f]||<em style={{opacity:.4}}>—</em>}</div>}
+          </div>)}
+        </div>
+        <div className="sh-label">SPELL SLOTS</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(9,1fr)",gap:5,marginBottom:10}}>
+          {(L.spellSlots||[]).map((slot,i)=><div key={i} style={{textAlign:"center",background:"rgba(255,255,255,0.5)",border:"1px solid var(--sheet-border)",borderRadius:3,padding:"4px 2px"}}>
+            <div className="sh-label">LVL {slot.level}</div>
+            <div style={{display:"flex",gap:2,justifyContent:"center",alignItems:"center"}}>
+              {editMode?(<>
+                <ShNumInput value={slot.total||""} onCommit={v=>{const ss=[...L.spellSlots];ss[i]={...ss[i],total:v};commit("spellSlots",ss);}} placeholder="T" style={{width:26,fontSize:11}} className="sh-num"/>
+                <span style={{fontSize:10,color:"#aaa"}}>/</span>
+                <ShNumInput value={slot.used||""} onCommit={v=>{const ss=[...L.spellSlots];ss[i]={...ss[i],used:v};commit("spellSlots",ss);}} placeholder="U" style={{width:26,fontSize:11}} className="sh-num"/>
+              </>):(<>
+                <span style={{fontSize:13,fontFamily:"Cinzel",color:"var(--sheet-head)"}}>{slot.total||"—"}</span>
+                <span style={{fontSize:10,color:"#aaa"}}>/</span>
+                <span style={{fontSize:13,fontFamily:"Cinzel",color:"#888"}}>{slot.used||"0"}</span>
+              </>)}
+            </div>
+          </div>)}
+        </div>
+        <div className="sh-label">PREPARED SPELLS</div>
+        {editMode?<ShTextarea value={L.spells||""} onCommit={v=>commit("spells",v)} placeholder="Level | Name | Casting Time | Concentration/Ritual/Material | Notes" style={{resize:"vertical",minHeight:120,fontSize:13,lineHeight:1.7}}/>
+          :<p style={{fontSize:13,color:"var(--sheet-head)",lineHeight:1.7,whiteSpace:"pre-wrap",minHeight:60}}>{L.spells||<em style={{opacity:.4}}>No spells recorded.</em>}</p>}
+      </ShBox>
+
+      {/* Appearance + History */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <ShBox>
+          <ShSec label="APPEARANCE"/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
+            {[["charAge","AGE"],["charHair","HAIR COLOUR"],["charEyes","EYE COLOUR"],["charBuild","BUILD"],["charClothing","CLOTHING / APPEARANCE"],["charVoice","VOICE / ACCENT"],["charPersonality","PERSONALITY"],["charGoal","GOAL OR SECRET"]].map(([f,lbl])=><div key={f}>
+              <div className="sh-label">{lbl}</div>
+              {editMode?<ShInput value={L[f]||""} onCommit={v=>commit(f,v)} style={{fontSize:12}} className="sh-input-box"/>
+                :<div style={{fontSize:12,color:"var(--sheet-head)",minHeight:18}}>{L[f]||<em style={{opacity:.4}}>—</em>}</div>}
+            </div>)}
+          </div>
+        </ShBox>
+        <ShBox>
+          <ShSec label="HISTORY & PERSONALITY"/>
+          {editMode
+            ?<MentionTextarea value={L.historyPersonality||""} onCommit={v=>commit("historyPersonality",v)} lore={lore} setLore={setLore} onNavigate={onNavigate} style={{fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.6)",border:"1px solid var(--sheet-border)",color:"var(--sheet-head)",borderRadius:2,padding:"5px 7px",width:"100%",resize:"vertical",minHeight:120,fontSize:13,lineHeight:1.6,outline:"none"}} placeholder="Backstory, ideals, bonds... (@ to link)"/>
+            :<p style={{fontSize:13,color:"var(--sheet-head)",lineHeight:1.6,whiteSpace:"pre-wrap",minHeight:60}}>{L.historyPersonality||<em style={{opacity:.4}}>—</em>}</p>}
+          <div className="sh-label" style={{marginTop:8}}>ALIGNMENT</div>
+          {editMode?<ShInput value={L.alignment||""} onCommit={v=>commit("alignment",v)} style={{fontSize:13}} className="sh-input-box"/>
+            :<div style={{fontSize:13,color:"var(--sheet-head)",minHeight:20}}>{L.alignment||<em style={{opacity:.4}}>—</em>}</div>}
+          <div className="sh-label" style={{marginTop:8}}>LANGUAGES</div>
+          {editMode?<ShTextarea value={L.languages||""} onCommit={v=>commit("languages",v)} style={{resize:"vertical",minHeight:60,fontSize:13,lineHeight:1.6}}/>
+            :<p style={{fontSize:13,color:"var(--sheet-head)",lineHeight:1.6,whiteSpace:"pre-wrap",minHeight:30}}>{L.languages||<em style={{opacity:.4}}>—</em>}</p>}
+          <div className="sh-label" style={{marginTop:8}}>ADDITIONAL NOTES</div>
+          {editMode?<ShTextarea value={L.notes||""} onCommit={v=>commit("notes",v)} style={{resize:"vertical",minHeight:80,fontSize:13,lineHeight:1.6}}/>
+            :<p style={{fontSize:13,color:"var(--sheet-head)",lineHeight:1.6,whiteSpace:"pre-wrap",minHeight:40}}>{L.notes||<em style={{opacity:.4}}>—</em>}</p>}
+        </ShBox>
+      </div>
+    </div>
+    <div style={{height:30}}/>
+  </div>);
+}
+
+/* ════════════════════════════════════════════════════
+   SETUP SCREEN
+════════════════════════════════════════════════════ */
+function SetupScreen({onSave}){
+  const [url,setUrl]=useState("");
+  const [key,setKey]=useState("");
+  const [testing,setTesting]=useState(false);
+  const [err,setErr]=useState("");
+
+  const test=async()=>{
+    if(!url.trim()||!key.trim()){setErr("Please fill in both fields.");return;}
+    setTesting(true);setErr("");
+    try{
+      const testUrl=url.replace(/\/$/,"");
+      const r=await fetch(`${testUrl}/rest/v1/campaign?select=id&limit=1`,{
+        headers:{"apikey":key,"Authorization":`Bearer ${key}`}
+      });
+      // 200, 406 (no rows), or 401 all mean we connected; 401 means bad key
+      if(r.status===200||r.status===406){
+        saveSBConfig({url:url.trim(),key:key.trim()});
+        onSave({url:url.trim(),key:key.trim()});
+      } else {
+        setErr(`Connection failed (${r.status}). Check your URL and key.`);
+      }
+    }catch(e){setErr("Could not connect. Check the URL and try again.");}
+    setTesting(false);
+  };
+
+  const iStyle={fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"8px 12px",width:"100%",fontSize:14,outline:"none",marginBottom:12};
+
+  return(
+    <div style={{height:"100vh",background:"var(--dark)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:10,padding:36,maxWidth:540,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
+        <h2 style={{fontFamily:"Cinzel",fontSize:20,color:"var(--gold)",marginBottom:6,letterSpacing:"0.08em"}}>⚔ Blood Seeker</h2>
+        <h3 style={{fontFamily:"Cinzel",fontSize:14,color:"var(--ink2)",marginBottom:20,letterSpacing:"0.06em",fontWeight:400}}>Cloud Sync Setup</h3>
+
+        <div style={{background:"var(--parch2)",border:"1px solid var(--border)",borderRadius:6,padding:16,marginBottom:24,fontSize:13,color:"var(--ink2)",lineHeight:1.8}}>
+          <strong style={{fontFamily:"Cinzel",fontSize:11,color:"var(--ink)",letterSpacing:"0.06em"}}>ONE-TIME SETUP — 3 STEPS:</strong><br/>
+          <strong>1.</strong> Go to <a href="https://supabase.com" target="_blank" style={{color:"var(--gold)"}}>supabase.com</a> → <em>Start your project</em> (free, no card needed)<br/>
+          <strong>2.</strong> Once your project is created, run this SQL in the <strong>SQL Editor</strong>:<br/>
+          <code style={{display:"block",background:"var(--parch3)",border:"1px solid var(--border2)",borderRadius:4,padding:"8px 12px",margin:"8px 0",fontSize:12,fontFamily:"monospace",lineHeight:1.6,userSelect:"all"}}>
+            create table if not exists campaign (<br/>
+            &nbsp;&nbsp;id text primary key,<br/>
+            &nbsp;&nbsp;data jsonb,<br/>
+            &nbsp;&nbsp;updated_at timestamptz default now()<br/>
+            );<br/>
+            alter table campaign enable row level security;<br/>
+            create policy "allow all" on campaign for all using (true) with check (true);
+          </code>
+          <strong>3.</strong> Go to <strong>Settings → API Keys</strong>, copy your <em>Project URL</em> (from Settings → General) and the <em>Publishable key</em> (<code>sb_publishable_...</code>) below.
+        </div>
+
+        <label style={{fontSize:10,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.06em",display:"block",marginBottom:4}}>PROJECT URL</label>
+        <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://xxxxxxxxxxxx.supabase.co" style={iStyle}/>
+
+        <label style={{fontSize:10,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.06em",display:"block",marginBottom:4}}>PUBLISHABLE KEY (sb_publishable_...)</label>
+        <input value={key} onChange={e=>setKey(e.target.value)} placeholder="sb_publishable_..." style={{...iStyle,fontFamily:"monospace",fontSize:11}}/>
+
+        {err&&<div style={{color:"var(--red2)",fontSize:13,marginBottom:12,padding:"6px 10px",background:"rgba(192,57,43,0.1)",border:"1px solid var(--red)",borderRadius:4}}>{err}</div>}
+
+        <button onClick={test} disabled={testing} style={{fontFamily:"Cinzel",background:"var(--gold2)",color:"var(--dark)",border:"none",borderRadius:5,padding:"10px 24px",fontSize:13,cursor:testing?"wait":"pointer",width:"100%",letterSpacing:"0.06em",opacity:testing?0.7:1}}>
+          {testing?"Testing connection...":"Connect & Save →"}
+        </button>
+        <p style={{fontSize:11,color:"var(--ink3)",marginTop:12,textAlign:"center",lineHeight:1.6}}>
+          Your data is stored in your own private Supabase project.<br/>Anthropic has no access to it.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   ROOT APP
+════════════════════════════════════════════════════ */
+function App(){
+  const [sbCfg,setSbCfg]=useState(()=>{
+    const c=getSBConfig();
+    if(c){initSB(c.url,c.key);return c;}
+    return null;
+  });
+  const [data,setData]=useState(null); // null = loading
+  const [syncStatus,setSyncStatus]=useState("idle"); // idle | syncing | saved | error
+  const [page,setPage]=useState("map");
+  const [charIdx,setCharIdx]=useState(0);
+  const [sideOpen,setSideOpen]=useState(false);
+  const [loreSel,setLoreSel]=useState(null);
+  const saveTimer=useRef(null);
+  const lastSaved=useRef(null);
+
+  // Merge loaded cloud data with defaults
+  const mergeData=useCallback(raw=>{
+    const s=raw||{};
+    const lore={...DS.lore};
+    if(s.lore)Object.keys(DS.lore).forEach(k=>{lore[k]=(s.lore[k]||[]).map(e=>({...EMPTY_LORE(),...e}));});
+    const characters=(s.characters||DS.characters).map((c,i)=>({...DC(i+1),...c,statRows:c.statRows||(DC(i+1).statRows)}));
+    return{...DS,...s,lore,characters};
+  },[]);
+
+  // Load data on startup / when config arrives
+  useEffect(()=>{
+    if(!sbCfg){setData(mergeData(load()));return;}
+    const sb=getSB();
+    setSyncStatus("syncing");
+    dbLoad(sb).then(raw=>{
+      if(raw){setData(mergeData(raw));}
+      else{
+        // Nothing in cloud yet — push local data up
+        const local=load();
+        const merged=mergeData(local);
+        setData(merged);
+        dbSave(sb,merged);
+      }
+      setSyncStatus("saved");
+    }).catch(()=>{
+      setData(mergeData(load()));
+      setSyncStatus("error");
+    });
+  },[sbCfg]);
+
+  // Auto-save: debounce 1.5s, save to both local + cloud
+  useEffect(()=>{
+    if(!data)return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current=setTimeout(()=>{
+      persist(data);
+      if(sbCfg){
+        setSyncStatus("syncing");
+        const sb=getSB();
+        dbSave(sb,data).then(()=>{setSyncStatus("saved");setTimeout(()=>setSyncStatus("idle"),2000);})
+          .catch(()=>setSyncStatus("error"));
+      } else {
+        setSyncStatus("saved");setTimeout(()=>setSyncStatus("idle"),1500);
+      }
+    },1500);
+    return()=>clearTimeout(saveTimer.current);
+  },[data,sbCfg]);
+
+  const setMapItems=useCallback(fn=>setData(d=>({...d,mapItems:typeof fn==="function"?fn(d.mapItems):fn})),[]);
+  const setLore=useCallback(fn=>setData(d=>({...d,lore:typeof fn==="function"?fn(d.lore):fn})),[]);
+  const updateChar=useCallback((idx,ch)=>setData(d=>{const cs=[...d.characters];cs[idx]=ch;return{...d,characters:cs};}),[]);
+  const navigateToLore=(section,id)=>{setLoreSel({s:section,id});setPage("lore");};
+
+  const handleSBSave=cfg=>{initSB(cfg.url,cfg.key);setSbCfg(cfg);};
+
+  // Show setup screen if no config
+  if(!sbCfg)return <SetupScreen onSave={handleSBSave}/>;
+
+  // Loading state
+  if(!data)return(
+    <div style={{height:"100vh",background:"var(--dark)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+      <div style={{fontFamily:"Cinzel",color:"var(--gold3)",fontSize:20,letterSpacing:"0.12em"}}>⚔ Blood Seeker</div>
+      <div style={{fontFamily:"Cinzel",color:"var(--ink3)",fontSize:12,letterSpacing:"0.08em"}}>Loading your campaign...</div>
+      <div style={{width:40,height:40,border:"3px solid var(--border2)",borderTopColor:"var(--gold2)",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  const syncLabel={idle:"",syncing:"⟳ Syncing...",saved:"✓ Saved",error:"⚠ Sync error"}[syncStatus];
+  const syncColor={idle:"transparent",syncing:"var(--gold3)",saved:"rgba(100,200,100,0.8)",error:"var(--red2)"}[syncStatus];
+
+  return(<div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--dark)"}}>
+    <header style={{display:"flex",alignItems:"center",padding:"0 16px",height:46,borderBottom:"2px solid var(--gold2)",background:"var(--dark2)",flexShrink:0,gap:12}}>
+      <h1 style={{fontSize:16,letterSpacing:"0.14em",color:"var(--gold3)",whiteSpace:"nowrap",fontFamily:"Cinzel",textShadow:"0 0 18px rgba(200,160,40,0.3)"}}>⚔ Blood Seeker</h1>
+      <div style={{width:1,height:20,background:"var(--border2)"}}/>
+      <nav style={{display:"flex",gap:3}}>
+        {[{id:"map",label:"World Map",icon:"🗺"},{id:"lore",label:"Lore",icon:"📜"},{id:"chars",label:"Characters",icon:"⚔"}].map(n=>(
+          <button key={n.id} onClick={()=>{setPage(n.id);if(n.id!=="lore")setLoreSel(null);}} className={`btn${page===n.id?" act":""}`} style={{padding:"4px 14px",fontSize:11,fontFamily:"Cinzel",letterSpacing:"0.04em"}}>
+            {n.icon} {n.label}
+          </button>
+        ))}
+      </nav>
+      {page==="chars"&&<div style={{display:"flex",gap:3,marginLeft:6}}>
+        {data.characters.map((c,i)=><button key={c.id} onClick={()=>setCharIdx(i)} className={`btn${charIdx===i?" act":""}`} style={{padding:"3px 11px",fontSize:11,fontFamily:"Cinzel"}}>
+          {c.name||`Player ${i+1}`}
+        </button>)}
+      </div>}
+      <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:10,color:syncColor,fontFamily:"Cinzel",letterSpacing:"0.06em",transition:"color 0.3s"}}>{syncLabel}</span>
+        <button onClick={()=>{if(confirm("Change Supabase connection settings?\nThis will reload the page.")){localStorage.removeItem(SB_KEY);window.location.reload();}}} style={{...{fontFamily:"Cinzel",cursor:"pointer",border:"1px solid var(--border)",background:"transparent",color:"var(--ink3)",borderRadius:3,padding:"2px 8px",fontSize:9,letterSpacing:"0.06em"}}}>⚙ DB</button>
+      </div>
+    </header>
+    <main style={{flex:1,overflow:"hidden",padding:10,background:"var(--dark)"}}>
+      {page==="map"&&<MapEditor mapItems={data.mapItems} setMapItems={setMapItems} mapImage={data.mapImage} setAppData={setData} sideOpen={sideOpen} setSideOpen={setSideOpen} lore={data.lore} setLore={setLore} onNavigate={navigateToLore}/>}
+      {page==="lore"&&<LorePanel lore={data.lore} setLore={setLore} characters={data.characters} initialSel={loreSel} onClearSel={()=>setLoreSel(null)} onNavigate={navigateToLore}/>}
+      {page==="chars"&&<CharSheet char={data.characters[charIdx]} onChange={c=>updateChar(charIdx,c)} lore={data.lore} setLore={setLore} onNavigate={navigateToLore}/>}
+    </main>
+  </div>);
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
