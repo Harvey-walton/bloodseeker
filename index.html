@@ -95,6 +95,15 @@ h1,h2,h3,h4{font-family:'Cinzel',serif;letter-spacing:.05em}
   </script>
 </div>
 <div id="root"></div>
+<script>
+// Global loader hide - called by React when ready
+window.hideAppLoader=function(){
+  var ld=document.getElementById("loading-screen");
+  if(ld)ld.style.display="none";
+};
+// Nuclear fallback - hide after 10s no matter what
+setTimeout(function(){window.hideAppLoader();},10000);
+</script>
 <script type="text/babel" data-presets="react">
 const {useState,useRef,useEffect,useCallback,useMemo,memo}=React;
 
@@ -1492,52 +1501,39 @@ function App(){
 
   // Load data
   const hideLoader=()=>{
-    const ld=document.getElementById("loading-screen");
-    if(ld){ld.style.opacity="0";ld.style.transition="opacity 0.3s";setTimeout(()=>{ld.style.display="none";},300);}
+    if(window.hideAppLoader)window.hideAppLoader();
+    else{const ld=document.getElementById("loading-screen");if(ld)ld.style.display="none";}
   };
 
   useEffect(()=>{
-    // No supabase config - use local data and show setup screen
-    if(!sbCfg){
-      setData(localLoad()||DEFAULT_DATA);
-      hideLoader();
-      return;
-    }
+    // ALWAYS show the app immediately using local data or defaults
+    // Then try to sync with Supabase in the background
+    const localData=localLoad()||DEFAULT_DATA;
+    setData(localData);
+    hideLoader();
+
+    if(!sbCfg)return; // No config = show setup screen (setData triggers re-render)
+
+    // Background sync - don't block the UI
     const sb=getSB();
     setSyncStatus("syncing");
-
-    // Always hide loader after 6s no matter what
-    const hardTimeout=setTimeout(()=>{
-      setData(prev=>prev||localLoad()||DEFAULT_DATA);
-      setSyncStatus("error");
-      hideLoader();
-    },6000);
-
-    // Try loading from Supabase
-    const doLoad=async()=>{
+    const doSync=async()=>{
       try{
         loadAssets(sb).catch(()=>{});
         const raw=await dbLoad(sb);
-        clearTimeout(hardTimeout);
         if(raw){
           setData(raw);
+          localSave(raw);
         } else {
-          const local=localLoad();
-          const d=local||DEFAULT_DATA;
-          setData(d);
-          dbSave(sb,d).catch(()=>{});
+          dbSave(sb,localData).catch(()=>{});
         }
         setSyncStatus("saved");
         setTimeout(()=>setSyncStatus("idle"),2000);
       } catch(err){
-        clearTimeout(hardTimeout);
-        setData(localLoad()||DEFAULT_DATA);
         setSyncStatus("error");
-      } finally {
-        hideLoader();
       }
     };
-    doLoad();
+    doSync();
   },[sbCfg]);
 
   // Auto-local-save
@@ -1649,6 +1645,8 @@ function App(){
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+// Babel compiled successfully - app is mounting
+console.log("Steel & Fire: React mounted");
 const _ld=document.getElementById("loading-screen");
 if(_ld)setTimeout(()=>{_ld.style.display="none";},500);
 </script>
