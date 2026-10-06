@@ -86,7 +86,6 @@ ${css}
 <div id="root"></div>
 <script>
 ${constants}
-const {useState,useRef,useEffect,useCallback,useMemo,memo} = React;
 ${result.code}
 const _root = ReactDOM.createRoot(document.getElementById('root'));
 _root.render(React.createElement(ErrorBoundary, null, React.createElement(App)));
