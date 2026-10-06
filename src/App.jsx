@@ -120,458 +120,6 @@ const localLoad=()=>{try{const r=localStorage.getItem(LOCAL);return r?JSON.parse
 const localSave=d=>{try{localStorage.setItem(LOCAL,JSON.stringify(d))}catch{}};
 
 /* ════ DEFAULT DATA ════ */
-const DEFAULT_DATA={
-  mapItems:[],mapImage:null,
-  lore:{regions:[{...DEFAULT_OGHILL_REGION}],allies:[],enemies:[],factions:[],settlements:[],history:[],sessions:[],terrain:[]},
-  characters:[
-    {id:1,name:"",background:"",charClass:"",species:"",subclass:"",level:1,ac:10,shield:false,hpCurrent:0,hpTemp:0,hpMax:0,hitDieMax:"d8",hitDieSpent:0,deathMarks:Array(10).fill(0),statRows:[{id:1,label:"INITIATIVE",value:""},{id:2,label:"SPEED",value:"30"},{id:3,label:"SIZE",value:"Medium"},{id:4,label:"PASSIVE PERCEPTION",value:""},{id:5,label:"EXPLOITS KNOWN",value:""},{id:6,label:"EXPLOIT DIE",value:"d6"},{id:7,label:"EXPLOIT DICE AVAIL",value:""},{id:8,label:"KNACKS KNOWN",value:""},{id:9,label:"PROF BONUS",value:"2"}],profBonus:2,str:10,dex:10,con:10,int:10,wis:10,cha:10,savingThrows:{},skills:{},weapons:[{id:1,name:"",attackBonus:"",damage:"",notes:""},{id:2,name:"",attackBonus:"",damage:"",notes:""},{id:3,name:"",attackBonus:"",damage:"",notes:""}],classFeatures:[],knacks:[],exploits:[],exploitDC:10,featsArr:[],armorProf:{light:false,medium:false,heavy:false,shields:false},weaponsProf:"",toolsProf:"",spellcastingAbility:"",spellcastingMod:"",spellDC:"",spellAtkMod:"",spellSlots:[{level:1,total:"",used:""},{level:2,total:"",used:""},{level:3,total:"",used:""},{level:4,total:"",used:""},{level:5,total:"",used:""},{level:6,total:"",used:""},{level:7,total:"",used:""},{level:8,total:"",used:""},{level:9,total:"",used:""}],spells:"",currency:{pp:0,gp:0,sp:0,cp:0},valuables:"",inventory:"",magicAttunements:["","",""],portrait:null,charAge:"",charHair:"",charEyes:"",charBuild:"",charClothing:"",charVoice:"",charPersonality:"",charGoal:"",historyPersonality:"",alignment:"",languages:"",notes:"",speciesTraits:"",feats:"",exploitDiceUsed:[]},
-    {id:2,name:"",level:1,str:10,dex:10,con:10,int:10,wis:10,cha:10,savingThrows:{},skills:{},profBonus:2,classFeatures:[],knacks:[],exploits:[],exploitDC:10,featsArr:[],weapons:[{id:1,name:"",attackBonus:"",damage:"",notes:""}],statRows:[{id:1,label:"INITIATIVE",value:""},{id:9,label:"PROF BONUS",value:"2"}],armorProf:{light:false,medium:false,heavy:false,shields:false},currency:{pp:0,gp:0,sp:0,cp:0},deathMarks:Array(10).fill(0)},
-    {id:3,name:"",level:1,str:10,dex:10,con:10,int:10,wis:10,cha:10,savingThrows:{},skills:{},profBonus:2,classFeatures:[],knacks:[],exploits:[],exploitDC:10,featsArr:[],weapons:[{id:1,name:"",attackBonus:"",damage:"",notes:""}],statRows:[{id:1,label:"INITIATIVE",value:""},{id:9,label:"PROF BONUS",value:"2"}],armorProf:{light:false,medium:false,heavy:false,shields:false},currency:{pp:0,gp:0,sp:0,cp:0},deathMarks:Array(10).fill(0)},
-  ],
-};
-
-/* ════ IMAGE COMPRESSION ════ */
-function compressImage(file,maxSize=400,quality=0.72){
-  return new Promise(resolve=>{
-    const reader=new FileReader();
-    reader.onload=e=>{const img=new Image();img.onload=()=>{const canvas=document.createElement("canvas");let w=img.width,h=img.height;if(w>h){if(w>maxSize){h=Math.round(h*maxSize/w);w=maxSize;}}else{if(h>maxSize){w=Math.round(w*maxSize/h);h=maxSize;}}canvas.width=w;canvas.height=h;canvas.getContext("2d").drawImage(img,0,0,w,h);resolve(canvas.toDataURL("image/jpeg",quality));};img.src=e.target.result;};
-    reader.readAsDataURL(file);
-  });
-}
-
-/* ════ SHARED UI ════ */
-function Ornament(){return(<div style={{display:"flex",alignItems:"center",gap:8,margin:"8px 0"}}><div style={{flex:1,height:1,background:"linear-gradient(to right,transparent,var(--gold2))"}}/><span style={{color:"var(--gold2)",fontSize:11}}>✦</span><div style={{flex:1,height:1,background:"linear-gradient(to left,transparent,var(--gold2))"}}/></div>);}
-function DelModal({name,onOk,onNo}){
-  const [t,setT]=useState("");const needs=name&&name.trim();const can=!needs||t.trim().toLowerCase()==="delete";
-  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center"}}>
-    <div style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:8,padding:26,width:380,boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
-      <h3 style={{fontFamily:"Cinzel",fontSize:15,marginBottom:10,color:"var(--red)"}}>⚠ Confirm Deletion</h3>
-      {needs?(<><p style={{fontSize:14,color:"var(--ink2)",marginBottom:12,lineHeight:1.6}}>Delete <strong>{name}</strong>? This cannot be undone.</p>
-        <p style={{fontSize:12,color:"var(--ink3)",marginBottom:6}}>Type <em>delete</em> to confirm:</p>
-        <input autoFocus value={t} onChange={e=>setT(e.target.value)} onKeyDown={e=>e.key==="Enter"&&can&&onOk()} placeholder="delete" style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 10px",width:"100%",fontSize:14,outline:"none",marginBottom:12}}/></>):
-        <p style={{fontSize:14,color:"var(--ink2)",marginBottom:16}}>Delete this entry?</p>}
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-        <button className="btn" onClick={onNo}>Cancel</button>
-        <button className="btn red" onClick={onOk} disabled={!can} style={{opacity:can?1:0.4}}>Delete</button>
-      </div>
-    </div>
-  </div>);
-}
-
-/* ════ SETUP SCREEN ════ */
-function SetupScreen({onSave}){
-  const [url,setUrl]=useState("");const [key,setKey]=useState("");const [testing,setTesting]=useState(false);const [err,setErr]=useState("");
-  const test=async()=>{
-    if(!url.trim()||!key.trim()){setErr("Please fill in both fields.");return;}
-    setTesting(true);setErr("");
-    try{
-      const ctrl2=new AbortController();setTimeout(()=>ctrl2.abort(),8000);
-      const isJWT2=key&&key.startsWith("eyJ");
-      const testHeaders={"apikey":key};
-      if(isJWT2)testHeaders["Authorization"]=`Bearer ${key}`;
-      const r=await fetch(`${url.replace(/\/$/,"")}/rest/v1/campaign?select=id&limit=1`,{headers:testHeaders,signal:ctrl2.signal});
-      if(r.status===200||r.status===406){saveSBConfig({url:url.trim(),key:key.trim()});onSave({url:url.trim(),key:key.trim()});}
-      else{setErr(`Connection failed (${r.status}). Check URL and key.`);}
-    }catch{setErr("Could not connect. Check URL.");}
-    setTesting(false);
-  };
-  return(<div style={{height:"100vh",background:"var(--dark)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-    <div style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:10,padding:36,maxWidth:540,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
-      <h2 style={{fontFamily:"Cinzel",fontSize:22,color:"var(--gold)",marginBottom:4,letterSpacing:"0.08em"}}>⚔ Steel & Fire</h2>
-      <h3 style={{fontFamily:"Cinzel",fontSize:13,color:"var(--ink2)",marginBottom:20,fontWeight:400}}>Campaign Chronicle — Cloud Sync Setup</h3>
-      <div style={{background:"var(--parch2)",border:"1px solid var(--border)",borderRadius:6,padding:14,marginBottom:20,fontSize:13,color:"var(--ink2)",lineHeight:1.8}}>
-        <strong style={{fontFamily:"Cinzel",fontSize:11}}>SETUP:</strong><br/>
-        1. <a href="https://supabase.com" target="_blank" style={{color:"var(--gold)"}}>supabase.com</a> → free account → new project<br/>
-        2. SQL Editor → run: <code style={{background:"var(--parch3)",padding:"1px 5px",borderRadius:3,fontSize:11}}>create table if not exists campaign(id text primary key,data jsonb,updated_at timestamptz default now()); alter table campaign enable row level security; create policy "allow all" on campaign for all using (true) with check (true);</code><br/>
-        3. Settings → General → copy Project URL<br/>
-        4. Settings → API Keys → copy Publishable key
-      </div>
-      <label style={{fontSize:10,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.06em",display:"block",marginBottom:4}}>PROJECT URL</label>
-      <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"8px 12px",width:"100%",fontSize:14,outline:"none",marginBottom:12}}/>
-      <label style={{fontSize:10,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.06em",display:"block",marginBottom:4}}>PUBLISHABLE KEY</label>
-      <input value={key} onChange={e=>setKey(e.target.value)} placeholder="sb_publishable_..." style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"8px 12px",width:"100%",fontSize:14,outline:"none",marginBottom:16,fontFamily:"monospace"}}/>
-      {err&&<div style={{color:"var(--red)",fontSize:13,marginBottom:12,padding:"6px 10px",background:"rgba(139,26,26,0.1)",border:"1px solid var(--red)",borderRadius:4}}>{err}</div>}
-      <button onClick={test} disabled={testing} style={{fontFamily:"Cinzel",background:"var(--gold2)",color:"var(--dark)",border:"none",borderRadius:5,padding:"10px 24px",fontSize:13,cursor:"pointer",width:"100%",letterSpacing:"0.06em",opacity:testing?0.7:1}}>{testing?"Testing...":"Connect & Save →"}</button>
-    </div>
-  </div>);
-}
-
-// BARONY_MAP_IMG, BARONY_MAP_IMG, BARONY_ICONS injected by build process
-
-
-const BARONY_SETTLEMENTS=[
-  {id:"bai",name:"The Black Adder Inn",ix:920,iy:230,icon:"black_adder_inn",revealed:true, desc:"A well-known waystation on the road through the Tamean Forest."},
-  {id:"ogc",name:"Oghill Castle",       ix:250,iy:220,icon:"oghill_castle",   revealed:false,desc:"The seat of power for Oghill Barony."},
-  {id:"ogm",name:"Oghill Mine",         ix:195,iy:295,icon:"oghill_mine",     revealed:false,desc:"Rich mines carved into the cliffs."},
-  {id:"hau",name:"Haughren",            ix:175,iy:345,icon:null,              revealed:false,desc:"A small farming village beneath the cliffs."},
-  {id:"tcv",name:"Tamean Caverns",      ix:540,iy:340,icon:"tamean_caverns",  revealed:false,desc:"A network of caverns beneath the hills."},
-  {id:"taf",name:"Tamean Farm",         ix:540,iy:415,icon:"tamean_farm",     revealed:false,desc:"The largest working farm in the Barony."},
-  {id:"bel",name:"Belloc",              ix:775,iy:360,icon:"belloc",          revealed:false,desc:"A prosperous market town on the edge of Belloc Forest."},
-  {id:"mer",name:"Mereworth Abbey",     ix:730,iy:455,icon:"mereworth_abbey", revealed:false,desc:"An ancient abbey of great religious significance."},
-  {id:"mrw",name:"Mereworth",           ix:695,iy:525,icon:"mereworth",       revealed:false,desc:"A sizeable town built around the Abbey."},
-  {id:"rot",name:"Rothwell",            ix:555,iy:505,icon:null,              revealed:false,desc:"A quiet village along the road south."},
-  {id:"whe",name:"Wheyhall",            ix:575,iy:585,icon:"weyhall",         revealed:false,desc:"A small settlement at the crossroads."},
-  {id:"ash",name:"Ashcombe",            ix:800,iy:575,icon:"ashcombe",        revealed:false,desc:"A village on the edge of the Ash Hills."},
-  {id:"oft",name:"The Old Fort",        ix:1010,iy:550,icon:"the_old_fort",   revealed:false,desc:"Remains of an ancient fortification."},
-  {id:"she",name:"Shedel Farm",         ix:355,iy:640,icon:null,              revealed:false,desc:"An isolated farmstead to the southwest."},
-  {id:"tit",name:"Tomb of Illin Toth",  ix:520,iy:650,icon:"tomb_of_illin_toth",revealed:false,desc:"A mysterious tomb. Locals give it a wide berth."},
-  {id:"tab",name:"Tabor Temple Ruins",  ix:225,iy:580,icon:"tabor_temple_ruins",revealed:false,desc:"Ruins of an ancient temple of unknown origin."},
-  {id:"twl",name:"The Twin Lakes",      ix:1020,iy:490,icon:"the_twin_lakes", revealed:false,desc:"Two connected lakes known for fishing."},
-  {id:"oclf",name:"Oghill Cliffs",      ix:330,iy:285,icon:"oghill_cliffs",   revealed:false,desc:"Dramatic cliffs forming the western edge of the Barony."},
-];
-
-const BARONY_TERRAIN=[
-  {id:"ttf", name:"The Tamean Forest",ix:700,iy:90,  desc:"A vast ancient forest to the north."},
-  {id:"bwds",name:"Black Woods",      ix:860,iy:300, desc:"Dark woodland, avoided by most."},
-  {id:"belf",name:"Belloc Forest",    ix:1000,iy:400,desc:"Managed forest to the east, source of timber."},
-  {id:"mwds",name:"Mereworth Woods",  ix:900,iy:480, desc:"Peaceful woods surrounding the Abbey."},
-  {id:"thl", name:"The Tamean Hills", ix:360,iy:460, desc:"Rolling hills in the centre-west."},
-  {id:"ashl",name:"The Ash Hills",    ix:840,iy:680, desc:"Rocky hills to the south."},
-];
-
-
-/* ════ WORLD MAP (Leaflet) ════ */
-function WorldMap({data,setData,onNavigate,isDM,transitioning,setTransitioning}){
-  const leafletRef=useRef(null);
-  const mapElRef=useRef(null);
-  const [dmDrawing,setDmDrawing]=useState(false);
-  const [drawPoints,setDrawPoints]=useState([]);
-  const drawPointsRef=useRef([]);
-  const tempLayersRef=useRef([]);
-
-  // Get regions from lore data
-  const regions=(data.lore&&data.lore.regions)||[{...DEFAULT_OGHILL_REGION}];
-
-  useEffect(()=>{
-    if(leafletRef.current){leafletRef.current.remove();leafletRef.current=null;}
-    const L=window.L;
-    const el=mapElRef.current;
-    if(!el)return;
-
-    const W=1400,H=1000;
-    const map=L.map(el,{
-      crs:L.CRS.Simple,minZoom:-2,maxZoom:2,zoomSnap:0.5,
-      attributionControl:false,zoomControl:true,
-      center:[H/2,W/2],zoom:-1,
-    });
-    leafletRef.current=map;
-
-    // Base world map - always built in
-    L.imageOverlay(WORLD_MAP_IMG,[[0,0],[H,W]],{opacity:1,zIndex:1}).addTo(map);
-
-    // ── Render each region ──
-    regions.forEach(region=>{
-      if(!region.polyCoords||!region.polyCoords.length)return;
-
-      // Region polygon
-      const poly=L.polygon(region.polyCoords,{
-        color:"rgba(255,255,255,0.7)",weight:2,
-        fill:true,fillColor:"rgba(255,255,255,0)",fillOpacity:0,
-        interactive:true,zIndex:5,
-      }).addTo(map);
-
-      // Hover: white glow
-      poly.on("mouseover",()=>{
-        poly.setStyle({color:"white",weight:3,fillColor:"rgba(255,215,0,0.08)",fillOpacity:1});
-      });
-      poly.on("mouseout",()=>{
-        if(!activeIconRef||activeIconRef.regionId!==region.id){
-          poly.setStyle({color:"rgba(255,255,255,0.7)",weight:2,fillColor:"rgba(255,255,255,0)",fillOpacity:0});
-        }
-      });
-
-      // Heraldry icon - centre of polygon
-      const bounds=poly.getBounds();
-      const centre=bounds.getCenter();
-      const heraldryImg=region.heraldry||null;
-
-      // Create heraldry marker
-      const shieldHtml=heraldryImg
-        ?`<div class="sf-heraldry-shield" data-regionid="${region.id}">
-            <img src="${heraldryImg}" style="width:54px;height:54px;object-fit:contain;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.8))"/>
-          </div>`
-        :`<div class="sf-heraldry-shield sf-heraldry-placeholder" data-regionid="${region.id}">
-            <div style="font-size:28px;line-height:54px;text-align:center;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.9))">⚔</div>
-          </div>`;
-
-      const shieldIcon=L.divIcon({
-        html:shieldHtml,
-        className:"",
-        iconSize:[60,60],
-        iconAnchor:[30,30],
-      });
-
-      const shieldMarker=L.marker(centre,{icon:shieldIcon,interactive:true,zIndex:20}).addTo(map);
-
-      // Shield hover - gold shimmer
-      shieldMarker.on("mouseover",()=>{
-        poly.setStyle({color:"#e8c860",weight:3,fillColor:"rgba(255,215,0,0.1)",fillOpacity:1});
-        const el=shieldMarker.getElement();
-        if(el)el.classList.add("sf-heraldry-hover");
-      });
-      shieldMarker.on("mouseout",()=>{
-        poly.setStyle({color:"rgba(255,255,255,0.7)",weight:2,fillColor:"rgba(255,255,255,0)",fillOpacity:0});
-        const el=shieldMarker.getElement();
-        if(el)el.classList.remove("sf-heraldry-hover");
-      });
-
-      // Click - black fade then navigate
-      shieldMarker.on("click",e=>{
-        L.DomEvent.stopPropagation(e);
-        if(!region.hasMap)return;
-        // Gold flash then black fade
-        poly.setStyle({color:"#e8c860",weight:4,fillColor:"rgba(255,215,0,0.15)",fillOpacity:1});
-        setTimeout(()=>{
-          setTransitioning(true);
-          setTimeout(()=>{
-            onNavigate(region.mapId||"barony");
-          },600);
-        },200);
-      });
-
-      // Also click poly itself
-      poly.on("click",e=>{
-        L.DomEvent.stopPropagation(e);
-        if(!region.hasMap)return;
-        poly.setStyle({color:"#e8c860",weight:4,fillColor:"rgba(255,215,0,0.15)",fillOpacity:1});
-        setTimeout(()=>{
-          setTransitioning(true);
-          setTimeout(()=>onNavigate(region.mapId||"barony"),600);
-        },200);
-      });
-    });
-
-    // ── DM: Draw new region tool ──
-    if(isDM){
-      map.on("click",e=>{
-        if(!drawPointsRef.current.length&&!dmDrawing)return;
-        const {lat,lng}=e.latlng;
-        const newPts=[...drawPointsRef.current,[Math.round(lat),Math.round(lng)]];
-        drawPointsRef.current=newPts;
-        setDrawPoints([...newPts]);
-
-        // Draw temp circle at point
-        const c=L.circleMarker([lat,lng],{radius:5,color:"#e8c860",fillColor:"#e8c860",fillOpacity:1}).addTo(map);
-        tempLayersRef.current.push(c);
-
-        // Draw temp line
-        if(newPts.length>1){
-          const line=L.polyline(newPts,{color:"#e8c860",weight:2,dashArray:"4,4"}).addTo(map);
-          tempLayersRef.current.push(line);
-        }
-      });
-    }
-
-    return()=>{if(leafletRef.current){leafletRef.current.remove();leafletRef.current=null;}};
-  },[JSON.stringify(regions),isDM]);
-
-  const activeIconRef={regionId:null};
-
-  // Cancel draw
-  const cancelDraw=()=>{
-    drawPointsRef.current=[];
-    setDrawPoints([]);
-    setDmDrawing(false);
-    tempLayersRef.current.forEach(l=>{try{l.remove();}catch{}});
-    tempLayersRef.current=[];
-  };
-
-  // Confirm draw - creates new region
-  const [newRegionName,setNewRegionName]=useState("");
-  const confirmDraw=()=>{
-    if(drawPoints.length<3||!newRegionName.trim())return;
-    const closed=[...drawPoints,drawPoints[0]];
-    const newRegion={
-      id:"region_"+Date.now(),
-      name:newRegionName.trim(),
-      description:"",
-      heraldry:null,
-      mapImage:null,
-      hasMap:false,
-      mapId:null,
-      polyCoords:closed,
-      revealed:true,
-    };
-    // Add to lore.regions
-    setData(d=>{
-      const existingRegions=(d.lore&&d.lore.regions)||[];
-      return{...d,lore:{...d.lore,regions:[...existingRegions,newRegion]}};
-    });
-    cancelDraw();
-  };
-
-  return(<div style={{position:"relative",width:"100%",height:"100%"}}>
-    <div ref={mapElRef} style={{width:"100%",height:"100%",borderRadius:8}}/>
-
-    {/* Black fade transition overlay */}
-    <div style={{
-      position:"absolute",inset:0,background:"black",
-      opacity:transitioning?1:0,
-      transition:"opacity 0.5s ease",
-      pointerEvents:transitioning?"all":"none",
-      zIndex:2000,
-    }}/>
-
-    {/* DM Drawing toolbar */}
-    {isDM&&<div style={{position:"absolute",top:12,right:12,zIndex:1000,display:"flex",gap:8}}>
-      {!dmDrawing
-        ?<button className="btn" onClick={()=>{setDmDrawing(true);drawPointsRef.current=[];setDrawPoints([]);}}
-          style={{fontSize:11,background:"rgba(80,0,0,0.9)",borderColor:"rgba(200,50,50,0.5)",color:"#ff9999",fontFamily:"Cinzel"}}>
-          ✏ Draw Region
-        </button>
-        :<div style={{display:"flex",gap:6,alignItems:"center",background:"rgba(20,12,4,0.95)",padding:"6px 10px",borderRadius:6,border:"1px solid var(--gold2)"}}>
-          <span style={{fontSize:11,color:"var(--gold3)",fontFamily:"Cinzel"}}>
-            {drawPoints.length<3?"Click map to draw region boundary...":"Name this region:"}
-          </span>
-          {drawPoints.length>=3&&<input value={newRegionName} onChange={e=>setNewRegionName(e.target.value)}
-            placeholder="Region name..." autoFocus
-            style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--gold2)",color:"var(--ink)",borderRadius:3,padding:"3px 8px",fontSize:12,width:140,outline:"none"}}
-            onKeyDown={e=>{if(e.key==="Enter")confirmDraw();if(e.key==="Escape")cancelDraw();}}/>}
-          {drawPoints.length>=3&&<button className="btn act" onClick={confirmDraw}
-            style={{fontSize:10,padding:"3px 10px",fontFamily:"Cinzel"}}>✓ Create</button>}
-          <button className="btn" onClick={cancelDraw}
-            style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel",color:"rgba(255,100,100,0.7)"}}>✕</button>
-          <span style={{fontSize:10,color:"var(--ink3)"}}>{drawPoints.length} pts</span>
-        </div>}
-    </div>}
-  </div>);
-}
-
-
-function BaronyMap({data,setData,onBack,isDM}){
-  const mapRef=useRef(null);
-  const leafletRef=useRef(null);
-  const [popup,setPopup]=useState(null);
-  const activeRingRef=useRef(null);
-
-  const revealed=data.baronyRevealed||{bai:true};
-
-  const setRevealed=(id,val)=>{
-    setData(d=>({...d,baronyRevealed:{...(d.baronyRevealed||{bai:true}),[id]:val}}));
-  };
-
-  useEffect(()=>{
-    if(leafletRef.current){leafletRef.current.remove();leafletRef.current=null;}
-    const L=window.L;
-    const el=mapRef.current;
-    if(!el)return;
-
-    const W=1400,H=1050;
-    const map=L.map(el,{
-      crs:L.CRS.Simple,minZoom:-1,maxZoom:2,zoomSnap:0.25,
-      attributionControl:false,zoomControl:true,
-      center:[H/2,W/2],zoom:0,
-    });
-    leafletRef.current=map;
-
-    // Base map image - always the blank Oghill Barony map
-    L.imageOverlay(BARONY_MAP_IMG,[[0,0],[H,W]],{opacity:1,zIndex:1}).addTo(map);
-
-    const clearRing=()=>{
-      if(activeRingRef.current){activeRingRef.current.remove();activeRingRef.current=null;}
-    };
-
-    // Place settlements
-    BARONY_SETTLEMENTS.forEach(s=>{
-      const isRevealed=isDM||(revealed[s.id]||s.revealed);
-      if(!isRevealed)return;
-
-      const ll=[H-s.iy,s.ix];
-
-      // Place icon image if available
-      if(s.icon&&BARONY_ICONS[s.icon]){
-        const iconW=110,iconH=82;
-        L.imageOverlay(BARONY_ICONS[s.icon],
-          [[H-s.iy-iconH/2,s.ix-iconW/2],[H-s.iy+iconH/2,s.ix+iconW/2]],
-          {opacity:isDM&&!(revealed[s.id]||s.revealed)?0.45:1,zIndex:10,interactive:false}
-        ).addTo(map);
-      }
-
-      // Invisible click zone - NO floating label
-      const zone=L.circleMarker(ll,{
-        radius:36,color:'transparent',fillColor:'transparent',
-        fillOpacity:0,weight:0,interactive:true,zIndex:20,
-      }).addTo(map);
-
-      zone.on('mouseover',()=>zone.setStyle({color:'rgba(255,255,255,0.4)',weight:1.5}));
-      zone.on('mouseout',()=>zone.setStyle({color:'transparent',weight:0}));
-      zone.on('click',e=>{
-        L.DomEvent.stopPropagation(e);
-        clearRing();
-        activeRingRef.current=L.circleMarker(ll,{
-          radius:48,color:'white',weight:2.5,fill:false,opacity:0.9,zIndex:30,
-        }).addTo(map);
-        setPopup({...s,isRevealed:revealed[s.id]||s.revealed});
-      });
-    });
-
-    // Terrain click zones - no floating labels
-    BARONY_TERRAIN.forEach(t=>{
-      const ll=[H-t.iy,t.ix];
-      const zone=L.circleMarker(ll,{
-        radius:40,color:'transparent',fillColor:'transparent',
-        fillOpacity:0,weight:0,interactive:true,
-      }).addTo(map);
-      zone.on('click',e=>{
-        L.DomEvent.stopPropagation(e);
-        clearRing();
-        setPopup({...t,type:'terrain',isRevealed:true});
-      });
-    });
-
-    map.on('click',()=>{setPopup(null);clearRing();});
-    return()=>{if(leafletRef.current){leafletRef.current.remove();leafletRef.current=null;}};
-  },[isDM,JSON.stringify(revealed)]);
-
-  return(<div style={{position:'relative',width:'100%',height:'100%'}}>
-    {/* Black fade transition overlay */}
-    <div style={{position:'absolute',inset:0,background:'black',opacity:transitioning?1:0,transition:'opacity 0.5s ease',pointerEvents:transitioning?'all':'none',zIndex:2000}}/>
-    <div style={{position:'absolute',top:12,left:12,zIndex:1000,display:'flex',gap:8,alignItems:'center'}}>
-      <button className='btn act' onClick={onBack} style={{fontSize:12}}>← World Map</button>
-      <div style={{fontFamily:'Cinzel',fontSize:13,color:'var(--gold3)',background:'rgba(20,12,4,0.85)',padding:'4px 12px',borderRadius:4,border:'1px solid var(--gold2)'}}>Oghill Barony</div>
-      {isDM&&<div style={{fontFamily:'Cinzel',fontSize:10,color:'#ff9999',background:'rgba(80,0,0,0.85)',padding:'3px 8px',borderRadius:3,border:'1px solid rgba(255,100,100,0.4)'}}>⚔ DM VIEW</div>}
-    </div>
-
-    <div ref={mapRef} style={{width:'100%',height:'100%',borderRadius:8}}/>
-
-    {popup&&<div className='map-lore-popup' style={{bottom:80,right:20,maxWidth:280}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
-        <div>
-          <h3 style={{fontFamily:'Cinzel',fontSize:14,color:'var(--gold3)',letterSpacing:'0.05em'}}>{popup.name}</h3>
-          <div style={{fontSize:9,color:'var(--ink3)',fontFamily:'Cinzel',letterSpacing:'0.06em',marginTop:2}}>
-            {popup.type==='terrain'?'TERRAIN':'SETTLEMENT'}
-            {isDM&&!popup.isRevealed&&<span style={{color:'#ff9999',marginLeft:6}}>● HIDDEN</span>}
-          </div>
-        </div>
-        <button onClick={()=>setPopup(null)} style={{background:'none',border:'none',color:'var(--ink3)',cursor:'pointer',fontSize:16}}>✕</button>
-      </div>
-      <p style={{fontSize:13,color:'rgba(240,220,180,0.85)',lineHeight:1.6,marginBottom:10}}>{popup.desc||'No description yet.'}</p>
-      {isDM&&popup.id&&popup.type!=='terrain'&&<>
-        {!(popup.isRevealed)
-          ?<button className='btn act' onClick={()=>{setRevealed(popup.id,true);setPopup(null);}} style={{width:'100%',fontSize:11,padding:'5px',background:'rgba(0,100,0,0.3)',borderColor:'rgba(100,200,100,0.5)',color:'#90ee90'}}>
-            ✓ Reveal to Players
-          </button>
-          :<button className='btn' onClick={()=>{setRevealed(popup.id,false);setPopup(null);}} style={{width:'100%',fontSize:11,padding:'5px',color:'#ff9999',borderColor:'rgba(255,100,100,0.4)'}}>
-            ✕ Hide from Players
-          </button>}
-      </>}
-    </div>}
-  </div>);
-}
-
-
-/* ════ LORE SECTIONS ════ */
-const DEFAULT_SECTIONS=[
-  {id:"regions",label:"Regions",icon:"🌍"},
-  {id:"allies",label:"Allies",icon:"🤝"},
-  {id:"enemies",label:"Enemies",icon:"💀"},
-  {id:"factions",label:"Factions",icon:"⚔️"},
-  {id:"settlements",label:"Settlements",icon:"🏰"},
-  {id:"history",label:"History",icon:"📖"},
-  {id:"sessions",label:"Session Details",icon:"📋"},
-  {id:"terrain",label:"Terrain & Locations",icon:"🗺"},
-];
-
 // Default Oghill Barony region entry
 const DEFAULT_OGHILL_REGION={
   id:"oghill_barony",
@@ -584,6 +132,17 @@ const DEFAULT_OGHILL_REGION={
   polyCoords:[[220,532],[232,586],[265,630],[310,647],[355,630],[388,586],[400,532],[388,486],[355,457],[310,447],[265,457],[232,486],[220,532]],
   revealed:true,
 };
+const DEFAULT_SECTIONS=[
+  {id:"regions",label:"Regions",icon:"🌍"},
+  {id:"allies",label:"Allies",icon:"🤝"},
+  {id:"enemies",label:"Enemies",icon:"💀"},
+  {id:"factions",label:"Factions",icon:"⚔️"},
+  {id:"settlements",label:"Settlements",icon:"🏰"},
+  {id:"history",label:"History",icon:"📖"},
+  {id:"sessions",label:"Session Details",icon:"📋"},
+  {id:"terrain",label:"Terrain & Locations",icon:"🗺"},
+];
+
 const EMPTY_ENTRY=()=>({id:Date.now()+Math.random(),name:"",portrait:null,raceSp:"",age:"",hairColour:"",eyeColour:"",build:"",clothing:"",voiceAccent:"",personality:"",goalSecret:"",description:"",lore:"",abilities:"",relationships:"",featsWithParty:"",threatLevel:"",tactics:"",tags:"",sessionNumber:"",sessionDate:"",keyEvents:"",fileName:"",fileData:"",linkedCharId:null,pinned:false});
 
 /* ════ UNCONTROLLED INPUT HELPERS ════ */
@@ -1741,3 +1300,445 @@ ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/
 console.log("Steel & Fire: React mounted");
 const _ld=document.getElementById("loading-screen");
 if(_ld)setTimeout(()=>{_ld.style.display="none";},500);
+
+const DEFAULT_DATA={
+  mapItems:[],mapImage:null,
+  lore:{regions:[{...DEFAULT_OGHILL_REGION}],allies:[],enemies:[],factions:[],settlements:[],history:[],sessions:[],terrain:[]},
+  characters:[
+    {id:1,name:"",background:"",charClass:"",species:"",subclass:"",level:1,ac:10,shield:false,hpCurrent:0,hpTemp:0,hpMax:0,hitDieMax:"d8",hitDieSpent:0,deathMarks:Array(10).fill(0),statRows:[{id:1,label:"INITIATIVE",value:""},{id:2,label:"SPEED",value:"30"},{id:3,label:"SIZE",value:"Medium"},{id:4,label:"PASSIVE PERCEPTION",value:""},{id:5,label:"EXPLOITS KNOWN",value:""},{id:6,label:"EXPLOIT DIE",value:"d6"},{id:7,label:"EXPLOIT DICE AVAIL",value:""},{id:8,label:"KNACKS KNOWN",value:""},{id:9,label:"PROF BONUS",value:"2"}],profBonus:2,str:10,dex:10,con:10,int:10,wis:10,cha:10,savingThrows:{},skills:{},weapons:[{id:1,name:"",attackBonus:"",damage:"",notes:""},{id:2,name:"",attackBonus:"",damage:"",notes:""},{id:3,name:"",attackBonus:"",damage:"",notes:""}],classFeatures:[],knacks:[],exploits:[],exploitDC:10,featsArr:[],armorProf:{light:false,medium:false,heavy:false,shields:false},weaponsProf:"",toolsProf:"",spellcastingAbility:"",spellcastingMod:"",spellDC:"",spellAtkMod:"",spellSlots:[{level:1,total:"",used:""},{level:2,total:"",used:""},{level:3,total:"",used:""},{level:4,total:"",used:""},{level:5,total:"",used:""},{level:6,total:"",used:""},{level:7,total:"",used:""},{level:8,total:"",used:""},{level:9,total:"",used:""}],spells:"",currency:{pp:0,gp:0,sp:0,cp:0},valuables:"",inventory:"",magicAttunements:["","",""],portrait:null,charAge:"",charHair:"",charEyes:"",charBuild:"",charClothing:"",charVoice:"",charPersonality:"",charGoal:"",historyPersonality:"",alignment:"",languages:"",notes:"",speciesTraits:"",feats:"",exploitDiceUsed:[]},
+    {id:2,name:"",level:1,str:10,dex:10,con:10,int:10,wis:10,cha:10,savingThrows:{},skills:{},profBonus:2,classFeatures:[],knacks:[],exploits:[],exploitDC:10,featsArr:[],weapons:[{id:1,name:"",attackBonus:"",damage:"",notes:""}],statRows:[{id:1,label:"INITIATIVE",value:""},{id:9,label:"PROF BONUS",value:"2"}],armorProf:{light:false,medium:false,heavy:false,shields:false},currency:{pp:0,gp:0,sp:0,cp:0},deathMarks:Array(10).fill(0)},
+    {id:3,name:"",level:1,str:10,dex:10,con:10,int:10,wis:10,cha:10,savingThrows:{},skills:{},profBonus:2,classFeatures:[],knacks:[],exploits:[],exploitDC:10,featsArr:[],weapons:[{id:1,name:"",attackBonus:"",damage:"",notes:""}],statRows:[{id:1,label:"INITIATIVE",value:""},{id:9,label:"PROF BONUS",value:"2"}],armorProf:{light:false,medium:false,heavy:false,shields:false},currency:{pp:0,gp:0,sp:0,cp:0},deathMarks:Array(10).fill(0)},
+  ],
+};
+
+/* ════ IMAGE COMPRESSION ════ */
+function compressImage(file,maxSize=400,quality=0.72){
+  return new Promise(resolve=>{
+    const reader=new FileReader();
+    reader.onload=e=>{const img=new Image();img.onload=()=>{const canvas=document.createElement("canvas");let w=img.width,h=img.height;if(w>h){if(w>maxSize){h=Math.round(h*maxSize/w);w=maxSize;}}else{if(h>maxSize){w=Math.round(w*maxSize/h);h=maxSize;}}canvas.width=w;canvas.height=h;canvas.getContext("2d").drawImage(img,0,0,w,h);resolve(canvas.toDataURL("image/jpeg",quality));};img.src=e.target.result;};
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ════ SHARED UI ════ */
+function Ornament(){return(<div style={{display:"flex",alignItems:"center",gap:8,margin:"8px 0"}}><div style={{flex:1,height:1,background:"linear-gradient(to right,transparent,var(--gold2))"}}/><span style={{color:"var(--gold2)",fontSize:11}}>✦</span><div style={{flex:1,height:1,background:"linear-gradient(to left,transparent,var(--gold2))"}}/></div>);}
+function DelModal({name,onOk,onNo}){
+  const [t,setT]=useState("");const needs=name&&name.trim();const can=!needs||t.trim().toLowerCase()==="delete";
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:8,padding:26,width:380,boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
+      <h3 style={{fontFamily:"Cinzel",fontSize:15,marginBottom:10,color:"var(--red)"}}>⚠ Confirm Deletion</h3>
+      {needs?(<><p style={{fontSize:14,color:"var(--ink2)",marginBottom:12,lineHeight:1.6}}>Delete <strong>{name}</strong>? This cannot be undone.</p>
+        <p style={{fontSize:12,color:"var(--ink3)",marginBottom:6}}>Type <em>delete</em> to confirm:</p>
+        <input autoFocus value={t} onChange={e=>setT(e.target.value)} onKeyDown={e=>e.key==="Enter"&&can&&onOk()} placeholder="delete" style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 10px",width:"100%",fontSize:14,outline:"none",marginBottom:12}}/></>):
+        <p style={{fontSize:14,color:"var(--ink2)",marginBottom:16}}>Delete this entry?</p>}
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button className="btn" onClick={onNo}>Cancel</button>
+        <button className="btn red" onClick={onOk} disabled={!can} style={{opacity:can?1:0.4}}>Delete</button>
+      </div>
+    </div>
+  </div>);
+}
+
+/* ════ SETUP SCREEN ════ */
+function SetupScreen({onSave}){
+  const [url,setUrl]=useState("");const [key,setKey]=useState("");const [testing,setTesting]=useState(false);const [err,setErr]=useState("");
+  const test=async()=>{
+    if(!url.trim()||!key.trim()){setErr("Please fill in both fields.");return;}
+    setTesting(true);setErr("");
+    try{
+      const ctrl2=new AbortController();setTimeout(()=>ctrl2.abort(),8000);
+      const isJWT2=key&&key.startsWith("eyJ");
+      const testHeaders={"apikey":key};
+      if(isJWT2)testHeaders["Authorization"]=`Bearer ${key}`;
+      const r=await fetch(`${url.replace(/\/$/,"")}/rest/v1/campaign?select=id&limit=1`,{headers:testHeaders,signal:ctrl2.signal});
+      if(r.status===200||r.status===406){saveSBConfig({url:url.trim(),key:key.trim()});onSave({url:url.trim(),key:key.trim()});}
+      else{setErr(`Connection failed (${r.status}). Check URL and key.`);}
+    }catch{setErr("Could not connect. Check URL.");}
+    setTesting(false);
+  };
+  return(<div style={{height:"100vh",background:"var(--dark)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+    <div style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:10,padding:36,maxWidth:540,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
+      <h2 style={{fontFamily:"Cinzel",fontSize:22,color:"var(--gold)",marginBottom:4,letterSpacing:"0.08em"}}>⚔ Steel & Fire</h2>
+      <h3 style={{fontFamily:"Cinzel",fontSize:13,color:"var(--ink2)",marginBottom:20,fontWeight:400}}>Campaign Chronicle — Cloud Sync Setup</h3>
+      <div style={{background:"var(--parch2)",border:"1px solid var(--border)",borderRadius:6,padding:14,marginBottom:20,fontSize:13,color:"var(--ink2)",lineHeight:1.8}}>
+        <strong style={{fontFamily:"Cinzel",fontSize:11}}>SETUP:</strong><br/>
+        1. <a href="https://supabase.com" target="_blank" style={{color:"var(--gold)"}}>supabase.com</a> → free account → new project<br/>
+        2. SQL Editor → run: <code style={{background:"var(--parch3)",padding:"1px 5px",borderRadius:3,fontSize:11}}>create table if not exists campaign(id text primary key,data jsonb,updated_at timestamptz default now()); alter table campaign enable row level security; create policy "allow all" on campaign for all using (true) with check (true);</code><br/>
+        3. Settings → General → copy Project URL<br/>
+        4. Settings → API Keys → copy Publishable key
+      </div>
+      <label style={{fontSize:10,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.06em",display:"block",marginBottom:4}}>PROJECT URL</label>
+      <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"8px 12px",width:"100%",fontSize:14,outline:"none",marginBottom:12}}/>
+      <label style={{fontSize:10,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.06em",display:"block",marginBottom:4}}>PUBLISHABLE KEY</label>
+      <input value={key} onChange={e=>setKey(e.target.value)} placeholder="sb_publishable_..." style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"8px 12px",width:"100%",fontSize:14,outline:"none",marginBottom:16,fontFamily:"monospace"}}/>
+      {err&&<div style={{color:"var(--red)",fontSize:13,marginBottom:12,padding:"6px 10px",background:"rgba(139,26,26,0.1)",border:"1px solid var(--red)",borderRadius:4}}>{err}</div>}
+      <button onClick={test} disabled={testing} style={{fontFamily:"Cinzel",background:"var(--gold2)",color:"var(--dark)",border:"none",borderRadius:5,padding:"10px 24px",fontSize:13,cursor:"pointer",width:"100%",letterSpacing:"0.06em",opacity:testing?0.7:1}}>{testing?"Testing...":"Connect & Save →"}</button>
+    </div>
+  </div>);
+}
+
+// BARONY_MAP_IMG, BARONY_MAP_IMG, BARONY_ICONS injected by build process
+
+
+const BARONY_SETTLEMENTS=[
+  {id:"bai",name:"The Black Adder Inn",ix:920,iy:230,icon:"black_adder_inn",revealed:true, desc:"A well-known waystation on the road through the Tamean Forest."},
+  {id:"ogc",name:"Oghill Castle",       ix:250,iy:220,icon:"oghill_castle",   revealed:false,desc:"The seat of power for Oghill Barony."},
+  {id:"ogm",name:"Oghill Mine",         ix:195,iy:295,icon:"oghill_mine",     revealed:false,desc:"Rich mines carved into the cliffs."},
+  {id:"hau",name:"Haughren",            ix:175,iy:345,icon:null,              revealed:false,desc:"A small farming village beneath the cliffs."},
+  {id:"tcv",name:"Tamean Caverns",      ix:540,iy:340,icon:"tamean_caverns",  revealed:false,desc:"A network of caverns beneath the hills."},
+  {id:"taf",name:"Tamean Farm",         ix:540,iy:415,icon:"tamean_farm",     revealed:false,desc:"The largest working farm in the Barony."},
+  {id:"bel",name:"Belloc",              ix:775,iy:360,icon:"belloc",          revealed:false,desc:"A prosperous market town on the edge of Belloc Forest."},
+  {id:"mer",name:"Mereworth Abbey",     ix:730,iy:455,icon:"mereworth_abbey", revealed:false,desc:"An ancient abbey of great religious significance."},
+  {id:"mrw",name:"Mereworth",           ix:695,iy:525,icon:"mereworth",       revealed:false,desc:"A sizeable town built around the Abbey."},
+  {id:"rot",name:"Rothwell",            ix:555,iy:505,icon:null,              revealed:false,desc:"A quiet village along the road south."},
+  {id:"whe",name:"Wheyhall",            ix:575,iy:585,icon:"weyhall",         revealed:false,desc:"A small settlement at the crossroads."},
+  {id:"ash",name:"Ashcombe",            ix:800,iy:575,icon:"ashcombe",        revealed:false,desc:"A village on the edge of the Ash Hills."},
+  {id:"oft",name:"The Old Fort",        ix:1010,iy:550,icon:"the_old_fort",   revealed:false,desc:"Remains of an ancient fortification."},
+  {id:"she",name:"Shedel Farm",         ix:355,iy:640,icon:null,              revealed:false,desc:"An isolated farmstead to the southwest."},
+  {id:"tit",name:"Tomb of Illin Toth",  ix:520,iy:650,icon:"tomb_of_illin_toth",revealed:false,desc:"A mysterious tomb. Locals give it a wide berth."},
+  {id:"tab",name:"Tabor Temple Ruins",  ix:225,iy:580,icon:"tabor_temple_ruins",revealed:false,desc:"Ruins of an ancient temple of unknown origin."},
+  {id:"twl",name:"The Twin Lakes",      ix:1020,iy:490,icon:"the_twin_lakes", revealed:false,desc:"Two connected lakes known for fishing."},
+  {id:"oclf",name:"Oghill Cliffs",      ix:330,iy:285,icon:"oghill_cliffs",   revealed:false,desc:"Dramatic cliffs forming the western edge of the Barony."},
+];
+
+const BARONY_TERRAIN=[
+  {id:"ttf", name:"The Tamean Forest",ix:700,iy:90,  desc:"A vast ancient forest to the north."},
+  {id:"bwds",name:"Black Woods",      ix:860,iy:300, desc:"Dark woodland, avoided by most."},
+  {id:"belf",name:"Belloc Forest",    ix:1000,iy:400,desc:"Managed forest to the east, source of timber."},
+  {id:"mwds",name:"Mereworth Woods",  ix:900,iy:480, desc:"Peaceful woods surrounding the Abbey."},
+  {id:"thl", name:"The Tamean Hills", ix:360,iy:460, desc:"Rolling hills in the centre-west."},
+  {id:"ashl",name:"The Ash Hills",    ix:840,iy:680, desc:"Rocky hills to the south."},
+];
+
+
+/* ════ WORLD MAP (Leaflet) ════ */
+function WorldMap({data,setData,onNavigate,isDM,transitioning,setTransitioning}){
+  const leafletRef=useRef(null);
+  const mapElRef=useRef(null);
+  const [dmDrawing,setDmDrawing]=useState(false);
+  const [drawPoints,setDrawPoints]=useState([]);
+  const drawPointsRef=useRef([]);
+  const tempLayersRef=useRef([]);
+
+  // Get regions from lore data
+  const regions=(data.lore&&data.lore.regions)||[{...DEFAULT_OGHILL_REGION}];
+
+  useEffect(()=>{
+    if(leafletRef.current){leafletRef.current.remove();leafletRef.current=null;}
+    const L=window.L;
+    const el=mapElRef.current;
+    if(!el)return;
+
+    const W=1400,H=1000;
+    const map=L.map(el,{
+      crs:L.CRS.Simple,minZoom:-2,maxZoom:2,zoomSnap:0.5,
+      attributionControl:false,zoomControl:true,
+      center:[H/2,W/2],zoom:-1,
+    });
+    leafletRef.current=map;
+
+    // Base world map - always built in
+    L.imageOverlay(WORLD_MAP_IMG,[[0,0],[H,W]],{opacity:1,zIndex:1}).addTo(map);
+
+    // ── Render each region ──
+    regions.forEach(region=>{
+      if(!region.polyCoords||!region.polyCoords.length)return;
+
+      // Region polygon
+      const poly=L.polygon(region.polyCoords,{
+        color:"rgba(255,255,255,0.7)",weight:2,
+        fill:true,fillColor:"rgba(255,255,255,0)",fillOpacity:0,
+        interactive:true,zIndex:5,
+      }).addTo(map);
+
+      // Hover: white glow
+      poly.on("mouseover",()=>{
+        poly.setStyle({color:"white",weight:3,fillColor:"rgba(255,215,0,0.08)",fillOpacity:1});
+      });
+      poly.on("mouseout",()=>{
+        if(!activeIconRef||activeIconRef.regionId!==region.id){
+          poly.setStyle({color:"rgba(255,255,255,0.7)",weight:2,fillColor:"rgba(255,255,255,0)",fillOpacity:0});
+        }
+      });
+
+      // Heraldry icon - centre of polygon
+      const bounds=poly.getBounds();
+      const centre=bounds.getCenter();
+      const heraldryImg=region.heraldry||null;
+
+      // Create heraldry marker
+      const shieldHtml=heraldryImg
+        ?`<div class="sf-heraldry-shield" data-regionid="${region.id}">
+            <img src="${heraldryImg}" style="width:54px;height:54px;object-fit:contain;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.8))"/>
+          </div>`
+        :`<div class="sf-heraldry-shield sf-heraldry-placeholder" data-regionid="${region.id}">
+            <div style="font-size:28px;line-height:54px;text-align:center;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.9))">⚔</div>
+          </div>`;
+
+      const shieldIcon=L.divIcon({
+        html:shieldHtml,
+        className:"",
+        iconSize:[60,60],
+        iconAnchor:[30,30],
+      });
+
+      const shieldMarker=L.marker(centre,{icon:shieldIcon,interactive:true,zIndex:20}).addTo(map);
+
+      // Shield hover - gold shimmer
+      shieldMarker.on("mouseover",()=>{
+        poly.setStyle({color:"#e8c860",weight:3,fillColor:"rgba(255,215,0,0.1)",fillOpacity:1});
+        const el=shieldMarker.getElement();
+        if(el)el.classList.add("sf-heraldry-hover");
+      });
+      shieldMarker.on("mouseout",()=>{
+        poly.setStyle({color:"rgba(255,255,255,0.7)",weight:2,fillColor:"rgba(255,255,255,0)",fillOpacity:0});
+        const el=shieldMarker.getElement();
+        if(el)el.classList.remove("sf-heraldry-hover");
+      });
+
+      // Click - black fade then navigate
+      shieldMarker.on("click",e=>{
+        L.DomEvent.stopPropagation(e);
+        if(!region.hasMap)return;
+        // Gold flash then black fade
+        poly.setStyle({color:"#e8c860",weight:4,fillColor:"rgba(255,215,0,0.15)",fillOpacity:1});
+        setTimeout(()=>{
+          setTransitioning(true);
+          setTimeout(()=>{
+            onNavigate(region.mapId||"barony");
+          },600);
+        },200);
+      });
+
+      // Also click poly itself
+      poly.on("click",e=>{
+        L.DomEvent.stopPropagation(e);
+        if(!region.hasMap)return;
+        poly.setStyle({color:"#e8c860",weight:4,fillColor:"rgba(255,215,0,0.15)",fillOpacity:1});
+        setTimeout(()=>{
+          setTransitioning(true);
+          setTimeout(()=>onNavigate(region.mapId||"barony"),600);
+        },200);
+      });
+    });
+
+    // ── DM: Draw new region tool ──
+    if(isDM){
+      map.on("click",e=>{
+        if(!drawPointsRef.current.length&&!dmDrawing)return;
+        const {lat,lng}=e.latlng;
+        const newPts=[...drawPointsRef.current,[Math.round(lat),Math.round(lng)]];
+        drawPointsRef.current=newPts;
+        setDrawPoints([...newPts]);
+
+        // Draw temp circle at point
+        const c=L.circleMarker([lat,lng],{radius:5,color:"#e8c860",fillColor:"#e8c860",fillOpacity:1}).addTo(map);
+        tempLayersRef.current.push(c);
+
+        // Draw temp line
+        if(newPts.length>1){
+          const line=L.polyline(newPts,{color:"#e8c860",weight:2,dashArray:"4,4"}).addTo(map);
+          tempLayersRef.current.push(line);
+        }
+      });
+    }
+
+    return()=>{if(leafletRef.current){leafletRef.current.remove();leafletRef.current=null;}};
+  },[JSON.stringify(regions),isDM]);
+
+  const activeIconRef={regionId:null};
+
+  // Cancel draw
+  const cancelDraw=()=>{
+    drawPointsRef.current=[];
+    setDrawPoints([]);
+    setDmDrawing(false);
+    tempLayersRef.current.forEach(l=>{try{l.remove();}catch{}});
+    tempLayersRef.current=[];
+  };
+
+  // Confirm draw - creates new region
+  const [newRegionName,setNewRegionName]=useState("");
+  const confirmDraw=()=>{
+    if(drawPoints.length<3||!newRegionName.trim())return;
+    const closed=[...drawPoints,drawPoints[0]];
+    const newRegion={
+      id:"region_"+Date.now(),
+      name:newRegionName.trim(),
+      description:"",
+      heraldry:null,
+      mapImage:null,
+      hasMap:false,
+      mapId:null,
+      polyCoords:closed,
+      revealed:true,
+    };
+    // Add to lore.regions
+    setData(d=>{
+      const existingRegions=(d.lore&&d.lore.regions)||[];
+      return{...d,lore:{...d.lore,regions:[...existingRegions,newRegion]}};
+    });
+    cancelDraw();
+  };
+
+  return(<div style={{position:"relative",width:"100%",height:"100%"}}>
+    <div ref={mapElRef} style={{width:"100%",height:"100%",borderRadius:8}}/>
+
+    {/* Black fade transition overlay */}
+    <div style={{
+      position:"absolute",inset:0,background:"black",
+      opacity:transitioning?1:0,
+      transition:"opacity 0.5s ease",
+      pointerEvents:transitioning?"all":"none",
+      zIndex:2000,
+    }}/>
+
+    {/* DM Drawing toolbar */}
+    {isDM&&<div style={{position:"absolute",top:12,right:12,zIndex:1000,display:"flex",gap:8}}>
+      {!dmDrawing
+        ?<button className="btn" onClick={()=>{setDmDrawing(true);drawPointsRef.current=[];setDrawPoints([]);}}
+          style={{fontSize:11,background:"rgba(80,0,0,0.9)",borderColor:"rgba(200,50,50,0.5)",color:"#ff9999",fontFamily:"Cinzel"}}>
+          ✏ Draw Region
+        </button>
+        :<div style={{display:"flex",gap:6,alignItems:"center",background:"rgba(20,12,4,0.95)",padding:"6px 10px",borderRadius:6,border:"1px solid var(--gold2)"}}>
+          <span style={{fontSize:11,color:"var(--gold3)",fontFamily:"Cinzel"}}>
+            {drawPoints.length<3?"Click map to draw region boundary...":"Name this region:"}
+          </span>
+          {drawPoints.length>=3&&<input value={newRegionName} onChange={e=>setNewRegionName(e.target.value)}
+            placeholder="Region name..." autoFocus
+            style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--gold2)",color:"var(--ink)",borderRadius:3,padding:"3px 8px",fontSize:12,width:140,outline:"none"}}
+            onKeyDown={e=>{if(e.key==="Enter")confirmDraw();if(e.key==="Escape")cancelDraw();}}/>}
+          {drawPoints.length>=3&&<button className="btn act" onClick={confirmDraw}
+            style={{fontSize:10,padding:"3px 10px",fontFamily:"Cinzel"}}>✓ Create</button>}
+          <button className="btn" onClick={cancelDraw}
+            style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel",color:"rgba(255,100,100,0.7)"}}>✕</button>
+          <span style={{fontSize:10,color:"var(--ink3)"}}>{drawPoints.length} pts</span>
+        </div>}
+    </div>}
+  </div>);
+}
+
+
+function BaronyMap({data,setData,onBack,isDM}){
+  const mapRef=useRef(null);
+  const leafletRef=useRef(null);
+  const [popup,setPopup]=useState(null);
+  const activeRingRef=useRef(null);
+
+  const revealed=data.baronyRevealed||{bai:true};
+
+  const setRevealed=(id,val)=>{
+    setData(d=>({...d,baronyRevealed:{...(d.baronyRevealed||{bai:true}),[id]:val}}));
+  };
+
+  useEffect(()=>{
+    if(leafletRef.current){leafletRef.current.remove();leafletRef.current=null;}
+    const L=window.L;
+    const el=mapRef.current;
+    if(!el)return;
+
+    const W=1400,H=1050;
+    const map=L.map(el,{
+      crs:L.CRS.Simple,minZoom:-1,maxZoom:2,zoomSnap:0.25,
+      attributionControl:false,zoomControl:true,
+      center:[H/2,W/2],zoom:0,
+    });
+    leafletRef.current=map;
+
+    // Base map image - always the blank Oghill Barony map
+    L.imageOverlay(BARONY_MAP_IMG,[[0,0],[H,W]],{opacity:1,zIndex:1}).addTo(map);
+
+    const clearRing=()=>{
+      if(activeRingRef.current){activeRingRef.current.remove();activeRingRef.current=null;}
+    };
+
+    // Place settlements
+    BARONY_SETTLEMENTS.forEach(s=>{
+      const isRevealed=isDM||(revealed[s.id]||s.revealed);
+      if(!isRevealed)return;
+
+      const ll=[H-s.iy,s.ix];
+
+      // Place icon image if available
+      if(s.icon&&BARONY_ICONS[s.icon]){
+        const iconW=110,iconH=82;
+        L.imageOverlay(BARONY_ICONS[s.icon],
+          [[H-s.iy-iconH/2,s.ix-iconW/2],[H-s.iy+iconH/2,s.ix+iconW/2]],
+          {opacity:isDM&&!(revealed[s.id]||s.revealed)?0.45:1,zIndex:10,interactive:false}
+        ).addTo(map);
+      }
+
+      // Invisible click zone - NO floating label
+      const zone=L.circleMarker(ll,{
+        radius:36,color:'transparent',fillColor:'transparent',
+        fillOpacity:0,weight:0,interactive:true,zIndex:20,
+      }).addTo(map);
+
+      zone.on('mouseover',()=>zone.setStyle({color:'rgba(255,255,255,0.4)',weight:1.5}));
+      zone.on('mouseout',()=>zone.setStyle({color:'transparent',weight:0}));
+      zone.on('click',e=>{
+        L.DomEvent.stopPropagation(e);
+        clearRing();
+        activeRingRef.current=L.circleMarker(ll,{
+          radius:48,color:'white',weight:2.5,fill:false,opacity:0.9,zIndex:30,
+        }).addTo(map);
+        setPopup({...s,isRevealed:revealed[s.id]||s.revealed});
+      });
+    });
+
+    // Terrain click zones - no floating labels
+    BARONY_TERRAIN.forEach(t=>{
+      const ll=[H-t.iy,t.ix];
+      const zone=L.circleMarker(ll,{
+        radius:40,color:'transparent',fillColor:'transparent',
+        fillOpacity:0,weight:0,interactive:true,
+      }).addTo(map);
+      zone.on('click',e=>{
+        L.DomEvent.stopPropagation(e);
+        clearRing();
+        setPopup({...t,type:'terrain',isRevealed:true});
+      });
+    });
+
+    map.on('click',()=>{setPopup(null);clearRing();});
+    return()=>{if(leafletRef.current){leafletRef.current.remove();leafletRef.current=null;}};
+  },[isDM,JSON.stringify(revealed)]);
+
+  return(<div style={{position:'relative',width:'100%',height:'100%'}}>
+    {/* Black fade transition overlay */}
+    <div style={{position:'absolute',inset:0,background:'black',opacity:transitioning?1:0,transition:'opacity 0.5s ease',pointerEvents:transitioning?'all':'none',zIndex:2000}}/>
+    <div style={{position:'absolute',top:12,left:12,zIndex:1000,display:'flex',gap:8,alignItems:'center'}}>
+      <button className='btn act' onClick={onBack} style={{fontSize:12}}>← World Map</button>
+      <div style={{fontFamily:'Cinzel',fontSize:13,color:'var(--gold3)',background:'rgba(20,12,4,0.85)',padding:'4px 12px',borderRadius:4,border:'1px solid var(--gold2)'}}>Oghill Barony</div>
+      {isDM&&<div style={{fontFamily:'Cinzel',fontSize:10,color:'#ff9999',background:'rgba(80,0,0,0.85)',padding:'3px 8px',borderRadius:3,border:'1px solid rgba(255,100,100,0.4)'}}>⚔ DM VIEW</div>}
+    </div>
+
+    <div ref={mapRef} style={{width:'100%',height:'100%',borderRadius:8}}/>
+
+    {popup&&<div className='map-lore-popup' style={{bottom:80,right:20,maxWidth:280}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+        <div>
+          <h3 style={{fontFamily:'Cinzel',fontSize:14,color:'var(--gold3)',letterSpacing:'0.05em'}}>{popup.name}</h3>
+          <div style={{fontSize:9,color:'var(--ink3)',fontFamily:'Cinzel',letterSpacing:'0.06em',marginTop:2}}>
+            {popup.type==='terrain'?'TERRAIN':'SETTLEMENT'}
+            {isDM&&!popup.isRevealed&&<span style={{color:'#ff9999',marginLeft:6}}>● HIDDEN</span>}
+          </div>
+        </div>
+        <button onClick={()=>setPopup(null)} style={{background:'none',border:'none',color:'var(--ink3)',cursor:'pointer',fontSize:16}}>✕</button>
+      </div>
+      <p style={{fontSize:13,color:'rgba(240,220,180,0.85)',lineHeight:1.6,marginBottom:10}}>{popup.desc||'No description yet.'}</p>
+      {isDM&&popup.id&&popup.type!=='terrain'&&<>
+        {!(popup.isRevealed)
+          ?<button className='btn act' onClick={()=>{setRevealed(popup.id,true);setPopup(null);}} style={{width:'100%',fontSize:11,padding:'5px',background:'rgba(0,100,0,0.3)',borderColor:'rgba(100,200,100,0.5)',color:'#90ee90'}}>
+            ✓ Reveal to Players
+          </button>
+          :<button className='btn' onClick={()=>{setRevealed(popup.id,false);setPopup(null);}} style={{width:'100%',fontSize:11,padding:'5px',color:'#ff9999',borderColor:'rgba(255,100,100,0.4)'}}>
+            ✕ Hide from Players
+          </button>}
+      </>}
+    </div>}
+  </div>);
+}
+
+
+/* ════ LORE SECTIONS ════ */
