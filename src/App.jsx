@@ -388,7 +388,8 @@ const LoreIF=memo(({label,value,field,editMode,onCommit,eyeState,onEye})=>{
   </div>);
 });
 
-function LorePanel({lore,setLore,characters,readOnly,isDM}){
+function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
+  const isDM=!!dmMode;
   const [allSections,setAllSections]=useState(()=>{
     const custom=lore.__customSections||[];
     return[...DEFAULT_SECTIONS,...custom];
@@ -413,6 +414,7 @@ function LorePanel({lore,setLore,characters,readOnly,isDM}){
 
   const selItem=sel.s?lore[sel.s]&&lore[sel.s].find(i=>i.id===sel.id):null;
   useEffect(()=>{setLocal(selItem?{...selItem}:null);},[sel.s,sel.id,selItem]);
+  useEffect(()=>{if(openTarget&&openTarget.s){setOpenSection(openTarget.s);setSel({s:openTarget.s,id:openTarget.id});setEditMode(false);setSearch("");setListEditMode(false);}},[openTarget&&openTarget.n]);
   useEffect(()=>{if(!isDM&&selItem&&!entryVisible(selItem)){setSel({s:null,id:null});setLocal(null);}},[isDM,selItem]);
 
   // Apply a field edit; keeps revealed passages attached to the right words
@@ -466,7 +468,8 @@ function LorePanel({lore,setLore,characters,readOnly,isDM}){
   const createItem=s=>{
     if(!newName.trim())return;
     const item={...EMPTY_ENTRY(),name:newName.trim()};
-    if(isDM&&s!=="regions"){item.reveal={entry:false,fields:{},spans:{}};item._ts=Date.now();}
+    if(s==="regions"){item.placeType="kingdom";item.parentId=null;}
+    if(isDM){item.reveal={entry:false,fields:{},spans:{}};item._ts=Date.now();}
     setLore(prev=>({...prev,[s]:[...(prev[s]||[]),item]}));
     setSel({s,id:item.id});setLocal({...item});setCreating(null);setNewName("");if(!readOnly)setEditMode(true);
   };
@@ -498,6 +501,25 @@ function LorePanel({lore,setLore,characters,readOnly,isDM}){
   },[lore,openSection,search,isDM]);
 
   const hasPhys=s=>["allies","enemies"].includes(s);
+  // Regions show as a tree; settlements are grouped under the barony they're in
+  const groupRows=(sec,items)=>{
+    if(listEditMode||search.trim()||(sec!=="regions"&&sec!=="settlements"))return items.map(item=>({item}));
+    const places=getPlaces(lore);
+    if(sec==="regions"){
+      const shown=new Set(items.map(i=>String(i.id)));
+      const out=[];const seen=new Set();
+      const walk=(pid,depth)=>items.filter(i=>{const par=placeById(places,i.parentId);return pid==null?(i.parentId==null||!par||!shown.has(String(par.id))):String(i.parentId)===String(pid);})
+        .forEach(i=>{if(seen.has(String(i.id)))return;seen.add(String(i.id));out.push({item:i,depth});walk(i.id,depth+1);});
+      walk(null,0);items.forEach(i=>{if(!seen.has(String(i.id)))out.push({item:i,depth:0});});
+      return out;
+    }
+    const groups={};const order=[];
+    items.forEach(i=>{const k=i.placeId==null?"":String(i.placeId);if(!groups[k]){groups[k]=[];order.push(k);}groups[k].push(i);});
+    const label=k=>{if(!k)return"NOT IN A BARONY";const pl=placeById(places,k);if(!pl||(!isDM&&!placeVisible(places,pl,false)))return"UNCHARTED";const anc=ancestorsOf(places,pl).filter(a=>isDM||entryVisible(a)).map(a=>a.name);return [...anc,pl.name].join(" › ").toUpperCase();};
+    order.sort((a,b)=>(a===""?1:0)-(b===""?1:0));
+    const out=[];order.forEach(k=>{out.push({header:label(k),key:k});groups[k].forEach(i=>out.push({item:i,depth:0}));});
+    return out;
+  };
   const ctrl=isControlled(local);
   const ed=editMode&&!readOnly;
   // Attribute (eye icon)
@@ -516,7 +538,7 @@ function LorePanel({lore,setLore,characters,readOnly,isDM}){
     {delT&&!readOnly&&<DelModal name={delT.label} onOk={confirmDel} onNo={()=>setDelT(null)}/>}
 
     {/* LEFT sidebar */}
-    <div style={{width:220,display:"flex",flexDirection:"column",background:"var(--parch2)",borderRight:"2px solid var(--gold2)",flexShrink:0,overflow:"hidden"}}>
+    <div className="sf-lore-side" style={{width:220,display:"flex",flexDirection:"column",background:"var(--parch2)",borderRight:"2px solid var(--gold2)",flexShrink:0,overflow:"hidden"}}>
       {readOnly&&<div className="tales-banner" style={{margin:"8px",fontSize:9}}>📖 BLOOD SEEKER — ARCHIVED (READ ONLY)</div>}
       <div style={{overflowY:"auto",flex:1}}>
         {allSections.map(s=>{
@@ -538,7 +560,9 @@ function LorePanel({lore,setLore,characters,readOnly,isDM}){
                 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",width:"100%",fontSize:11,outline:"none"}}/>
               </div>}
               {filteredItems.length===0&&<div style={{padding:"7px 14px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>No entries</div>}
-              {filteredItems.map(item=>{
+              {groupRows(s.id,filteredItems).map(row=>{
+                if(row.header)return <div key={"h:"+row.key} style={{padding:"6px 10px 3px",fontSize:9,fontFamily:"Cinzel",letterSpacing:"0.07em",color:"var(--gold)",background:"var(--parch2)",borderBottom:"1px solid var(--border)"}}>{row.header}</div>;
+                const item=row.item;
                 const isSel=sel.id===item.id&&sel.s===s.id;const isDO=dragOver===item.id;
                 return(<div key={item.id} draggable={listEditMode}
                   onDragStart={e=>{dragId.current=item.id;e.dataTransfer.effectAllowed="move";}}
@@ -547,7 +571,7 @@ function LorePanel({lore,setLore,characters,readOnly,isDM}){
                   onDrop={e=>{e.preventDefault();if(dragId.current&&dragId.current!==item.id)reorder(s.id,dragId.current,item.id);dragId.current=null;setDragOver(null);}}
                   onDragEnd={()=>{dragId.current=null;setDragOver(null);}}
                   onClick={()=>{if(!listEditMode){setSel({s:s.id,id:item.id});setEditMode(false);}}}
-                  style={{padding:"7px 8px 7px 10px",cursor:listEditMode?"grab":"pointer",fontSize:12,fontFamily:"Crimson Pro",background:isDO?"var(--parch3)":isSel&&!listEditMode?"var(--parch4)":"transparent",color:isSel&&!listEditMode?"var(--gold)":"var(--ink)",borderLeft:isSel&&!listEditMode?"3px solid var(--gold2)":"3px solid transparent",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:6,borderTop:isDO?"2px solid var(--gold2)":"2px solid transparent",userSelect:"none"}}>
+                  style={{padding:`7px 8px 7px ${10+(row.depth||0)*14}px`,cursor:listEditMode?"grab":"pointer",fontSize:12,fontFamily:"Crimson Pro",background:isDO?"var(--parch3)":isSel&&!listEditMode?"var(--parch4)":"transparent",color:isSel&&!listEditMode?"var(--gold)":"var(--ink)",borderLeft:isSel&&!listEditMode?"3px solid var(--gold2)":"3px solid transparent",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:6,borderTop:isDO?"2px solid var(--gold2)":"2px solid transparent",userSelect:"none"}}>
                   {listEditMode&&<span style={{fontSize:12,color:"var(--ink3)",flexShrink:0}}>⠿</span>}
                   {listEditMode&&!readOnly&&<button onClick={e=>{e.stopPropagation();togglePin(s.id,item.id);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"0 2px",color:item.pinned?"var(--gold2)":"var(--ink3)",flexShrink:0}}>{item.pinned?"📌":"📍"}</button>}
                   {!listEditMode&&item.pinned&&<span style={{fontSize:9,flexShrink:0}}>📌</span>}
@@ -582,7 +606,7 @@ function LorePanel({lore,setLore,characters,readOnly,isDM}){
     {/* RIGHT detail */}
     <div ref={detailRef} style={{flex:1,overflowY:"auto",background:"var(--parch)",display:"flex",flexDirection:"column"}}>
       {isDM&&!readOnly&&<div style={{position:"sticky",top:0,zIndex:5,background:"rgba(80,10,10,0.92)",color:"#ffcccc",fontFamily:"Cinzel",fontSize:10,letterSpacing:"0.06em",padding:"6px 14px",display:"flex",alignItems:"center",gap:10}}>
-        <span>⚔ {previewPlayer?"PREVIEWING AS A PLAYER":"DM VIEW — RED IS HIDDEN FROM PLAYERS"}</span>
+        <span>⚔ {previewPlayer?"PREVIEWING AS A PLAYER":"DM OVERVIEW — RED IS HIDDEN FROM PLAYERS · HIGHLIGHT TEXT, THEN REVEAL"}</span>
         <button onClick={()=>{setPreviewPlayer(p=>!p);setEditMode(false);}} style={{marginLeft:"auto",fontFamily:"Cinzel",fontSize:10,background:"transparent",border:"1px solid rgba(255,180,180,0.5)",color:"#ffcccc",borderRadius:3,padding:"2px 8px",cursor:"pointer"}}>{previewPlayer?"Back to DM view":"👁 Preview as player"}</button>
       </div>}
       <div style={{flex:1}}>
@@ -591,7 +615,7 @@ function LorePanel({lore,setLore,characters,readOnly,isDM}){
         <h3 style={{fontFamily:"Cinzel",fontSize:16,color:"var(--ink3)",marginBottom:8}}>{(allSections.find(s=>s.id===openSection)||{}).label||"Lore"}</h3>
         <p style={{fontSize:14,color:"var(--ink3)",fontStyle:"italic"}}>{readOnly?"Archived — read only":"Select or create an entry"}</p>
       </div>:
-      <div style={{padding:"24px 32px",maxWidth:820,margin:"0 auto"}}>
+      <div className="sf-lore-detail" style={{padding:"24px 32px",maxWidth:820,margin:"0 auto"}}>
         {readOnly&&<div className="tales-banner">📖 BLOOD SEEKER — ARCHIVED READ ONLY</div>}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
           <div style={{flex:1,marginRight:14}}>
@@ -607,77 +631,27 @@ function LorePanel({lore,setLore,characters,readOnly,isDM}){
         </div>
         <Ornament/>
         {/* Regions: special heraldry + map fields */}
-        {sel.s==="regions"&&<div style={{marginBottom:18}}>
-          <div style={{display:"flex",gap:20,flexWrap:"wrap",marginBottom:16}}>
-            {/* Heraldry upload */}
-            <div style={{flexShrink:0}}>
-              <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:6}}>HERALDRY</div>
-              <div style={{width:100,height:100,background:"var(--parch2)",border:"2px solid var(--border2)",borderRadius:6,overflow:"hidden",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                {imgSrc(local.heraldry)
-                  ?<img src={imgSrc(local.heraldry)} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
-                  :<div style={{color:"var(--ink3)",fontSize:28,textAlign:"center"}}>⚔</div>}
+        {sel.s==="regions"&&(()=>{
+          const places=getPlaces(lore);const pt=placeType(local);const par=placeById(places,local.parentId);
+          const showHer=dmView||editMode||fieldVisible(local,"heraldry");
+          const lab={fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:6};
+          return(<div style={{display:"flex",gap:20,flexWrap:"wrap",marginBottom:16}}>
+            {showHer&&<div style={{flexShrink:0}}>
+              <div style={lab}>HERALDRY{dmView&&!editMode&&isControlled(local)&&<EyeBtn on={fieldVisible(local,"heraldry")} onClick={()=>toggleField("heraldry")}/>}</div>
+              <div style={{width:100,height:100,background:"var(--parch2)",border:`2px solid ${dmView&&isControlled(local)&&!fieldVisible(local,"heraldry")?HIDDEN_RED:"var(--border2)"}`,borderRadius:6,overflow:"hidden",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                {imgSrc(local.heraldry)?<img src={imgSrc(local.heraldry)} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}}/>:<div style={{color:"var(--ink3)",fontSize:28}}>{PLACE_TYPES[pt].icon}</div>}
                 {editMode&&!readOnly&&<label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.65)",color:"var(--gold3)",fontSize:9,textAlign:"center",padding:"3px",cursor:"pointer",fontFamily:"Cinzel"}}>
-                  Upload<input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
-                    const f=(e.target.files&&e.target.files[0]);if(!f)return;
-                    // Remove white background using canvas
-                    const reader=new FileReader();
-                    reader.onload=ev=>{
-                      const img=new Image();
-                      img.onload=()=>{
-                        const canvas=document.createElement("canvas");
-                        canvas.width=img.width;canvas.height=img.height;
-                        const ctx=canvas.getContext("2d");
-                        ctx.drawImage(img,0,0);
-                        const imgData=ctx.getImageData(0,0,canvas.width,canvas.height);
-                        const d=imgData.data;
-                        for(let i=0;i<d.length;i+=4){
-                          // Make near-white pixels transparent
-                          if(d[i]>200&&d[i+1]>200&&d[i+2]>200)d[i+3]=0;
-                        }
-                        ctx.putImageData(imgData,0,0);
-                        const dataUrl=canvas.toDataURL("image/png");
-                        commitField("heraldry",dataUrl);
-                        // Update region in lore
-                        setLore(prev=>({...prev,regions:(prev.regions||[]).map(r=>r.id===local.id?{...r,heraldry:dataUrl}:r)}));
-                      };
-                      img.src=ev.target.result;
-                    };
-                    reader.readAsDataURL(f);
-                  }}/>
+                  Upload<input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;const url=await cutoutFile(f,300).catch(()=>null);if(url)commitField("heraldry",url);}}/>
                 </label>}
               </div>
+            </div>}
+            <div style={{flex:1,minWidth:180}}>
+              <div style={lab}>{PLACE_TYPES[pt].label.toUpperCase()}</div>
+              {par&&(dmView||placeVisible(places,par,false))&&<div style={{fontSize:14,color:"var(--ink2)",marginBottom:6}}>Part of {PLACE_TYPES[placeType(par)].icon} <strong>{par.name}</strong></div>}
+              {dmView&&<div style={{fontSize:12,color:"var(--ink3)",fontStyle:"italic"}}>Borders, maps and settlements for this place are set up in DM → Map Control.</div>}
             </div>
-            {/* Map upload */}
-            <div style={{flex:1}}>
-              <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:6}}>REGIONAL MAP</div>
-              {local.mapImage
-                ?<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                  <div style={{width:80,height:60,background:"var(--parch2)",border:"1px solid var(--border2)",borderRadius:3,overflow:"hidden"}}>
-                    <img src={imgSrc(local.mapImage)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                  </div>
-                  <div>
-                    <div style={{fontSize:11,color:"var(--gold3)",fontFamily:"Cinzel",marginBottom:4}}>✓ Map uploaded</div>
-                    {editMode&&!readOnly&&<button className="btn" onClick={()=>commitField("mapImage",null)} style={{fontSize:9,padding:"2px 8px",color:"rgba(255,100,100,0.7)"}}>Remove</button>}
-                  </div>
-                </div>
-                :<div style={{color:"var(--ink3)",fontSize:11,fontStyle:"italic",marginBottom:8}}>{local.hasMap&&local.mapId==="barony"?"Uses built-in Oghill Barony map":"No map uploaded"}</div>}
-              {editMode&&!readOnly&&!local.mapImage&&!(local.hasMap&&local.mapId==="barony")&&<label className="btn" style={{cursor:"pointer",fontSize:10,padding:"4px 10px"}}>
-                📥 Upload Map<input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
-                  const f=(e.target.files&&e.target.files[0]);if(!f)return;
-                  const compressed=await compressImage(f,2400,0.85);
-                  commitField("mapImage",compressed);
-                  commitField("hasMap",true);
-                  setLore(prev=>({...prev,regions:(prev.regions||[]).map(r=>r.id===local.id?{...r,mapImage:compressed,hasMap:true}:r)}));
-                }}/>
-              </label>}
-              {/* Toggle hasMap for built-in maps */}
-              {editMode&&!readOnly&&local.mapId&&<div style={{marginTop:8,display:"flex",alignItems:"center",gap:8}}>
-                <input type="checkbox" checked={local.hasMap||false} onChange={e=>commitField("hasMap",e.target.checked)} id="hasmap-toggle"/>
-                <label htmlFor="hasmap-toggle" style={{fontSize:11,color:"var(--ink2)",fontFamily:"Cinzel",cursor:"pointer"}}>Region has a map</label>
-              </div>}
-            </div>
-          </div>
-        </div>}
+          </div>);
+        })()}
         {sel.s!=="regions"&&<div style={{display:"flex",gap:20,marginBottom:18,flexWrap:"wrap"}}>
           {(dmView||editMode||fieldVisible(local,"portrait"))&&<div style={{flexShrink:0}}>
             <div style={{width:140,height:180,background:"var(--parch2)",border:"2px solid var(--border2)",borderRadius:4,overflow:"hidden",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -702,6 +676,17 @@ function LorePanel({lore,setLore,characters,readOnly,isDM}){
         {!["sessions","history"].includes(sel.s)&&TF("Relationships & Connections","relationships",90)}
         {["allies","enemies"].includes(sel.s)&&TF("Feats with the Party","featsWithParty",90)}
         {sel.s==="sessions"&&TF("Key Events & Decisions","keyEvents",120)}
+        {sel.s==="settlements"&&(()=>{
+          const places=getPlaces(lore);const baronies=places.filter(p=>placeType(p)==="barony");const pl=placeById(places,local.placeId);
+          return(<div style={{marginBottom:12}}>
+            <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>LOCATION</div>
+            {editMode&&!readOnly&&dmView?<select value={local.placeId==null?"":String(local.placeId)} onChange={e=>commitField("placeId",e.target.value===""?null:(placeById(places,e.target.value)||{}).id)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 8px",fontSize:14,outline:"none"}}>
+                <option value="">— Not in a barony —</option>{baronies.map(b=><option key={b.id} value={String(b.id)}>{b.name}</option>)}</select>
+              :<div style={{fontSize:15,color:"var(--ink)",fontFamily:"Crimson Pro"}}>{pl&&(dmView||placeVisible(places,pl,false))?[...ancestorsOf(places,pl).filter(a=>dmView||entryVisible(a)).map(a=>a.name),pl.name].join(" › "):"Unknown"}</div>}
+          </div>);
+        })()}
+        {sel.s==="settlements"&&(()=>{const ctrl2=isControlled(local);const v=(!ctrl2||dmView||fieldVisible(local,"hoverLore"))?local.hoverLore:"";
+          return <LoreVF label="Map hover text" value={v} field="hoverLore" multi height={60} editMode={editMode&&!readOnly} onCommit={commitField} eyeState={ctrl2&&dmView?fieldVisible(local,"hoverLore"):undefined} onEye={toggleField}/>;})()}
         {SF("Tags","tags")}
         {["allies","enemies"].includes(sel.s)&&!readOnly&&(dmView||!isControlled(local))&&<>
           <Ornament/>
@@ -746,7 +731,7 @@ function TalesPanel(){
 
   return(<div style={{display:"flex",height:"100%",background:"var(--dark)"}}>
     {/* Left */}
-    <div style={{width:220,display:"flex",flexDirection:"column",background:"var(--parch2)",borderRight:"2px solid var(--gold2)",flexShrink:0,overflow:"hidden"}}>
+    <div className="sf-lore-side" style={{width:220,display:"flex",flexDirection:"column",background:"var(--parch2)",borderRight:"2px solid var(--gold2)",flexShrink:0,overflow:"hidden"}}>
       <div style={{padding:"10px 14px",background:"var(--parch3)",borderBottom:"1px solid var(--border2)"}}>
         <h3 style={{fontFamily:"Cinzel",fontSize:12,color:"var(--gold)",letterSpacing:"0.08em",marginBottom:2}}>📖 TALES</h3>
         <p style={{fontSize:10,color:"var(--ink3)"}}>Blood Seeker — Archived</p>
@@ -779,7 +764,7 @@ function TalesPanel(){
         <p style={{fontSize:14,color:"var(--ink3)",fontStyle:"italic"}}>The chronicles of the first campaign</p>
         <p style={{fontSize:12,color:"var(--ink3)",marginTop:8,opacity:.6}}>Select an entry from the left to read</p>
       </div>:
-      <div style={{padding:"24px 32px",maxWidth:820,margin:"0 auto"}}>
+      <div className="sf-lore-detail" style={{padding:"24px 32px",maxWidth:820,margin:"0 auto"}}>
         <div style={{padding:"4px 12px",background:"rgba(139,26,26,0.1)",border:"1px solid rgba(139,26,26,0.3)",borderRadius:4,fontSize:9,color:"#c87070",fontFamily:"Cinzel",letterSpacing:"0.06em",display:"inline-block",marginBottom:14}}>📖 BLOOD SEEKER — ARCHIVED</div>
         <h2 style={{fontSize:24,color:"var(--gold)",letterSpacing:"0.06em",marginBottom:4}}>{selItem.name}</h2>
         {selItem.raceSp&&<p style={{fontSize:13,color:"var(--ink3)",fontStyle:"italic",fontFamily:"Cinzel",marginBottom:8}}>{selItem.raceSp}{selItem.age?` · Age ${selItem.age}`:""}</p>}
@@ -1050,235 +1035,28 @@ function CharSheet({char,onChange}){
 }
 
 /* ════ DM TAB ════ */
-const DM_PASSWORD="HarveysBalls";
-
-function DMTab({data,setData,lore,setLore,sbCfg,onAuth}){
-  const [authed,setAuthed]=useState(()=>sessionStorage.getItem("sf_dm")==="1");
-  const [pw,setPw]=useState("");
-  const [pwErr,setPwErr]=useState(false);
-  const [activeSection,setActiveSection]=useState("overview");
-
-  const tryLogin=()=>{
-    if(pw===DM_PASSWORD){sessionStorage.setItem("sf_dm","1");setAuthed(true);onAuth&&onAuth(true);}
-    else{setPwErr(true);setTimeout(()=>setPwErr(false),1500);}
-  };
-
-  if(!authed)return(
-    <div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--dark)"}}>
-      <div style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:10,padding:36,width:340,boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
-        <h2 style={{fontFamily:"Cinzel",fontSize:18,color:"var(--gold)",marginBottom:6,letterSpacing:"0.08em"}}>⚔ DM Access</h2>
-        <p style={{fontSize:13,color:"var(--ink2)",marginBottom:20,lineHeight:1.6}}>Enter the DM password to access campaign master controls.</p>
-        <input type="password" value={pw} onChange={e=>setPw(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&tryLogin()}
-          placeholder="Password..." autoFocus
-          style={{fontFamily:"Crimson Pro,serif",background:pwErr?"rgba(139,26,26,0.1)":"var(--parch2)",border:`1px solid ${pwErr?"var(--red)":"var(--border2)"}`,color:"var(--ink)",borderRadius:4,padding:"8px 12px",width:"100%",fontSize:14,outline:"none",marginBottom:12,transition:"border-color .2s"}}/>
-        {pwErr&&<p style={{color:"var(--red)",fontSize:12,marginBottom:10}}>Incorrect password.</p>}
-        <button onClick={tryLogin} style={{fontFamily:"Cinzel",background:"var(--gold2)",color:"var(--dark)",border:"none",borderRadius:5,padding:"10px 24px",fontSize:13,cursor:"pointer",width:"100%",letterSpacing:"0.06em"}}>Enter →</button>
-      </div>
-    </div>
-  );
-
-  const ALL_SECTIONS=["allies","enemies","factions","settlements","history","sessions","terrain"];
-  const dmLoreKey="dm_lore"; // dm lore stored in data.dmLore
-  const dmLore=data.dmLore||{};
-  const setDmLore=fn=>setData(d=>({...d,dmLore:typeof fn==="function"?fn(d.dmLore||{}):fn}));
-
-  // Revealed state
-  const baronyRevealed=data.baronyRevealed||{bai:true};
-  const setRevealedById=(id,val)=>setData(d=>({...d,baronyRevealed:{...(d.baronyRevealed||{bai:true}),[id]:val}}));
-
-  return(<div style={{display:"flex",height:"100%",background:"var(--dark)"}}>
-    {/* DM Sidebar */}
-    <div style={{width:200,background:"rgba(40,0,0,0.9)",borderRight:"2px solid rgba(200,50,50,0.4)",display:"flex",flexDirection:"column",flexShrink:0}}>
-      <div style={{padding:"12px 14px",borderBottom:"1px solid rgba(200,50,50,0.3)"}}>
-        <div style={{fontFamily:"Cinzel",fontSize:13,color:"#ff9999",letterSpacing:"0.08em"}}>⚔ DM MODE</div>
-        <div style={{fontSize:10,color:"rgba(255,150,150,0.5)",marginTop:2}}>Josh only</div>
-      </div>
-      {[
-        {id:"overview",label:"Overview",icon:"📊"},
-        {id:"map",label:"Map Control",icon:"🗺"},
-        {id:"lore",label:"DM Lore",icon:"📖"},
-      ].map(s=><div key={s.id} onClick={()=>setActiveSection(s.id)}
-        style={{padding:"10px 14px",cursor:"pointer",fontSize:12,fontFamily:"Cinzel",letterSpacing:"0.04em",
-          color:activeSection===s.id?"#ffaaaa":"rgba(255,150,150,0.6)",
-          background:activeSection===s.id?"rgba(139,26,26,0.4)":"transparent",
-          borderLeft:activeSection===s.id?"3px solid #ff6666":"3px solid transparent",
-          display:"flex",alignItems:"center",gap:8}}>
-        <span>{s.icon}</span><span>{s.label}</span>
-      </div>)}
-      <div style={{flex:1}}/>
-      <button onClick={()=>{sessionStorage.removeItem("sf_dm");setAuthed(false);onAuth&&onAuth(false);}}
-        style={{margin:10,fontFamily:"Cinzel",background:"transparent",border:"1px solid rgba(255,100,100,0.3)",color:"rgba(255,150,150,0.6)",borderRadius:4,padding:"6px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>
-        🔒 Lock DM
-      </button>
-    </div>
-
-    {/* DM Content */}
-    <div style={{flex:1,overflowY:"auto",background:"rgba(20,5,5,0.95)",padding:24}}>
-
-      {activeSection==="overview"&&<>
-        <h2 style={{fontFamily:"Cinzel",fontSize:18,color:"#ff9999",marginBottom:16,letterSpacing:"0.08em"}}>Campaign Overview</h2>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:20}}>
-          {[
-            {label:"Revealed Locations",val:Object.values(baronyRevealed).filter(Boolean).length+1,total:BARONY_SETTLEMENTS.length},
-            {label:"Player Lore Entries",val:ALL_SECTIONS.reduce((n,s)=>n+(lore[s]||[]).length,0),total:""},
-            {label:"DM Hidden Notes",val:Object.keys(dmLore).length,total:""},
-          ].map((stat,i)=><div key={i} style={{background:"rgba(80,0,0,0.3)",border:"1px solid rgba(200,50,50,0.2)",borderRadius:6,padding:"12px 16px"}}>
-            <div style={{fontSize:22,fontFamily:"Cinzel",color:"#ffaaaa",fontWeight:700}}>{stat.val}{stat.total?<span style={{fontSize:12,color:"rgba(255,150,150,0.4)"}}>/{stat.total}</span>:""}</div>
-            <div style={{fontSize:10,color:"rgba(255,150,150,0.5)",fontFamily:"Cinzel",letterSpacing:"0.06em",marginTop:2}}>{stat.label.toUpperCase()}</div>
-          </div>)}
-        </div>
-        <div style={{background:"rgba(80,0,0,0.2)",border:"1px solid rgba(200,50,50,0.2)",borderRadius:6,padding:16}}>
-          <div style={{fontFamily:"Cinzel",fontSize:11,color:"rgba(255,150,150,0.6)",letterSpacing:"0.06em",marginBottom:10}}>SETTLEMENT STATUS</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-            {BARONY_SETTLEMENTS.map(s=>{
-              const rev=baronyRevealed[s.id]||s.revealed;
-              return(<div key={s.id} style={{fontSize:11,fontFamily:"Cinzel",padding:"3px 8px",borderRadius:3,
-                background:rev?"rgba(0,80,0,0.3)":"rgba(80,0,0,0.3)",
-                border:`1px solid ${rev?"rgba(100,200,100,0.3)":"rgba(200,50,50,0.3)"}`,
-                color:rev?"#90ee90":"#ff9999",cursor:"pointer"}}
-                onClick={()=>setRevealedById(s.id,!rev)}>
-                {rev?"✓":"✕"} {s.name}
-              </div>);
-            })}
-          </div>
-          <p style={{fontSize:10,color:"rgba(255,150,150,0.4)",marginTop:8}}>Click any settlement to toggle its visibility for players.</p>
-        </div>
-      </>}
-
-      {activeSection==="map"&&<>
-        <h2 style={{fontFamily:"Cinzel",fontSize:18,color:"#ff9999",marginBottom:16,letterSpacing:"0.08em"}}>Map Control</h2>
-        {/* Asset upload — DM uploads barony map + icons once, stored in Supabase */}
-        {sbCfg&&<div style={{background:"rgba(80,0,0,0.2)",border:"1px solid rgba(200,50,50,0.2)",borderRadius:6,padding:14,marginBottom:16}}>
-          <div style={{fontFamily:"Cinzel",fontSize:11,color:"rgba(255,150,150,0.6)",letterSpacing:"0.06em",marginBottom:8}}>MAP ASSETS (upload once)</div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:6}}>
-            <div style={{fontSize:12,color:"rgba(255,180,180,0.7)"}}>{window._baronyMapImg?"✓ Barony map loaded":"✕ Barony map not uploaded"}</div>
-            <label className="btn" style={{cursor:"pointer",fontSize:10,padding:"3px 10px",color:"#ff9999",borderColor:"rgba(200,50,50,0.4)"}}>
-              Upload Barony Map<input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
-                const f=(e.target.files&&e.target.files[0]);if(!f)return;
-                const img=await compressImage(f,2400,0.85);
-                window._baronyMapImg=img;
-                const sb=getSB();
-                await saveBaronyMap(sb,img).catch(()=>{});
-                alert("Barony map saved to cloud! Players will see it on next load.");
-              }}/>
-            </label>
-          </div>
-          <div style={{fontSize:11,color:"rgba(255,150,150,0.5)"}}>
-            {Object.keys(BARONY_ICONS).length>0?`✓ ${Object.keys(BARONY_ICONS).length} icons loaded`:"✕ Icons not uploaded"}
-          </div>
-          {Object.keys(BARONY_ICONS).length===0&&<div style={{marginTop:6}}>
-            <label className="btn" style={{cursor:"pointer",fontSize:10,padding:"3px 10px",color:"#ff9999",borderColor:"rgba(200,50,50,0.4)"}}>
-              Upload Icon Sheet (the labelled icons image)<input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
-                const f=(e.target.files&&e.target.files[0]);if(!f)return;
-                // Slice the icon sheet into individual icons and upload each
-                const reader=new FileReader();
-                reader.onload=async ev=>{
-                  const img=new Image();
-                  img.onload=async()=>{
-                    const cols=4,rows=4;
-                    const iw=Math.floor(img.width/cols),ih=Math.floor(img.height/rows);
-                    const iconNames=["oghill_castle","oghill_mine","black_adder_inn","belloc","mereworth_abbey","tamean_farm","mereworth","ashcombe","tabor_temple_ruins","tomb_of_illin_toth","the_old_fort","tamean_caverns","the_twin_lakes","weyhall","oghill_cliffs"];
-                    const sb=getSB();
-                    let done=0;
-                    for(let i=0;i<iconNames.length;i++){
-                      const col=i%cols,row=Math.floor(i/cols);
-                      const canvas=document.createElement("canvas");
-                      canvas.width=180;canvas.height=135;
-                      const ctx=canvas.getContext("2d");
-                      ctx.fillStyle="white";ctx.fillRect(0,0,180,135);
-                      ctx.drawImage(img,col*iw,row*ih,iw,ih,0,0,180,135);
-                      const dataUrl=canvas.toDataURL("image/jpeg",0.82);
-                      BARONY_ICONS[iconNames[i]]=dataUrl;
-                      await saveIcon(sb,iconNames[i],dataUrl).catch(()=>{});
-                      done++;
-                    }
-                    alert(`${done} icons saved to cloud! Reload the page to see them on the map.`);
-                  };
-                  img.src=ev.target.result;
-                };
-                reader.readAsDataURL(f);
-              }}/>
-            </label>
-          </div>}
-        </div>}
-        <p style={{fontSize:13,color:"rgba(255,180,180,0.7)",marginBottom:16,lineHeight:1.6}}>Toggle which settlements are visible to players on the Oghill Barony map.</p>
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {BARONY_SETTLEMENTS.map(s=>{
-            const rev=baronyRevealed[s.id]||s.revealed;
-            return(<div key={s.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"rgba(80,0,0,0.2)",border:`1px solid ${rev?"rgba(100,200,100,0.3)":"rgba(200,50,50,0.2)"}`,borderRadius:6}}>
-              <div style={{flex:1}}>
-                <div style={{fontFamily:"Cinzel",fontSize:12,color:rev?"#90ee90":"#ff9999",letterSpacing:"0.04em"}}>{s.name}</div>
-                <div style={{fontSize:10,color:"rgba(255,150,150,0.4)",marginTop:1}}>{rev?"Visible to players":"Hidden from players"}</div>
-              </div>
-              <button onClick={()=>setRevealedById(s.id,!rev)} style={{fontFamily:"Cinzel",fontSize:11,padding:"5px 14px",borderRadius:4,cursor:"pointer",border:"none",
-                background:rev?"rgba(139,26,26,0.5)":"rgba(0,100,0,0.4)",
-                color:rev?"#ffaaaa":"#90ee90",letterSpacing:"0.04em"}}>
-                {rev?"Hide":"Reveal"}
-              </button>
-            </div>);
-          })}
-        </div>
-      </>}
-
-      {activeSection==="lore"&&<DMPrivateLore dmLore={dmLore} setDmLore={setDmLore} lore={lore} setLore={setLore}/>}
-
-
-    </div>
-  </div>);
-}
-
-/* DM Private Lore — notes only Josh can see until he reveals them */
-function DMPrivateLore({dmLore,setDmLore,lore,setLore}){
-  const [selId,setSelId]=useState(null);
-  const [newTitle,setNewTitle]=useState("");
-  const notes=Object.values(dmLore);
-  const selNote=selId?dmLore[selId]:null;
-  const addNote=()=>{
-    if(!newTitle.trim())return;
-    const id="dm_"+Date.now();
-    setDmLore(prev=>({...prev,[id]:{id,title:newTitle.trim(),content:"",revealed:false,revealedChunks:[]}}));
-    setSelId(id);setNewTitle("");
-  };
-  const updNote=(f,v)=>setDmLore(prev=>({...prev,[selId]:{...prev[selId],[f]:v}}));
-
-  return(<div style={{display:"flex",gap:16,height:"calc(100vh - 120px)"}}>
-    {/* Note list */}
-    <div style={{width:200,flexShrink:0,display:"flex",flexDirection:"column",gap:6}}>
-      <div style={{fontFamily:"Cinzel",fontSize:11,color:"rgba(255,150,150,0.6)",letterSpacing:"0.06em",marginBottom:4}}>DM PRIVATE NOTES</div>
-      {notes.map(n=><div key={n.id} onClick={()=>setSelId(n.id)} style={{padding:"8px 10px",borderRadius:4,cursor:"pointer",
-        background:selId===n.id?"rgba(139,26,26,0.5)":"rgba(80,0,0,0.2)",
-        border:`1px solid ${selId===n.id?"rgba(200,50,50,0.5)":"rgba(200,50,50,0.15)"}`,
-        fontFamily:"Cinzel",fontSize:11,color:n.revealed?"rgba(150,238,150,0.8)":"#ff9999",letterSpacing:"0.04em"}}>
-        {n.revealed?"✓ ":""}{n.title}
-      </div>)}
-      <div style={{display:"flex",gap:4,marginTop:4}}>
-        <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addNote()} placeholder="New note title..." style={{fontFamily:"Crimson Pro,serif",background:"rgba(80,0,0,0.2)",border:"1px solid rgba(200,50,50,0.3)",color:"#ffaaaa",borderRadius:3,padding:"4px 7px",flex:1,fontSize:11,outline:"none"}}/>
-        <button onClick={addNote} style={{background:"rgba(80,0,0,0.4)",border:"1px solid rgba(200,50,50,0.4)",color:"#ff9999",borderRadius:3,padding:"4px 8px",cursor:"pointer",fontSize:12}}>+</button>
-      </div>
-    </div>
-    {/* Note editor */}
-    <div style={{flex:1,display:"flex",flexDirection:"column",gap:10}}>
-      {selNote?<>
-        <div style={{fontFamily:"Cinzel",fontSize:14,color:"#ff9999",letterSpacing:"0.06em",borderBottom:"1px solid rgba(200,50,50,0.3)",paddingBottom:8}}>{selNote.title}</div>
-        <div style={{fontSize:10,color:"rgba(255,150,150,0.5)",fontFamily:"Cinzel",letterSpacing:"0.06em"}}>DM NOTES — Hidden from players until revealed</div>
-        <textarea value={selNote.content||""} onChange={e=>updNote("content",e.target.value)}
-          placeholder="Write your DM notes here... This is private until you reveal it."
-          style={{flex:1,fontFamily:"Crimson Pro,serif",background:"rgba(60,0,0,0.3)",border:"1px solid rgba(200,50,50,0.3)",color:"#ffcccc",borderRadius:6,padding:"12px",fontSize:14,outline:"none",resize:"none",lineHeight:1.7}}/>
-        <div style={{display:"flex",gap:8}}>
-          {!selNote.revealed
-            ?<button onClick={()=>updNote("revealed",true)} style={{fontFamily:"Cinzel",background:"rgba(0,100,0,0.4)",border:"1px solid rgba(100,200,100,0.4)",color:"#90ee90",borderRadius:4,padding:"7px 16px",fontSize:11,cursor:"pointer",flex:1,letterSpacing:"0.06em"}}>
-              ✓ Reveal Entire Note to Players
-            </button>
-            :<button onClick={()=>updNote("revealed",false)} style={{fontFamily:"Cinzel",background:"rgba(139,26,26,0.4)",border:"1px solid rgba(200,50,50,0.4)",color:"#ff9999",borderRadius:4,padding:"7px 16px",fontSize:11,cursor:"pointer",flex:1,letterSpacing:"0.06em"}}>
-              ✕ Hide Note from Players
-            </button>}
-          <button onClick={()=>{if(confirm("Delete this note?"))setDmLore(prev=>{const n={...prev};delete n[selId];return n;});setSelId(null);}}
-            style={{fontFamily:"Cinzel",background:"rgba(80,0,0,0.3)",border:"1px solid rgba(200,50,50,0.3)",color:"rgba(255,100,100,0.7)",borderRadius:4,padding:"7px 12px",fontSize:11,cursor:"pointer",letterSpacing:"0.06em"}}>🗑</button>
-        </div>
-      </>:<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:"rgba(255,150,150,0.3)",fontFamily:"Cinzel",fontSize:13}}>Select or create a note</div>}
-    </div>
-  </div>);
+/* ════ ONE-TIME UPGRADE: old Oghill settlements → wiki entries placed on the barony map ════ */
+function migratePlaces(d){
+  if(!d||!d.lore||d.placesV2)return null;
+  const lore={...d.lore};
+  let regions=lore.regions?[...lore.regions]:[{...DEFAULT_OGHILL_REGION}];
+  regions=regions.map(r=>r.placeType?r:{...r,placeType:placeType(r),parentId:r.parentId==null?null:r.parentId});
+  const rev=d.baronyRevealed||{bai:true};
+  let sets=[...(lore.settlements||[])];
+  if(regions.some(r=>r.id==="oghill_barony")){
+    BARONY_SETTLEMENTS.forEach(s=>{
+      const isRev=!!(rev[s.id]||s.revealed);
+      const pos={placeId:"oghill_barony",mapX:s.ix,mapY:1050-s.iy,iconKey:s.icon||null};
+      if(sets.some(e=>String(e.id)==="set_"+s.id))return;
+      const idx=sets.findIndex(e=>e.placeId==null&&(e.name||"").trim().toLowerCase()===s.name.toLowerCase());
+      if(idx>=0){
+        let e={...sets[idx],...pos,hoverLore:sets[idx].hoverLore||s.desc};
+        e=isRev?(e.reveal?{...e,reveal:{...e.reveal,entry:true,fields:{...(e.reveal.fields||{}),hoverLore:true}}}:e):hideKeepContent(e);
+        sets[idx]={...e,_ts:Date.now()};
+      }else sets.push({...EMPTY_ENTRY(),id:"set_"+s.id,name:s.name,...pos,hoverLore:s.desc,reveal:{entry:isRev,fields:{hoverLore:true,portrait:true},spans:{}},_ts:Date.now()});
+    });
+  }
+  return{...d,placesV2:true,lore:{...lore,regions,settlements:sets}};
 }
 
 /* ════ ROOT APP ════ */
@@ -1289,20 +1067,8 @@ function App(){
   const S=useRef({synced:{},ready:false,timer:null,pushing:false,again:false,live:false,lastSeen:null,failed:false}).current;
   const dataRef=useRef(null);
   const [page,setPage]=useState("map");
-  const [mapView,setMapView]=useState("world"); // "world" | "barony" | region mapId
-  const [transitioning,setTransitioning]=useState(false);
-
-  // Navigate to a region map with fade transition
-  const navigateToMap=(mapId)=>{
-    setMapView(mapId);
-    // Fade back in
-    setTimeout(()=>setTransitioning(false),100);
-  };
-  // Navigate back to world map with fade
-  const navigateToWorld=()=>{
-    setTransitioning(true);
-    setTimeout(()=>{setMapView("world");setTimeout(()=>setTransitioning(false),100);},500);
-  };
+  const [ready,setReady]=useState(false);
+  const [loreTarget,setLoreTarget]=useState(null);
   const [charIdx,setCharIdx]=useState(0);
   const [isDM,setIsDM]=useState(()=>sessionStorage.getItem("sf_dm")==="1");
   // Sync isDM from sessionStorage
@@ -1414,7 +1180,7 @@ function App(){
         Object.keys(localData).forEach(k=>{if(!(k in d))d[k]=localData[k];});
         if(!d.lore)d.lore={};if(!d.characters)d.characters=[];
         dataRef.current=d;setData(d);
-        S.ready=true;setSyncStatus("poll");
+        S.ready=true;setReady(true);setSyncStatus("poll");
         stopRT=connectRealtime(sb,async(id,type,wrapped,ts)=>{
           if(!id||String(id).indexOf("sf2_")!==0)return;
           noteSeen(ts);
@@ -1450,11 +1216,9 @@ function App(){
   const setLore=useCallback(fn=>setData(d=>({...d,lore:typeof fn==="function"?fn(d.lore):fn})),[]);
   const updateChar=useCallback((idx,ch)=>setData(d=>{const cs=[...d.characters];cs[idx]=ch;return{...d,characters:cs};}),[]);
 
-  // Esc key to exit barony view
-  useEffect(()=>{
-    const onKey=e=>{if(e.key==="Escape"&&mapView==="barony")setMapView("world");};
-    window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);
-  },[mapView]);
+  // One-time upgrade to the kingdom/region/barony layout
+  useEffect(()=>{if(!ready||!data)return;const m=migratePlaces(data);if(m)setData(m);},[ready,data&&data.placesV2]);
+  const openLore=(sec,id)=>{setLoreTarget({s:sec,id,n:Date.now()});setPage("lore");};
 
   if(!sbCfg)return <SetupScreen onSave={cfg=>{initSB(cfg.url,cfg.key);setSbCfg(cfg);}}/>;
   if(!data)return(
@@ -1469,12 +1233,12 @@ function App(){
 
   const NAV=[{id:"map",label:"Map",icon:"🗺"},{id:"lore",label:"Lore",icon:"📜"},{id:"chars",label:"Characters",icon:"⚔"}];
 
-  return(<div style={{display:"flex",flexDirection:"column",height:"100vh",background:"var(--dark)"}}>
+  return(<div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--dark)"}}>
     {/* Header */}
-    <header style={{display:"flex",alignItems:"center",padding:"0 14px",height:46,borderBottom:"2px solid var(--gold2)",background:"var(--dark2)",flexShrink:0,gap:10}}>
+    <header className="sf-hdr">
       <h1 style={{fontSize:16,letterSpacing:"0.16em",color:"var(--gold3)",whiteSpace:"nowrap",fontFamily:"Cinzel",textShadow:"0 0 16px rgba(200,160,40,0.3)"}}>⚔ STEEL & FIRE</h1>
       <div style={{width:1,height:20,background:"var(--border2)"}}/>
-      <nav style={{display:"flex",gap:3}}>
+      <nav className="sf-nav">
         {NAV.map(n=><button key={n.id} onClick={()=>setPage(n.id)} className={`btn${page===n.id?" act":""}`} style={{padding:"4px 12px",fontSize:11,fontFamily:"Cinzel",letterSpacing:"0.04em"}}>{n.icon} {n.label}</button>)}
         {/* Tales tab */}
         <button onClick={()=>setPage("tales")} className={`btn${page==="tales"?" act":""}`} style={{padding:"4px 12px",fontSize:11,fontFamily:"Cinzel",letterSpacing:"0.04em",borderColor:"rgba(139,26,26,0.5)",color:page==="tales"?"var(--gold3)":"rgba(200,120,100,0.7)"}}>📖 Tales</button>
@@ -1493,14 +1257,12 @@ function App(){
     </header>
 
     {/* Main */}
-    <main style={{flex:1,overflow:"hidden",padding:10,background:"var(--dark)"}}>
-      {page==="map"&&(mapView==="world"
-        ?<WorldMap data={data} setData={setData} onNavigate={navigateToMap} isDM={isDM} transitioning={transitioning} setTransitioning={setTransitioning}/>
-        :<BaronyMap data={data} setData={setData} onBack={navigateToWorld} isDM={isDM} transitioning={transitioning}/>)}
-      {page==="lore"&&<LorePanel lore={data.lore} setLore={setLore} characters={data.characters} readOnly={false} isDM={isDM}/>}
+    <main style={{flex:1,minHeight:0,overflow:"hidden",padding:8,background:"var(--dark)"}}>
+      {page==="map"&&<MapExplorer data={data} isDM={isDM} onOpenLore={openLore}/>}
+      {page==="lore"&&<LorePanel lore={data.lore} setLore={setLore} characters={data.characters} readOnly={false} dmMode={false} openTarget={loreTarget}/>}
       {page==="chars"&&<CharSheet char={data.characters[charIdx]} onChange={c=>updateChar(charIdx,c)}/>}
       {page==="tales"&&<TalesPanel/>}
-      {page==="dm"&&<DMTab data={data} setData={setData} lore={data.lore} setLore={setLore} sbCfg={sbCfg} onAuth={setIsDM}/>}
+      {page==="dm"&&<DMTab data={data} setData={setData} lore={data.lore} setLore={setLore} onAuth={setIsDM} characters={data.characters}/>}
     </main>
 
     {/* Theme panel */}
@@ -1662,332 +1424,933 @@ const BARONY_TERRAIN=[
 ];
 
 
-/* ════ WORLD MAP (Leaflet) ════ */
-function WorldMap({data,setData,onNavigate,isDM,transitioning,setTransitioning}){
-  const leafletRef=useRef(null);
-  const mapElRef=useRef(null);
-  const [dmDrawing,setDmDrawing]=useState(false);
-  const [drawPoints,setDrawPoints]=useState([]);
-  const drawPointsRef=useRef([]);
-  const tempLayersRef=useRef([]);
+/* ════ STYLES ADDED AT RUNTIME (so styles.css never needs re-uploading) ════ */
+(function(){
+  if(typeof document==="undefined"||document.getElementById("sf-extra-css"))return;
+  const css=`
+html,body,#root{height:100%;}
+.leaflet-container{background:var(--dark)!important;outline:none}
+.sf-place-tip{background:rgba(20,12,4,0.92);border:1px solid var(--gold2);color:var(--gold3);font-family:Cinzel,serif;font-size:12px;letter-spacing:0.05em;padding:4px 10px;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,0.6)}
+.sf-place-tip:before{display:none}
+.sf-pin-tip{background:rgba(20,12,4,0.95);border:1px solid var(--gold2);color:#f0dcb4;font-family:'Crimson Pro',serif;font-size:13px;padding:6px 10px;border-radius:5px;width:max-content;min-width:120px;max-width:240px;white-space:normal;box-shadow:0 2px 12px rgba(0,0,0,0.6)}
+.sf-pin-tip b{font-family:Cinzel,serif;color:var(--gold3);font-size:12px;letter-spacing:0.04em;font-weight:600}
+.sf-pin-icon{width:84px;height:64px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s,filter .15s;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.55))}
+.sf-pin-icon:hover{transform:scale(1.12);filter:drop-shadow(0 0 8px rgba(232,200,96,0.95))}
+.sf-pin-icon img{width:84px!important;height:64px!important;object-fit:contain;pointer-events:none}
+.sf-pin-icon img.sf-blend{mix-blend-mode:multiply}
+.sf-pin-hidden{opacity:0.62}
+.sf-pin-hidden:after{content:"HIDDEN";position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);font:600 8px Cinzel,serif;letter-spacing:.08em;color:#fff;background:#a3241e;padding:1px 4px;border-radius:2px}
+.sf-pin-sel{filter:drop-shadow(0 0 10px rgba(255,255,255,0.95))}
+.sf-pin-dot{width:30px;height:30px;border-radius:50%;background:rgba(20,12,4,0.9);border:2px solid var(--gold2);display:flex;align-items:center;justify-content:center;font-size:15px}
+.sf-shield{width:56px;height:56px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .2s;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.8))}
+.sf-shield:hover{transform:scale(1.15);filter:drop-shadow(0 0 12px rgba(232,200,96,0.95))}
+.sf-shield img{width:54px!important;height:54px!important;object-fit:contain;pointer-events:none}
+.sf-shield-ph{width:46px;height:52px;background:rgba(20,12,4,0.88);border:2px solid rgba(200,160,40,0.7);border-radius:6px 6px 22px 22px;color:var(--gold3);font-size:22px;display:flex;align-items:center;justify-content:center}
+.sf-crumb{font-family:Cinzel,serif;font-size:12px;letter-spacing:.04em;color:var(--gold3);background:rgba(20,12,4,0.88);border:1px solid var(--gold2);border-radius:4px;padding:4px 10px;cursor:pointer;white-space:nowrap}
+.sf-crumb.cur{cursor:default;background:rgba(154,112,32,0.35)}
+.sf-panel{background:rgba(26,18,8,0.97);border:1px solid var(--gold2);border-radius:8px;padding:14px 16px;box-shadow:0 4px 20px rgba(0,0,0,0.6);color:#f0dcb4;font-family:'Crimson Pro',serif}
+.sf-dm-btn{font-family:Cinzel,serif;font-size:11px;letter-spacing:.04em;padding:5px 12px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,140,140,0.45);background:rgba(90,10,10,0.55);color:#ffc4c4;white-space:nowrap}
+.sf-dm-btn:hover{background:rgba(130,20,20,0.7)}
+.sf-dm-btn.go{border-color:rgba(120,210,120,0.5);background:rgba(20,80,20,0.5);color:#b8f0b8}
+.sf-dm-btn:disabled{opacity:.4;cursor:default}
+.sf-dm-input{font-family:'Crimson Pro',serif;background:rgba(60,0,0,0.35);border:1px solid rgba(220,80,80,0.4);color:#ffd8d8;border-radius:4px;padding:6px 9px;font-size:14px;outline:none;width:100%}
+.sf-tab{font-family:Cinzel,serif;font-size:11px;letter-spacing:.05em;padding:6px 14px;cursor:pointer;color:rgba(255,170,170,0.6);border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none}
+.sf-tab.on{color:#ffc4c4;border-bottom-color:#ff7a7a}
+.sf-hdr{display:flex;align-items:center;gap:10px;padding:6px 14px;min-height:46px;border-bottom:2px solid var(--gold2);background:var(--dark2);flex-shrink:0;flex-wrap:wrap;row-gap:6px}
+.sf-nav{display:flex;gap:3px;flex-wrap:wrap}
+@media (max-width:900px){
+  .sf-hdr h1{font-size:13px!important;letter-spacing:.1em!important}
+  .sf-nav .btn{padding:6px 9px!important}
+  .sf-hide-narrow{display:none!important}
+}
+@media (max-width:700px){
+  .sf-lore-side{width:150px!important}
+  .sf-lore-detail{padding:16px 14px!important}
+}
+`;
+  const el=document.createElement("style");el.id="sf-extra-css";el.textContent=css;document.head.appendChild(el);
+})();
 
-  // Get regions from lore data
-  const regions=(data.lore&&data.lore.regions)||[{...DEFAULT_OGHILL_REGION}];
+/* polygon-clipping (used to snap borders inside their parent and against neighbours) */
+function loadClipLib(){
+  if(window.polygonClipping||window._sfClipLoading)return;
+  window._sfClipLoading=true;
+  const urls=["https://unpkg.com/polygon-clipping@0.15.7/dist/polygon-clipping.umd.min.js","https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/dist/polygon-clipping.umd.min.js"];
+  const tryLoad=i=>{if(i>=urls.length)return;const s=document.createElement("script");s.src=urls[i];s.onerror=()=>tryLoad(i+1);document.head.appendChild(s);};
+  tryLoad(0);
+}
+loadClipLib();
 
-  useEffect(()=>{
-    if(leafletRef.current){leafletRef.current.remove();leafletRef.current=null;}
-    const L=window.L;
-    const el=mapElRef.current;
-    if(!el)return;
+const escHtml=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-    const W=1400,H=1000;
-    const map=L.map(el,{
-      crs:L.CRS.Simple,minZoom:-2,maxZoom:2,zoomSnap:0.5,
-      attributionControl:false,zoomControl:true,
-      center:[H/2,W/2],zoom:-1,
-    });
-    leafletRef.current=map;
+/* ════ PLACES: World → Kingdom → Region → Barony ════
+   Places are the entries in lore.regions (so they are also wiki pages).
+   placeType: kingdom | region | barony. parentId links them up.
+   polyCoords: the border, drawn on the map that contains it
+     (kingdoms on the world map; regions and baronies on their kingdom's map). */
+const PLACE_TYPES={
+  kingdom:{label:"Kingdom",icon:"👑",child:"region"},
+  region:{label:"Region",icon:"🗺",child:"barony"},
+  barony:{label:"Barony",icon:"🏰",child:null},
+};
+const placeType=p=>(p&&p.placeType)||((p&&(p.id==="oghill_barony"||p.mapId==="barony"))?"barony":"kingdom");
+const getPlaces=lore=>((lore&&lore.regions)||[]);
+const placeById=(places,id)=>id==null?null:(places.find(p=>String(p.id)===String(id))||null);
+const sameParent=(p,pid)=>(pid==null?p.parentId==null:String(p.parentId)===String(pid));
+const hasRing=p=>!!(p&&p.polyCoords&&p.polyCoords.length>2);
+function ancestorsOf(places,p){const out=[];let cur=p,guard=0;while(cur&&cur.parentId!=null&&guard++<10){cur=placeById(places,cur.parentId);if(cur)out.unshift(cur);}return out;}
+// the map a place's border is drawn on: its nearest kingdom ancestor, or the world map (null)
+function canvasOf(places,p){const anc=ancestorsOf(places,p);for(let i=anc.length-1;i>=0;i--)if(placeType(anc[i])==="kingdom")return anc[i];return null;}
+function canvasInfo(place){
+  if(!place)return{img:WORLD_MAP_IMG,W:1400,H:1000,key:"world"};
+  const own=imgSrc(place.mapImage);
+  if(own)return{img:own,W:place.mapW||1400,H:place.mapH||1050,key:"p:"+place.id};
+  if(place.mapId==="barony")return{img:BARONY_MAP_IMG,W:1400,H:1050,key:"builtin-barony"};
+  return null;
+}
+const placeVisible=(places,p,isDM)=>isDM||(entryVisible(p)&&ancestorsOf(places,p).every(entryVisible));
+// text a player may see from a field of an entry
+function shownText(e,f,isDM){
+  if(!e)return"";const t=e[f]||"";
+  if(isDM||!isControlled(e))return t;
+  if(REVEAL_TEXT_FIELDS.includes(f))return visibleText(t,((e.reveal.spans||{})[f])||[]);
+  return fieldVisible(e,f)?t:"";
+}
+// Edit a field of an entry, keeping revealed passages attached to the right words
+function applyEntryField(i,field,value){
+  const n={...i,[field]:value};
+  if(i.reveal&&REVEAL_TEXT_FIELDS.includes(field)&&(i[field]||"")!==(value||"")){
+    const spans=(i.reveal.spans||{});
+    n.reveal={...i.reveal,spans:{...spans,[field]:remapSpans(spans[field],i[field],value)}};
+  }
+  n._ts=Date.now();
+  return n;
+}
+// The original built-in Oghill icons are JPGs with white boxes; cut them out once so they sit on the map cleanly
+const CLEAN_ICONS={};let cleanIconsStarted=false;const cleanIconListeners=new Set();
+function startCleanIcons(){
+  if(cleanIconsStarted)return;cleanIconsStarted=true;
+  Object.keys(BARONY_ICONS||{}).forEach(k=>{
+    const img=new Image();
+    img.onload=()=>{try{
+      const c=document.createElement("canvas");c.width=img.width;c.height=img.height;const ctx=c.getContext("2d",{willReadFrequently:true});ctx.drawImage(img,0,0);
+      const bg=edgeBackground(ctx.getImageData(0,0,c.width,c.height).data,c.width,c.height,226);
+      CLEAN_ICONS[k]=cutBox(ctx,bg,c.width,{x:0,y:0,w:c.width,h:c.height},220);
+      cleanIconListeners.forEach(f=>f());
+    }catch(e){}};
+    img.src=BARONY_ICONS[k];
+  });
+}
+function useCleanIcons(){const [,set]=useState(0);useEffect(()=>{const f=()=>set(x=>x+1);cleanIconListeners.add(f);startCleanIcons();return()=>cleanIconListeners.delete(f);},[]);}
+const settlementIcon=s=>{const own=imgSrc(s.iconImg);if(own)return{img:own,blend:false};if(s.iconKey&&BARONY_ICONS[s.iconKey])return{img:CLEAN_ICONS[s.iconKey]||BARONY_ICONS[s.iconKey],blend:false};return{img:null,blend:false};};
 
-    // Base world map - always built in
-    L.imageOverlay(WORLD_MAP_IMG,[[0,0],[H,W]],{opacity:1,zIndex:1}).addTo(map);
+/* Border snapping: keep a new border inside its parent and off its neighbours */
+function ringArea(r){let a=0;for(let i=0;i<r.length;i++){const p=r[i],q=r[(i+1)%r.length];a+=p[0]*q[1]-q[0]*p[1];}return Math.abs(a/2);}
+function clipRing(ring,{rect,within,avoid}){
+  const PC=window.polygonClipping;
+  if(!PC)return{ring,clipped:false};
+  try{
+    let g=[[ring]];
+    if(rect)g=PC.intersection(g,[[[[0,0],[rect.H,0],[rect.H,rect.W],[0,rect.W],[0,0]]]]);
+    if(within&&within.length>2&&g.length)g=PC.intersection(g,[[within]]);
+    const av=(avoid||[]).filter(r=>r&&r.length>2).map(r=>[[r]]);
+    if(av.length&&g.length)g=PC.difference(g,...av);
+    if(!g.length)return{ring:null,clipped:true};
+    let best=null,ba=0;g.forEach(poly=>{const a=ringArea(poly[0]);if(a>ba){ba=a;best=poly[0];}});
+    return{ring:best.map(([a,b])=>[Math.round(a*10)/10,Math.round(b*10)/10]),clipped:true};
+  }catch(e){console.warn("Border snap failed",e);return{ring,clipped:false};}
+}
+// Where a child of parentId is drawn, what it must stay inside, and what it must avoid
+function drawContext(places,parentId,excludeId){
+  const par=placeById(places,parentId);
+  const cv=par?(placeType(par)==="kingdom"?par:canvasOf(places,par)):null;
+  const info=canvasInfo(cv);
+  const within=par&&placeType(par)!=="kingdom"&&hasRing(par)?par.polyCoords:null;
+  const sibs=places.filter(p=>sameParent(p,parentId)&&String(p.id)!==String(excludeId)&&hasRing(p));
+  return{cv,info,within,sibs};
+}
 
-    // ── Render each region ──
-    regions.forEach(region=>{
-      if(!region.polyCoords||!region.polyCoords.length)return;
+/* ════ PLACE MAP — one Leaflet map, locked to the picture's edges ════ */
+function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,onPinMove,onMapClick,draw,onDrawDone,onDrawCancel,drawHint,cursor}){
+  const elRef=useRef(null),mapRef=useRef(null),layerRef=useRef(null),drawLayerRef=useRef(null),focusRef=useRef(null);
+  const cb=useRef({});
+  const [pts,setPts]=useState([]);const ptsRef=useRef([]);
+  const drawing=!!draw;
+  cb.current={onShapeClick,onPinClick,onPinMove,onMapClick,drawing};
+  const W=canvas?canvas.W:0,H=canvas?canvas.H:0;
 
-      // Region polygon
-      const poly=L.polygon(region.polyCoords,{
-        color:"rgba(255,255,255,0.7)",weight:2,
-        fill:true,fillColor:"rgba(255,255,255,0)",fillOpacity:0,
-        interactive:true,zIndex:5,
-      }).addTo(map);
-
-      // Hover: white glow
-      poly.on("mouseover",()=>{
-        poly.setStyle({color:"white",weight:3,fillColor:"rgba(255,215,0,0.08)",fillOpacity:1});
-      });
-      poly.on("mouseout",()=>{
-        if(!activeIconRef||activeIconRef.regionId!==region.id){
-          poly.setStyle({color:"rgba(255,255,255,0.7)",weight:2,fillColor:"rgba(255,255,255,0)",fillOpacity:0});
-        }
-      });
-
-      // Heraldry icon - centre of polygon
-      const bounds=poly.getBounds();
-      const centre=bounds.getCenter();
-      const heraldryImg=imgSrc(region.heraldry);
-
-      // Create heraldry marker
-      const shieldHtml=heraldryImg
-        ?`<div class="sf-heraldry-shield" data-regionid="${region.id}">
-            <img src="${heraldryImg}" style="width:54px;height:54px;object-fit:contain;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.8))"/>
-          </div>`
-        :`<div class="sf-heraldry-shield sf-heraldry-placeholder" data-regionid="${region.id}">
-            <div style="font-size:28px;line-height:54px;text-align:center;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.9))">⚔</div>
-          </div>`;
-
-      const shieldIcon=L.divIcon({
-        html:shieldHtml,
-        className:"",
-        iconSize:[60,60],
-        iconAnchor:[30,30],
-      });
-
-      const shieldMarker=L.marker(centre,{icon:shieldIcon,interactive:true,zIndex:20}).addTo(map);
-
-      // Shield hover - gold shimmer
-      shieldMarker.on("mouseover",()=>{
-        poly.setStyle({color:"#e8c860",weight:3,fillColor:"rgba(255,215,0,0.1)",fillOpacity:1});
-        const el=shieldMarker.getElement();
-        if(el)el.classList.add("sf-heraldry-hover");
-      });
-      shieldMarker.on("mouseout",()=>{
-        poly.setStyle({color:"rgba(255,255,255,0.7)",weight:2,fillColor:"rgba(255,255,255,0)",fillOpacity:0});
-        const el=shieldMarker.getElement();
-        if(el)el.classList.remove("sf-heraldry-hover");
-      });
-
-      // Click - black fade then navigate
-      shieldMarker.on("click",e=>{
-        L.DomEvent.stopPropagation(e);
-        if(!region.hasMap)return;
-        // Gold flash then black fade
-        poly.setStyle({color:"#e8c860",weight:4,fillColor:"rgba(255,215,0,0.15)",fillOpacity:1});
-        setTimeout(()=>{
-          setTransitioning(true);
-          setTimeout(()=>{
-            onNavigate(region.mapId||"barony");
-          },600);
-        },200);
-      });
-
-      // Also click poly itself
-      poly.on("click",e=>{
-        L.DomEvent.stopPropagation(e);
-        if(!region.hasMap)return;
-        poly.setStyle({color:"#e8c860",weight:4,fillColor:"rgba(255,215,0,0.15)",fillOpacity:1});
-        setTimeout(()=>{
-          setTransitioning(true);
-          setTimeout(()=>onNavigate(region.mapId||"barony"),600);
-        },200);
-      });
-    });
-
-    // ── DM: Draw new region tool ──
-    if(isDM){
-      map.on("click",e=>{
-        if(!drawPointsRef.current.length&&!dmDrawing)return;
-        const {lat,lng}=e.latlng;
-        const newPts=[...drawPointsRef.current,[Math.round(lat),Math.round(lng)]];
-        drawPointsRef.current=newPts;
-        setDrawPoints([...newPts]);
-
-        // Draw temp circle at point
-        const c=L.circleMarker([lat,lng],{radius:5,color:"#e8c860",fillColor:"#e8c860",fillOpacity:1}).addTo(map);
-        tempLayersRef.current.push(c);
-
-        // Draw temp line
-        if(newPts.length>1){
-          const line=L.polyline(newPts,{color:"#e8c860",weight:2,dashArray:"4,4"}).addTo(map);
-          tempLayersRef.current.push(line);
-        }
-      });
+  const lock=(animate)=>{
+    const map=mapRef.current,L=window.L;if(!map||!canvas)return;
+    const img=L.latLngBounds([[0,0],[H,W]]);
+    const size=map.getSize();if(!size.x||!size.y)return;
+    const zImg=map.getBoundsZoom(img,true); // "cover": the picture always fills the screen, no empty edges
+    let z=zImg,center=img.getCenter();
+    const fr=focusRef.current;
+    if(fr&&fr.length>2){
+      const fb=L.latLngBounds(fr).pad(0.06);
+      z=Math.max(zImg,map.getBoundsZoom(fb,false)); // show the whole region if it fits
+      center=fb.getCenter();
     }
-
-    return()=>{if(leafletRef.current){leafletRef.current.remove();leafletRef.current=null;}};
-  },[JSON.stringify(regions),isDM]);
-
-  const activeIconRef={regionId:null};
-
-  // Cancel draw
-  const cancelDraw=()=>{
-    drawPointsRef.current=[];
-    setDrawPoints([]);
-    setDmDrawing(false);
-    tempLayersRef.current.forEach(l=>{try{l.remove();}catch{}});
-    tempLayersRef.current=[];
+    const b=img;
+    map.setMaxBounds(null);
+    if(animate){
+      map.setMinZoom(Math.min(map.getZoom(),z));map.setMaxZoom(z+3);
+      map.flyTo(center,z,{duration:0.7});
+      map.once("moveend",()=>{map.setMinZoom(z);map.setMaxBounds(b);});
+    }else{
+      map.setMinZoom(z);map.setMaxZoom(z+3);
+      map.setView(center,z,{animate:false});
+      map.setMaxBounds(b);
+    }
   };
 
-  // Confirm draw - creates new region
-  const [newRegionName,setNewRegionName]=useState("");
-  const confirmDraw=()=>{
-    if(drawPoints.length<3||!newRegionName.trim())return;
-    const closed=[...drawPoints,drawPoints[0]];
-    const newRegion={
-      id:"region_"+Date.now(),
-      name:newRegionName.trim(),
-      description:"",
-      heraldry:null,
-      mapImage:null,
-      hasMap:false,
-      mapId:null,
-      polyCoords:closed,
-      revealed:true,
-    };
-    // Add to lore.regions
-    setData(d=>{
-      const existingRegions=(d.lore&&d.lore.regions)||[];
-      return{...d,lore:{...d.lore,regions:[...existingRegions,newRegion]}};
+  // build the map whenever the picture changes
+  useEffect(()=>{
+    const L=window.L;if(!elRef.current||!canvas||!L)return;
+    const map=L.map(elRef.current,{crs:L.CRS.Simple,attributionControl:false,zoomControl:true,zoomSnap:0,zoomDelta:0.5,wheelPxPerZoomLevel:110,maxBoundsViscosity:1,bounceAtZoomLimits:false,inertia:false});
+    mapRef.current=map;elRef.current._sfMap=map;
+    L.imageOverlay(canvas.img,[[0,0],[H,W]],{interactive:false}).addTo(map);
+    layerRef.current=L.layerGroup().addTo(map);
+    drawLayerRef.current=L.layerGroup().addTo(map);
+    map.on("click",e=>{
+      if(cb.current.drawing){
+        const p=[Math.round(Math.min(H,Math.max(0,e.latlng.lat))*10)/10,Math.round(Math.min(W,Math.max(0,e.latlng.lng))*10)/10];
+        ptsRef.current=[...ptsRef.current,p];setPts(ptsRef.current);return;
+      }
+      cb.current.onMapClick&&cb.current.onMapClick([e.latlng.lat,e.latlng.lng]);
     });
-    cancelDraw();
-  };
+    map.setView([H/2,W/2],0,{animate:false});
+    lock(false);
+    let t=null;
+    const ro=new ResizeObserver(()=>{clearTimeout(t);t=setTimeout(()=>{if(mapRef.current){map.invalidateSize();lock(false);}},120);});
+    ro.observe(elRef.current);
+    return()=>{ro.disconnect();clearTimeout(t);map.remove();mapRef.current=null;};
+  },[canvas&&canvas.key,canvas&&canvas.img,W,H]);
 
-  return(<div style={{position:"relative",width:"100%",height:"100%"}}>
-    <div ref={mapElRef} style={{width:"100%",height:"100%",borderRadius:8}}/>
+  // zoom into / out of a region
+  const focusKey=JSON.stringify(focusRing||null);
+  const firstFocus=useRef(true);
+  useEffect(()=>{
+    focusRef.current=focusRing||null;
+    if(!mapRef.current)return;
+    lock(!firstFocus.current);firstFocus.current=false;
+  },[focusKey,canvas&&canvas.key]);
 
-    {/* Black fade transition overlay */}
-    <div style={{
-      position:"absolute",inset:0,background:"black",
-      opacity:transitioning?1:0,
-      transition:"opacity 0.5s ease",
-      pointerEvents:transitioning?"all":"none",
-      zIndex:2000,
-    }}/>
+  // draw borders, icons, shields
+  const shapesKey=JSON.stringify((shapes||[]).map(s=>[s.id,s.ring,s.label,s.state,s.shield?(s.shield.length>40?s.shield.length:s.shield):0,s.clickable]));
+  const pinsKey=JSON.stringify((pins||[]).map(p=>[p.id,p.lat,p.lng,p.img?p.img.length:0,p.hidden,p.selected,p.tip,p.draggable,p.glyph]));
+  useEffect(()=>{
+    const L=window.L,map=mapRef.current,layer=layerRef.current;if(!map||!layer)return;
+    layer.clearLayers();
+    if(focusRing&&focusRing.length>2){
+      L.polygon([[[-H,-W],[2*H,-W],[2*H,2*W],[-H,2*W]],focusRing],{stroke:false,fillColor:"#000",fillOpacity:0.55,interactive:false}).addTo(layer);
+      L.polygon(focusRing,{color:"#e8c860",weight:2.5,fill:false,interactive:false}).addTo(layer);
+    }
+    const STY={
+      normal:{color:"rgba(255,255,255,0.85)",weight:2,fillColor:"#ffd700",fillOpacity:0,dashArray:null},
+      selected:{color:"#e8c860",weight:3.5,fillColor:"#ffd700",fillOpacity:0.16,dashArray:null},
+      hidden:{color:"#ff6b5b",weight:2,fillColor:"#ff3b2b",fillOpacity:0.06,dashArray:"7,6"},
+      faint:{color:"rgba(255,255,255,0.5)",weight:1.5,fillColor:"#fff",fillOpacity:0,dashArray:"4,5"},
+      editing:{color:"#7fd4ff",weight:3,fillColor:"#7fd4ff",fillOpacity:0.12,dashArray:"6,4"},
+    };
+    (shapes||[]).forEach(s=>{
+      if(!s.ring||s.ring.length<3)return;
+      const st=STY[s.state]||STY.normal;
+      const clickable=s.clickable!==false&&!drawing&&!!onShapeClick;
+      const poly=L.polygon(s.ring,{...st,interactive:clickable}).addTo(layer);
+      if(s.label&&clickable)poly.bindTooltip(escHtml(s.label),{direction:"center",className:"sf-place-tip",permanent:s.state==="selected",sticky:false});
+      if(clickable){
+        poly.on("mouseover",()=>{if(s.state!=="selected")poly.setStyle({color:"#e8c860",weight:3,fillOpacity:0.1});});
+        poly.on("mouseout",()=>poly.setStyle(st));
+        poly.on("click",e=>{L.DomEvent.stopPropagation(e);cb.current.onShapeClick&&cb.current.onShapeClick(s.id);});
+      }
+      if(s.shield){
+        const html=s.shield.indexOf("data:")===0||s.shield.indexOf("http")===0
+          ?`<div class="sf-shield"><img src="${s.shield}"/></div>`
+          :`<div class="sf-shield"><div class="sf-shield-ph">${escHtml(s.shield)}</div></div>`;
+        const m=L.marker(poly.getBounds().getCenter(),{icon:L.divIcon({html,className:"",iconSize:[56,56],iconAnchor:[28,28]}),interactive:clickable,keyboard:false}).addTo(layer);
+        if(clickable){
+          if(s.label&&s.state!=="selected")m.bindTooltip(escHtml(s.label),{direction:"top",offset:[0,-26],className:"sf-place-tip"});
+          m.on("mouseover",()=>poly.setStyle({color:"#e8c860",weight:3,fillOpacity:0.1}));
+          m.on("mouseout",()=>poly.setStyle(st));
+          m.on("click",e=>{L.DomEvent.stopPropagation(e);cb.current.onShapeClick&&cb.current.onShapeClick(s.id);});
+        }
+      }
+    });
+    (zones||[]).forEach(z=>{
+      const c=L.circleMarker([z.lat,z.lng],{radius:38,color:"transparent",fillColor:"transparent",fillOpacity:0,weight:0,interactive:!drawing}).addTo(layer);
+      c.bindTooltip(escHtml(z.label),{direction:"top",className:"sf-place-tip"});
+      c.on("click",e=>{L.DomEvent.stopPropagation(e);cb.current.onPinClick&&cb.current.onPinClick(z.id);});
+    });
+    (pins||[]).forEach(p=>{
+      if(p.lat==null||p.lng==null)return;
+      const inner=p.img?`<img src="${p.img}" class="${p.blend?"sf-blend":""}"/>`:`<div class="sf-pin-dot">${p.glyph||"🏠"}</div>`;
+      const html=`<div class="sf-pin-icon${p.hidden?" sf-pin-hidden":""}${p.selected?" sf-pin-sel":""}" style="position:relative">${inner}</div>`;
+      const m=L.marker([p.lat,p.lng],{icon:L.divIcon({html,className:"",iconSize:[84,64],iconAnchor:[42,32]}),draggable:!!p.draggable&&!drawing,keyboard:false,interactive:!drawing,zIndexOffset:p.selected?1000:0}).addTo(layer);
+      if(p.tip)m.bindTooltip(p.tip,{direction:"top",offset:[0,-30],className:"sf-pin-tip"});
+      m.on("click",e=>{L.DomEvent.stopPropagation(e);cb.current.onPinClick&&cb.current.onPinClick(p.id);});
+      m.on("dragend",()=>{const ll=m.getLatLng();cb.current.onPinMove&&cb.current.onPinMove(p.id,[Math.round(Math.min(H,Math.max(0,ll.lat))),Math.round(Math.min(W,Math.max(0,ll.lng)))]);});
+    });
+  },[shapesKey,pinsKey,focusKey,drawing,canvas&&canvas.key,(zones||[]).length]);
 
-    {/* DM Drawing toolbar */}
-    {isDM&&<div style={{position:"absolute",top:12,right:12,zIndex:1000,display:"flex",gap:8}}>
-      {!dmDrawing
-        ?<button className="btn" onClick={()=>{setDmDrawing(true);drawPointsRef.current=[];setDrawPoints([]);}}
-          style={{fontSize:11,background:"rgba(80,0,0,0.9)",borderColor:"rgba(200,50,50,0.5)",color:"#ff9999",fontFamily:"Cinzel"}}>
-          ✏ Draw Region
-        </button>
-        :<div style={{display:"flex",gap:6,alignItems:"center",background:"rgba(20,12,4,0.95)",padding:"6px 10px",borderRadius:6,border:"1px solid var(--gold2)"}}>
-          <span style={{fontSize:11,color:"var(--gold3)",fontFamily:"Cinzel"}}>
-            {drawPoints.length<3?"Click map to draw region boundary...":"Name this region:"}
-          </span>
-          {drawPoints.length>=3&&<input value={newRegionName} onChange={e=>setNewRegionName(e.target.value)}
-            placeholder="Region name..." autoFocus
-            style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--gold2)",color:"var(--ink)",borderRadius:3,padding:"3px 8px",fontSize:12,width:140,outline:"none"}}
-            onKeyDown={e=>{if(e.key==="Enter")confirmDraw();if(e.key==="Escape")cancelDraw();}}/>}
-          {drawPoints.length>=3&&<button className="btn act" onClick={confirmDraw}
-            style={{fontSize:10,padding:"3px 10px",fontFamily:"Cinzel"}}>✓ Create</button>}
-          <button className="btn" onClick={cancelDraw}
-            style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel",color:"rgba(255,100,100,0.7)"}}>✕</button>
-          <span style={{fontSize:10,color:"var(--ink3)"}}>{drawPoints.length} pts</span>
-        </div>}
+  // drawing preview
+  useEffect(()=>{if(!drawing){ptsRef.current=[];setPts([]);}const map=mapRef.current;if(map){if(drawing)map.doubleClickZoom.disable();else map.doubleClickZoom.enable();}},[drawing]);
+  useEffect(()=>{
+    const L=window.L,dl=drawLayerRef.current;if(!dl)return;dl.clearLayers();
+    if(!drawing)return;
+    if(pts.length>1)L.polyline([...pts,...(pts.length>2?[pts[0]]:[])],{color:"#7fd4ff",weight:2.5,dashArray:"6,5",interactive:false}).addTo(dl);
+    pts.forEach((p,i)=>L.circleMarker(p,{radius:i===0?7:5,color:"#7fd4ff",fillColor:i===0?"#ffffff":"#7fd4ff",fillOpacity:1,weight:2,interactive:false}).addTo(dl));
+  },[pts,drawing]);
+
+  const finish=()=>{const r=ptsRef.current;if(r.length<3)return;ptsRef.current=[];setPts([]);onDrawDone&&onDrawDone([...r,r[0]]);};
+  const undo=()=>{ptsRef.current=ptsRef.current.slice(0,-1);setPts(ptsRef.current);};
+
+  if(!canvas)return <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--ink3)",fontFamily:"Cinzel",fontSize:13,background:"var(--dark)",borderRadius:8}}>No map uploaded yet</div>;
+  return(<div style={{position:"relative",width:"100%",height:"100%",background:"var(--dark)",borderRadius:8,overflow:"hidden"}}>
+    <div ref={elRef} style={{position:"absolute",inset:0,background:"var(--dark)",cursor:drawing||cursor?"crosshair":undefined}}/>
+    {drawing&&<div style={{position:"absolute",bottom:14,left:"50%",transform:"translateX(-50%)",zIndex:1000,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",justifyContent:"center",background:"rgba(10,20,30,0.92)",border:"1px solid #7fd4ff",borderRadius:6,padding:"7px 10px",maxWidth:"94%"}}>
+      <span style={{fontFamily:"Cinzel",fontSize:11,color:"#bfe9ff",letterSpacing:".04em"}}>{pts.length<3?(drawHint||"Click around the edge to draw the border"):`${pts.length} points — finish when you're back at the start`}</span>
+      <button className="sf-dm-btn" onClick={undo} disabled={!pts.length}>↶ Undo</button>
+      <button className="sf-dm-btn go" onClick={finish} disabled={pts.length<3}>✓ Finish</button>
+      <button className="sf-dm-btn" onClick={()=>{ptsRef.current=[];setPts([]);onDrawCancel&&onDrawCancel();}}>✕ Cancel</button>
     </div>}
   </div>);
 }
 
+/* ════ MAP EXPLORER (the Map tab) ════ */
+function MapExplorer({data,isDM,onOpenLore}){
+  useCleanIcons();
+  const lore=data.lore||{};
+  const places=getPlaces(lore);
+  const sets=lore.settlements||[];
+  const vis=p=>placeVisible(places,p,isDM);
+  const [view,setView]=useState({mapId:null,focusId:null});
+  const [sel,setSel]=useState(null);
+  const [fade,setFade]=useState(false);
+  const cur=placeById(places,view.mapId);
+  const focus=placeById(places,view.focusId);
 
-function BaronyMap({data,setData,onBack,isDM,transitioning}){
-  const mapRef=useRef(null);
-  const leafletRef=useRef(null);
-  const [popup,setPopup]=useState(null);
-  const activeRingRef=useRef(null);
+  // if what we're looking at gets hidden or deleted, step back out
+  useEffect(()=>{
+    if(view.mapId&&(!cur||!vis(cur)||!canvasInfo(cur)))setView({mapId:null,focusId:null});
+    else if(view.focusId&&(!focus||!vis(focus)||!hasRing(focus)))setView(v=>({...v,focusId:null}));
+  },[cur,focus,isDM]);
 
-  const revealed=data.baronyRevealed||{bai:true};
+  const canvas=canvasInfo(cur);
+  const isBarony=cur&&placeType(cur)==="barony";
+  const kids=isBarony?[]:places.filter(p=>vis(p)&&hasRing(p)&&(focus?sameParent(p,focus.id):cur?sameParent(p,cur.id):p.parentId==null));
 
-  const setRevealed=(id,val)=>{
-    setData(d=>({...d,baronyRevealed:{...(d.baronyRevealed||{bai:true}),[id]:val}}));
+  const go=(next,withFade)=>{
+    setSel(null);
+    if(!withFade){setView(next);return;}
+    setFade(true);
+    setTimeout(()=>{setView(next);setTimeout(()=>setFade(false),180);},480);
+  };
+  const enter=p=>{
+    if(canvasInfo(p)){go({mapId:p.id,focusId:null},true);return true;}
+    if(placeType(p)!=="barony"&&placeType(p)!=="kingdom"&&hasRing(p)){go({mapId:view.mapId,focusId:p.id},false);return true;}
+    return false;
+  };
+  const back=()=>{
+    if(focus){go({mapId:view.mapId,focusId:null},false);return;}
+    if(!cur)return;
+    const cv=canvasOf(places,cur);
+    const par=placeById(places,cur.parentId);
+    go({mapId:cv?cv.id:null,focusId:par&&placeType(par)==="region"&&hasRing(par)?par.id:null},true);
+  };
+  useEffect(()=>{const k=e=>{if(e.key==="Escape"){if(sel)setSel(null);else back();}};window.addEventListener("keydown",k);return()=>window.removeEventListener("keydown",k);});
+
+  // breadcrumb
+  const crumbs=[{label:"🌍 World",to:{mapId:null,focusId:null},fade:!!cur}];
+  const chain=[...(cur?[...ancestorsOf(places,cur),cur]:[]),...(focus?[focus]:[])];
+  chain.forEach(p=>{
+    if(canvasInfo(p))crumbs.push({label:p.name,to:{mapId:p.id,focusId:null},fade:String(view.mapId)!==String(p.id)});
+    else if(placeType(p)==="region"){const cv=canvasOf(places,p);crumbs.push({label:p.name,to:{mapId:cv?cv.id:null,focusId:p.id},fade:String(view.mapId)!==String(cv?cv.id:null)});}
+    else crumbs.push({label:p.name,to:null});
+  });
+
+  const shapes=kids.map(p=>({id:p.id,ring:p.polyCoords,label:p.name,
+    state:sel&&sel.kind==="place"&&String(sel.id)===String(p.id)?"selected":(!placeVisible(places,p,false)?"hidden":"normal"),
+    shield:!cur&&!focus?(imgSrc(p.heraldry)||PLACE_TYPES[placeType(p)].icon):(imgSrc(p.heraldry)||null)}));
+
+  const pins=isBarony?sets.filter(s=>sameParent({parentId:s.placeId},cur.id)&&s.mapX!=null&&(isDM||entryVisible(s))).map(s=>{
+    const ic=settlementIcon(s);const hl=shownText(s,"hoverLore",isDM);
+    return{id:"s:"+s.id,lat:s.mapY,lng:s.mapX,img:ic.img,blend:ic.blend,hidden:!entryVisible(s),selected:sel&&sel.id==="s:"+s.id,
+      tip:`<b>${escHtml(s.name)}</b>${hl?`<br/>${escHtml(hl.length>180?hl.slice(0,180)+"…":hl)}`:""}`};
+  }):[];
+  const zones=isBarony&&cur.mapId==="barony"&&!imgSrc(cur.mapImage)?BARONY_TERRAIN.map(t=>({id:"t:"+t.id,lat:1050-t.iy,lng:t.ix,label:t.name})):[];
+
+  const onShapeClick=id=>{
+    if(sel&&sel.kind==="place"&&String(sel.id)===String(id)){const p=placeById(places,id);if(p&&!enter(p))setSel({kind:"place",id,noMap:true});return;}
+    setSel({kind:"place",id});
+  };
+  const onPinClick=id=>setSel({kind:id.startsWith("t:")?"terrain":"pin",id});
+
+  // popup content
+  let popup=null;
+  if(sel&&sel.kind==="place"){
+    const p=placeById(places,sel.id);
+    if(p){
+      const t=placeType(p);const canEnter=!!canvasInfo(p)||(t==="region"&&hasRing(p));
+      const desc=shownText(p,"description",isDM);
+      popup=(<>
+        <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:6}}>
+          {imgSrc(p.heraldry)&&<img src={imgSrc(p.heraldry)} alt="" style={{width:38,height:38,objectFit:"contain"}}/>}
+          <div><div style={{fontFamily:"Cinzel",fontSize:15,color:"var(--gold3)",letterSpacing:".05em"}}>{p.name}</div>
+          <div style={{fontFamily:"Cinzel",fontSize:9,color:"#b89a68",letterSpacing:".08em"}}>{PLACE_TYPES[t].label.toUpperCase()}{isDM&&!placeVisible(places,p,false)&&<span style={{color:"#ff8a7a"}}> · HIDDEN FROM PLAYERS</span>}</div></div>
+        </div>
+        {desc&&<p style={{fontSize:13.5,lineHeight:1.55,marginBottom:10,whiteSpace:"pre-wrap",maxHeight:160,overflowY:"auto"}}>{desc}</p>}
+        {sel.noMap&&<p style={{fontSize:12,color:"#e0a070",fontStyle:"italic",marginBottom:8}}>{isDM?"No map uploaded for this yet — add one in DM → Map Control.":"This place hasn't been mapped yet."}</p>}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {canEnter&&<button className="btn act" onClick={()=>enter(p)} style={{fontSize:12,fontFamily:"Cinzel"}}>{t==="region"?"Explore":"Enter"} {p.name} ▶</button>}
+          <button className="btn" onClick={()=>onOpenLore&&onOpenLore("regions",p.id)} style={{fontSize:12,color:"#e8d2a8"}}>📜 Lore</button>
+        </div>
+        {canEnter&&<div style={{fontSize:11,color:"#9a8060",fontStyle:"italic",marginTop:6}}>Tip: click it again on the map to go in</div>}
+      </>);
+    }
+  }else if(sel&&sel.kind==="pin"){
+    const s=sets.find(x=>"s:"+x.id===sel.id);
+    if(s){const hl=shownText(s,"hoverLore",isDM);const desc=shownText(s,"description",isDM);
+      popup=(<>
+        <div style={{fontFamily:"Cinzel",fontSize:15,color:"var(--gold3)",letterSpacing:".05em",marginBottom:2}}>{s.name}</div>
+        <div style={{fontFamily:"Cinzel",fontSize:9,color:"#b89a68",letterSpacing:".08em",marginBottom:8}}>SETTLEMENT{isDM&&!entryVisible(s)&&<span style={{color:"#ff8a7a"}}> · HIDDEN FROM PLAYERS</span>}</div>
+        {hl&&<p style={{fontSize:13.5,lineHeight:1.55,marginBottom:8,whiteSpace:"pre-wrap"}}>{hl}</p>}
+        {desc&&desc!==hl&&<p style={{fontSize:13,lineHeight:1.55,marginBottom:8,whiteSpace:"pre-wrap",color:"#d8c4a0",maxHeight:150,overflowY:"auto"}}>{desc}</p>}
+        <button className="btn" onClick={()=>onOpenLore&&onOpenLore("settlements",s.id)} style={{fontSize:12,color:"#e8d2a8"}}>📜 Open in Lore</button>
+      </>);}
+  }else if(sel&&sel.kind==="terrain"){
+    const t=BARONY_TERRAIN.find(x=>"t:"+x.id===sel.id);
+    if(t)popup=(<><div style={{fontFamily:"Cinzel",fontSize:15,color:"var(--gold3)",marginBottom:2}}>{t.name}</div><div style={{fontFamily:"Cinzel",fontSize:9,color:"#b89a68",letterSpacing:".08em",marginBottom:8}}>TERRAIN</div><p style={{fontSize:13.5,lineHeight:1.55}}>{t.desc}</p></>);
+  }
+
+  return(<div style={{position:"relative",width:"100%",height:"100%"}}>
+    <PlaceMap canvas={canvas} shapes={shapes} focusRing={focus?focus.polyCoords:null} pins={pins} zones={zones}
+      onShapeClick={onShapeClick} onPinClick={onPinClick} onMapClick={()=>setSel(null)}/>
+    {/* breadcrumb */}
+    <div style={{position:"absolute",top:12,left:58,right:12,zIndex:1000,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",pointerEvents:"none"}}>
+      {(cur||focus)&&<button className="btn act" onClick={back} style={{fontSize:12,pointerEvents:"all",background:"rgba(20,12,4,0.9)"}}>← Back</button>}
+      {crumbs.map((c,i)=>{const last=i===crumbs.length-1;return(<React.Fragment key={i}>
+        {i>0&&<span style={{color:"var(--gold3)",fontSize:12,textShadow:"0 1px 3px #000"}}>›</span>}
+        <span className={`sf-crumb${last?" cur":""}`} style={{pointerEvents:"all"}} onClick={()=>{if(!last&&c.to)go(c.to,c.fade);}}>{c.label}</span>
+      </React.Fragment>);})}
+      {isDM&&<span style={{fontFamily:"Cinzel",fontSize:10,color:"#ff9999",background:"rgba(80,0,0,0.85)",padding:"3px 8px",borderRadius:3,border:"1px solid rgba(255,100,100,0.4)"}}>⚔ DM VIEW — red dashed = hidden from players</span>}
+    </div>
+    {popup&&<div className="sf-panel" style={{position:"absolute",right:14,bottom:14,zIndex:1100,width:300,maxWidth:"calc(100% - 28px)"}}>
+      <button onClick={()=>setSel(null)} style={{position:"absolute",top:8,right:10,background:"none",border:"none",color:"#b89a68",cursor:"pointer",fontSize:16}}>✕</button>
+      {popup}
+    </div>}
+    <div style={{position:"absolute",inset:0,background:"black",opacity:fade?1:0,transition:"opacity .45s ease",pointerEvents:fade?"all":"none",zIndex:2000,borderRadius:8}}/>
+  </div>);
+}
+
+/* ════ IMAGE CUT-OUT: removes the white background around icons/heraldry ════ */
+function loadImgFile(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=e.target.result;};r.onerror=rej;r.readAsDataURL(file);});}
+// Flood-fill the white that touches the edges. White *inside* an icon (walls, signs) is kept.
+function edgeBackground(d,w,h,thr){
+  const bg=new Uint8Array(w*h);const st=new Int32Array(w*h);let sp=0;
+  const near=i=>{const o=i*4;return d[o+3]<24||(d[o]>=thr&&d[o+1]>=thr&&d[o+2]>=thr);};
+  const push=i=>{if(!bg[i]&&near(i)){bg[i]=1;st[sp++]=i;}};
+  for(let x=0;x<w;x++){push(x);push((h-1)*w+x);}
+  for(let y=0;y<h;y++){push(y*w);push(y*w+w-1);}
+  while(sp){const i=st[--sp];const x=i%w;if(x>0)push(i-1);if(x<w-1)push(i+1);if(i>=w)push(i-w);if(i<w*(h-1))push(i+w);}
+  return bg;
+}
+// Copy part of the sheet to a transparent PNG
+function cutBox(srcCtx,bg,W,box,maxOut){
+  const{x,y,w,h}=box;
+  const id=srcCtx.getImageData(x,y,w,h);const d=id.data;
+  for(let yy=0;yy<h;yy++)for(let xx=0;xx<w;xx++){
+    const gi=(y+yy)*W+(x+xx),o=(yy*w+xx)*4;
+    if(bg[gi]){d[o+3]=0;continue;}
+    // soften the edge where the icon meets removed background
+    const edge=(xx>0&&bg[gi-1])||(xx<w-1&&bg[gi+1])||(yy>0&&bg[gi-W])||(yy<h-1&&bg[gi+W]);
+    if(edge&&(d[o]+d[o+1]+d[o+2])/3>205)d[o+3]=110;
+  }
+  const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").putImageData(id,0,0);
+  const sc=Math.min(1,maxOut/Math.max(w,h));
+  const o=document.createElement("canvas");o.width=Math.max(1,Math.round(w*sc));o.height=Math.max(1,Math.round(h*sc));
+  const octx=o.getContext("2d");octx.imageSmoothingQuality="high";octx.drawImage(c,0,0,o.width,o.height);
+  return o.toDataURL("image/png");
+}
+function sheetCanvas(img,maxSide){
+  const sc=Math.min(1,maxSide/Math.max(img.width,img.height));
+  const w=Math.max(1,Math.round(img.width*sc)),h=Math.max(1,Math.round(img.height*sc));
+  const c=document.createElement("canvas");c.width=w;c.height=h;
+  const ctx=c.getContext("2d",{willReadFrequently:true});ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);
+  return{ctx,w,h};
+}
+// A single picture (heraldry, one icon): remove the white around it and crop tight
+async function cutoutFile(file,maxOut){
+  const img=await loadImgFile(file);const{ctx,w,h}=sheetCanvas(img,1200);
+  const bg=edgeBackground(ctx.getImageData(0,0,w,h).data,w,h,228);
+  let minx=w,miny=h,maxx=-1,maxy=-1;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(!bg[y*w+x]){if(x<minx)minx=x;if(x>maxx)maxx=x;if(y<miny)miny=y;if(y>maxy)maxy=y;}
+  if(maxx<0)return null;
+  return cutBox(ctx,bg,w,{x:minx,y:miny,w:maxx-minx+1,h:maxy-miny+1},maxOut||300);
+}
+// A whole sheet: find every icon separated by white space
+async function extractIcons(file){
+  const img=await loadImgFile(file);const{ctx,w,h}=sheetCanvas(img,2400);
+  const bg=edgeBackground(ctx.getImageData(0,0,w,h).data,w,h,228);
+  const C=4,gw=Math.ceil(w/C),gh=Math.ceil(h/C);
+  const g=new Uint8Array(gw*gh);
+  for(let y=0;y<h;y++){const r=((y/C)|0)*gw;for(let x=0;x<w;x++)if(!bg[y*w+x])g[r+((x/C)|0)]=1;}
+  const gd=new Uint8Array(gw*gh);const R=1;
+  for(let y=0;y<gh;y++)for(let x=0;x<gw;x++)if(g[y*gw+x])for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){const yy=y+dy,xx=x+dx;if(yy>=0&&yy<gh&&xx>=0&&xx<gw)gd[yy*gw+xx]=1;}
+  const lab=new Int32Array(gw*gh);let n=0;const boxes=[];
+  for(let i=0;i<gw*gh;i++){
+    if(!gd[i]||lab[i])continue;n++;
+    let minx=1e9,miny=1e9,maxx=-1,maxy=-1;const st=[i];lab[i]=n;
+    while(st.length){const j=st.pop();const x=j%gw,y=(j/gw)|0;
+      if(g[j]){if(x<minx)minx=x;if(x>maxx)maxx=x;if(y<miny)miny=y;if(y>maxy)maxy=y;}
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=gw||yy>=gh)continue;const k=yy*gw+xx;if(gd[k]&&!lab[k]){lab[k]=n;st.push(k);}}}
+    if(maxx>=0)boxes.push({x:minx*C,y:miny*C,w:Math.min(w-minx*C,(maxx-minx+1)*C),h:Math.min(h-miny*C,(maxy-miny+1)*C)});
+  }
+  const minSide=Math.max(28,Math.min(w,h)*0.035);
+  const looksLikeText=b=>b.w>b.h*3.2||(b.h<minSide*1.4&&b.w>b.h*1.8);
+  // trim a label stuck just above/below an icon (separated by a thin white line)
+  const rowHas=(b,y)=>{for(let x=b.x;x<b.x+b.w;x++)if(!bg[y*w+x])return true;return false;};
+  const trim=b=>{
+    const rows=[];for(let y=b.y;y<b.y+b.h;y++)rows.push(rowHas(b,y));
+    const runs=[];let s=-1;rows.forEach((r,i)=>{if(r&&s<0)s=i;if(!r&&s>=0){runs.push([s,i]);s=-1;}});if(s>=0)runs.push([s,rows.length]);
+    if(runs.length<2)return b;
+    let big=runs.reduce((a,r)=>r[1]-r[0]>a[1]-a[0]?r:a,runs[0]);
+    if((big[1]-big[0])<b.h*0.55)return b;
+    return{...b,y:b.y+big[0],h:big[1]-big[0]};
+  };
+  const out=boxes.filter(b=>b.w>=minSide&&b.h>=minSide&&!looksLikeText(b)).map(trim)
+    .sort((a,b)=>Math.abs(a.y-b.y)>Math.min(a.h,b.h)*0.5?a.y-b.y:a.x-b.x)
+    .map(b=>{const p=3,x=Math.max(0,b.x-p),y=Math.max(0,b.y-p);return{box:{x,y,w:Math.min(w-x,b.w+2*p),h:Math.min(h-y,b.h+2*p)}};});
+  return out.slice(0,60).map(o=>({url:cutBox(ctx,bg,w,o.box,220)}));
+}
+async function loadMapImage(file){
+  const url=await compressImage(file,2200,0.82);
+  const dims=await new Promise(r=>{const i=new Image();i.onload=()=>r({w:i.naturalWidth,h:i.naturalHeight});i.onerror=()=>r({w:4,h:3});i.src=url;});
+  return{mapImage:url,mapW:1400,mapH:Math.round(1400*dims.h/dims.w)};
+}
+// Hide an entry from players but keep everything inside it ready to show when it's revealed
+function hideKeepContent(e){
+  if(e.reveal)return{...e,reveal:{...e.reveal,entry:false},_ts:Date.now()};
+  const fields={};[...PHYS_FIELDS.map(x=>x[1]),"portrait","heraldry","hoverLore","threatLevel","tags"].forEach(f=>{fields[f]=true;});
+  const spans={};REVEAL_TEXT_FIELDS.forEach(f=>{if((e[f]||"").length)spans[f]=[[0,e[f].length]];});
+  return{...e,reveal:{entry:false,fields,spans},_ts:Date.now()};
+}
+const toggleEntryVisible=e=>entryVisible(e)?hideKeepContent(e):{...e,reveal:{...e.reveal,entry:true},_ts:Date.now()};
+
+const checker={backgroundColor:"#d9cfbd",backgroundImage:"linear-gradient(45deg,#c6baa4 25%,transparent 25%),linear-gradient(-45deg,#c6baa4 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#c6baa4 75%),linear-gradient(-45deg,transparent 75%,#c6baa4 75%)",backgroundSize:"14px 14px",backgroundPosition:"0 0,0 7px,7px -7px,-7px 0"};
+
+/* ════ ICON SHEET TOOL ════ */
+function IconSheetTool({barony,settlements,onSave,onClose}){
+  const [busy,setBusy]=useState(false);const [found,setFound]=useState(null);const [err,setErr]=useState("");
+  const pick=async e=>{
+    const f=e.target.files&&e.target.files[0];if(!f)return;setBusy(true);setErr("");
+    try{const icons=await extractIcons(f);if(!icons.length)setErr("No icons found. Make sure the sheet has a white background with a gap between icons.");setFound(icons.map((ic,i)=>({...ic,key:i,assign:"new",name:""})));}
+    catch(x){setErr("Couldn't read that image.");}
+    setBusy(false);
+  };
+  const upd=(k,patch)=>setFound(fs=>fs.map(f=>f.key===k?{...f,...patch}:f));
+  const count=found?found.filter(f=>f.assign!=="skip").length:0;
+  return(<div style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <div style={{background:"#241010",border:"2px solid rgba(220,90,90,0.5)",borderRadius:10,width:"min(980px,100%)",maxHeight:"92vh",display:"flex",flexDirection:"column",boxShadow:"0 10px 50px rgba(0,0,0,0.7)"}}>
+      <div style={{padding:"14px 18px",borderBottom:"1px solid rgba(220,90,90,0.3)",display:"flex",alignItems:"center",gap:10}}>
+        <div style={{flex:1}}><div style={{fontFamily:"Cinzel",fontSize:15,color:"#ffb4b4",letterSpacing:".06em"}}>Upload icon sheet — {barony.name}</div>
+        <div style={{fontSize:12.5,color:"rgba(255,200,200,0.65)",marginTop:2}}>Upload one picture with all your icons on a white background (leave a little white gap between them). Each icon is cut out with a transparent background, then you choose which settlement it belongs to.</div></div>
+        <button className="sf-dm-btn" onClick={onClose}>✕ Close</button>
+      </div>
+      <div style={{padding:16,overflowY:"auto",flex:1}}>
+        {!found&&<label className="sf-dm-btn go" style={{display:"inline-block",fontSize:13,padding:"10px 18px"}}>{busy?"Cutting out icons…":"📥 Choose icon sheet"}<input type="file" accept="image/*" style={{display:"none"}} onChange={pick} disabled={busy}/></label>}
+        {err&&<p style={{color:"#ff9f8f",marginTop:10}}>{err}</p>}
+        {found&&found.length>0&&<>
+          <p style={{fontSize:13,color:"rgba(255,210,210,0.75)",marginBottom:12}}>Found {found.length} icon{found.length===1?"":"s"}. Name each one or match it to an existing settlement. Bin anything that isn't an icon.</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:12}}>
+            {found.map(f=><div key={f.key} style={{background:"rgba(60,10,10,0.5)",border:`1px solid ${f.assign==="skip"?"rgba(255,255,255,0.08)":"rgba(220,90,90,0.4)"}`,borderRadius:6,padding:8,opacity:f.assign==="skip"?0.45:1}}>
+              <div style={{...checker,height:120,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:8}}><img src={f.url} alt="" style={{maxWidth:"100%",maxHeight:112}}/></div>
+              <select value={f.assign} onChange={e=>upd(f.key,{assign:e.target.value})} className="sf-dm-input" style={{fontSize:12,marginBottom:6,padding:"4px 6px"}}>
+                <option value="new">➕ New settlement</option>
+                {settlements.map(s=><option key={s.id} value={String(s.id)}>Use for: {s.name||"Unnamed"}</option>)}
+                <option value="skip">🗑 Bin this</option>
+              </select>
+              {f.assign==="new"&&<input value={f.name} onChange={e=>upd(f.key,{name:e.target.value})} placeholder="Settlement name…" className="sf-dm-input" style={{fontSize:12,padding:"4px 6px"}}/>}
+            </div>)}
+          </div>
+        </>}
+      </div>
+      {found&&found.length>0&&<div style={{padding:"12px 18px",borderTop:"1px solid rgba(220,90,90,0.3)",display:"flex",gap:8,justifyContent:"flex-end",alignItems:"center"}}>
+        <span style={{fontSize:12,color:"rgba(255,200,200,0.6)",flex:1}}>New settlements start hidden from players and off the map — use 📍 Place to put them on it.</span>
+        <button className="sf-dm-btn" onClick={()=>setFound(null)}>↺ Different sheet</button>
+        <button className="sf-dm-btn go" disabled={!count} onClick={()=>onSave(found.filter(f=>f.assign!=="skip"))}>✓ Save {count} icon{count===1?"":"s"}</button>
+      </div>}
+    </div>
+  </div>);
+}
+
+/* ════ DM: MAP CONTROL ════ */
+function MapControl({lore,setLore,onOpenOverview}){
+  useCleanIcons();
+  const places=getPlaces(lore);
+  const sets=lore.settlements||[];
+  const [selId,setSelId]=useState(null);
+  const [tab,setTab]=useState("map");
+  const [draw,setDraw]=useState(null);      // {mode:"new",parentId} | {mode:"border",id}
+  const [pendingRing,setPendingRing]=useState(null);
+  const [newName,setNewName]=useState("");
+  const [note,setNote]=useState("");
+  const [placing,setPlacing]=useState(null);
+  const [openSet,setOpenSet]=useState(null);
+  const [sheet,setSheet]=useState(false);
+  const [addingSet,setAddingSet]=useState(false);const [newSetName,setNewSetName]=useState("");
+  const [busy,setBusy]=useState("");
+  const P=placeById(places,selId);
+  useEffect(()=>{if(selId!=null&&!P)setSelId(null);},[P,selId]);
+  useEffect(()=>{setDraw(null);setPendingRing(null);setPlacing(null);setNote("");setAddingSet(false);},[selId]);
+  useEffect(()=>{if(!note)return;const t=setTimeout(()=>setNote(""),6000);return()=>clearTimeout(t);},[note]);
+
+  const updEntry=(sec,id,fn)=>setLore(prev=>({...prev,[sec]:(prev[sec]||[]).map(e=>String(e.id)===String(id)?fn(e):e)}));
+  const updPlace=(id,patch)=>updEntry("regions",id,e=>({...e,...patch,_ts:Date.now()}));
+  const updSet=(id,patch)=>updEntry("settlements",id,e=>({...e,...patch,_ts:Date.now()}));
+  const childrenOf=pid=>places.filter(p=>sameParent(p,pid));
+  const typeOf=placeType;
+
+  /* ── tree ── */
+  const renderNode=(p,depth)=>{
+    const on=String(selId)===String(p.id);const hidden=!placeVisible(places,p,false);
+    return(<React.Fragment key={p.id}>
+      <div onClick={()=>setSelId(p.id)} style={{padding:`7px 8px 7px ${10+depth*16}px`,cursor:"pointer",display:"flex",alignItems:"center",gap:6,fontSize:12.5,fontFamily:"Crimson Pro",
+        background:on?"rgba(139,26,26,0.55)":"transparent",borderLeft:on?"3px solid #ff7a7a":"3px solid transparent",color:hidden?"#ff9a8a":"#ffd8d8"}}>
+        <span>{PLACE_TYPES[typeOf(p)].icon}</span>
+        <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"Unnamed"}</span>
+        {!hasRing(p)&&<span title="No border drawn yet" style={{fontSize:10,opacity:.7}}>✏</span>}
+        <span title={hidden?"Hidden from players":"Visible to players"} style={{fontSize:10}}>{hidden?"🙈":"👁"}</span>
+      </div>
+      {childrenOf(p.id).map(c=>renderNode(c,depth+1))}
+    </React.Fragment>);
   };
 
-  useEffect(()=>{
-    if(leafletRef.current){leafletRef.current.remove();leafletRef.current=null;}
-    const L=window.L;
-    const el=mapRef.current;
-    if(!el)return;
+  /* ── drawing ── */
+  const startNew=parentId=>{setDraw({mode:"new",parentId});setPendingRing(null);setNewName("");setNote("");};
+  const ctxFor=d=>{
+    if(!d)return null;
+    if(d.mode==="new")return drawContext(places,d.parentId,null);
+    const X=placeById(places,d.id);return X?drawContext(places,X.parentId,X.id):null;
+  };
+  const dctx=ctxFor(draw);
+  const snap=ring=>{
+    const r=clipRing(ring,{rect:dctx.info,within:dctx.within,avoid:dctx.sibs.map(s=>s.polyCoords)});
+    if(!r.ring){setNote("That border would sit completely outside the area it belongs to (or on top of a neighbour). Try again.");return null;}
+    if(!r.clipped)setNote("Border saved as drawn (the snapping helper didn't load — check your internet).");
+    return r.ring;
+  };
+  const onDrawDone=ring=>{
+    const r=snap(ring);if(!r)return;
+    if(draw.mode==="border"){updPlace(draw.id,{polyCoords:r});setDraw(null);setNote("Border updated.");return;}
+    setPendingRing(r);
+  };
+  const createPlace=()=>{
+    if(!pendingRing||!newName.trim())return;
+    const par=placeById(places,draw.parentId);
+    const type=par?(PLACE_TYPES[typeOf(par)].child||"barony"):"kingdom";
+    const e={...EMPTY_ENTRY(),id:"place_"+Date.now(),name:newName.trim(),placeType:type,parentId:par?par.id:null,polyCoords:pendingRing,
+      reveal:{entry:false,fields:{heraldry:true},spans:{}},_ts:Date.now()};
+    setLore(prev=>({...prev,regions:[...(prev.regions||[]),e]}));
+    setDraw(null);setPendingRing(null);setNewName("");
+    setNote(`${PLACE_TYPES[type].label} "${e.name}" created — it's hidden from players until you reveal it.`);
+  };
 
-    const W=1400,H=1050;
-    const map=L.map(el,{
-      crs:L.CRS.Simple,minZoom:-1,maxZoom:2,zoomSnap:0.25,
-      attributionControl:false,zoomControl:true,
-      center:[H/2,W/2],zoom:0,
-    });
-    leafletRef.current=map;
+  /* ── which map to show ── */
+  let spec;
+  if(draw&&dctx){
+    const editing=draw.mode==="border"?draw.id:null;
+    spec={canvas:dctx.info,
+      focus:dctx.within||null,
+      shapes:[...dctx.sibs.map(s=>({id:s.id,ring:s.polyCoords,label:s.name,state:"faint",clickable:false})),
+        ...(editing&&hasRing(placeById(places,editing))?[{id:"cur",ring:placeById(places,editing).polyCoords,state:"editing",clickable:false}]:[]),
+        ...(pendingRing?[{id:"new",ring:pendingRing,state:"editing",clickable:false}]:[])],
+      draw:!pendingRing};
+  }else if(!P){
+    spec={canvas:canvasInfo(null),shapes:childrenOf(null).filter(hasRing).map(p=>({id:p.id,ring:p.polyCoords,label:p.name,state:placeVisible(places,p,false)?"normal":"hidden",shield:imgSrc(p.heraldry)||PLACE_TYPES[typeOf(p)].icon}))};
+  }else{
+    const t=typeOf(P);
+    if(t==="kingdom")spec={canvas:canvasInfo(P),shapes:childrenOf(P.id).filter(hasRing).map(p=>({id:p.id,ring:p.polyCoords,label:p.name,state:placeVisible(places,p,false)?"normal":"hidden"}))};
+    else if(t==="region"){const cv=canvasOf(places,P);spec={canvas:canvasInfo(cv),focus:hasRing(P)?P.polyCoords:null,shapes:childrenOf(P.id).filter(hasRing).map(p=>({id:p.id,ring:p.polyCoords,label:p.name,state:placeVisible(places,p,false)?"normal":"hidden"}))};}
+    else{
+      const mine=sets.filter(s=>sameParent({parentId:s.placeId},P.id));
+      spec={canvas:canvasInfo(P),barony:true,
+        pins:mine.filter(s=>s.mapX!=null).map(s=>{const ic=settlementIcon(s);return{id:s.id,lat:s.mapY,lng:s.mapX,img:ic.img,blend:ic.blend,hidden:!entryVisible(s),selected:String(openSet)===String(s.id),draggable:true,tip:`<b>${escHtml(s.name)}</b>${s.hoverLore?"<br/>"+escHtml(s.hoverLore.slice(0,160)):""}`};}),
+        zones:P.mapId==="barony"&&!imgSrc(P.mapImage)?BARONY_TERRAIN.map(z=>({id:"t:"+z.id,lat:1050-z.iy,lng:z.ix,label:z.name})):[]};
+    }
+  }
 
-    // Base map image - always the blank Oghill Barony map
-    L.imageOverlay(BARONY_MAP_IMG,[[0,0],[H,W]],{opacity:1,zIndex:1}).addTo(map);
-
-    const clearRing=()=>{
-      if(activeRingRef.current){activeRingRef.current.remove();activeRingRef.current=null;}
-    };
-
-    // Place settlements
-    BARONY_SETTLEMENTS.forEach(s=>{
-      const isRevealed=isDM||(revealed[s.id]||s.revealed);
-      if(!isRevealed)return;
-
-      const ll=[H-s.iy,s.ix];
-
-      // Place icon image if available
-      if(s.icon&&BARONY_ICONS[s.icon]){
-        const iconW=110,iconH=82;
-        L.imageOverlay(BARONY_ICONS[s.icon],
-          [[H-s.iy-iconH/2,s.ix-iconW/2],[H-s.iy+iconH/2,s.ix+iconW/2]],
-          {opacity:isDM&&!(revealed[s.id]||s.revealed)?0.45:1,zIndex:10,interactive:false}
-        ).addTo(map);
-      }
-
-      // Invisible click zone - NO floating label
-      const zone=L.circleMarker(ll,{
-        radius:36,color:'transparent',fillColor:'transparent',
-        fillOpacity:0,weight:0,interactive:true,zIndex:20,
-      }).addTo(map);
-
-      zone.on('mouseover',()=>zone.setStyle({color:'rgba(255,255,255,0.4)',weight:1.5}));
-      zone.on('mouseout',()=>zone.setStyle({color:'transparent',weight:0}));
-      zone.on('click',e=>{
-        L.DomEvent.stopPropagation(e);
-        clearRing();
-        activeRingRef.current=L.circleMarker(ll,{
-          radius:48,color:'white',weight:2.5,fill:false,opacity:0.9,zIndex:30,
-        }).addTo(map);
-        setPopup({...s,isRevealed:revealed[s.id]||s.revealed});
+  const onShapeClick=id=>{if(!draw)setSelId(id);};
+  const onMapClick=ll=>{
+    if(placing!=null){updSet(placing,{mapY:Math.round(ll[0]),mapX:Math.round(ll[1])});setPlacing(null);setNote("Placed. Drag the icon to fine-tune.");}
+  };
+  const uploadMap=async(e,id)=>{
+    const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
+    setBusy("Uploading map…");try{const m=await loadMapImage(f);updPlace(id,m);setNote("Map uploaded.");}catch(x){setNote("Couldn't read that image.");}setBusy("");
+  };
+  const uploadHeraldry=async(e,id)=>{
+    const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
+    setBusy("Removing background…");const url=await cutoutFile(f,300).catch(()=>null);setBusy("");if(url)updPlace(id,{heraldry:url});
+  };
+  const uploadSetIcon=async(e,id)=>{
+    const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
+    setBusy("Removing background…");const url=await cutoutFile(f,220).catch(()=>null);setBusy("");if(url)updSet(id,{iconImg:url,iconKey:null});
+  };
+  const saveSheet=items=>{
+    setLore(prev=>{
+      let list=[...(prev.settlements||[])];
+      items.forEach((it,i)=>{
+        if(it.assign==="new"){list.push({...EMPTY_ENTRY(),id:"set_"+Date.now()+"_"+i,name:(it.name||"").trim()||"Unnamed settlement",placeId:P.id,iconImg:it.url,mapX:null,mapY:null,hoverLore:"",
+          reveal:{entry:false,fields:{hoverLore:true,portrait:true},spans:{}},_ts:Date.now()});}
+        else list=list.map(s=>String(s.id)===it.assign?{...s,iconImg:it.url,iconKey:null,_ts:Date.now()}:s);
       });
+      return{...prev,settlements:list};
     });
+    setSheet(false);setTab("map");setNote(`${items.length} icon${items.length===1?"":"s"} saved.`);
+  };
+  const addSettlement=()=>{
+    if(!newSetName.trim())return;
+    const e={...EMPTY_ENTRY(),id:"set_"+Date.now(),name:newSetName.trim(),placeId:P.id,mapX:null,mapY:null,hoverLore:"",reveal:{entry:false,fields:{hoverLore:true,portrait:true},spans:{}},_ts:Date.now()};
+    setLore(prev=>({...prev,settlements:[...(prev.settlements||[]),e]}));
+    setNewSetName("");setAddingSet(false);setOpenSet(e.id);
+  };
+  const delPlace=()=>{
+    if(childrenOf(P.id).length){alert("Move or delete what's inside this first.");return;}
+    if(!confirm(`Delete ${P.name}? Its border, map and wiki page will be removed.`))return;
+    setLore(prev=>({...prev,regions:(prev.regions||[]).filter(p=>String(p.id)!==String(P.id)),settlements:(prev.settlements||[]).map(s=>String(s.placeId)===String(P.id)?{...s,placeId:null}:s)}));
+    setSelId(P.parentId!=null?P.parentId:null);
+  };
+  const delSet=s=>{if(!confirm(`Delete ${s.name}? Its wiki entry is removed too.`))return;setLore(prev=>({...prev,settlements:(prev.settlements||[]).filter(x=>String(x.id)!==String(s.id))}));};
 
-    // Terrain click zones - no floating labels
-    BARONY_TERRAIN.forEach(t=>{
-      const ll=[H-t.iy,t.ix];
-      const zone=L.circleMarker(ll,{
-        radius:40,color:'transparent',fillColor:'transparent',
-        fillOpacity:0,weight:0,interactive:true,
-      }).addTo(map);
-      zone.on('click',e=>{
-        L.DomEvent.stopPropagation(e);
-        clearRing();
-        setPopup({...t,type:'terrain',isRevealed:true});
-      });
-    });
+  /* ── panel bits ── */
+  const lbl={fontFamily:"Cinzel",fontSize:10,color:"rgba(255,170,170,0.65)",letterSpacing:".07em",marginBottom:4};
+  const t=P?typeOf(P):null;
+  const childType=P?PLACE_TYPES[t].child:"kingdom";
+  const parentOptions=P?places.filter(x=>{
+    if(String(x.id)===String(P.id))return false;
+    if(ancestorsOf(places,x).some(a=>String(a.id)===String(P.id)))return false;
+    const xt=typeOf(x);return t==="region"?xt==="kingdom":t==="barony"?(xt==="region"||xt==="kingdom"):false;
+  }):[];
+  const mapNeedsUpload=P&&(t==="kingdom"||t==="barony")&&!canvasInfo(P);
+  const mine=P&&t==="barony"?sets.filter(s=>sameParent({parentId:s.placeId},P.id)):[];
 
-    map.on('click',()=>{setPopup(null);clearRing();});
-    return()=>{if(leafletRef.current){leafletRef.current.remove();leafletRef.current=null;}};
-  },[isDM,JSON.stringify(revealed)]);
+  const drawButtons=!draw&&<>
+    {(!P||(t!=="barony"&&!mapNeedsUpload&&(t!=="region"||hasRing(P))))&&<button className="sf-dm-btn" onClick={()=>startNew(P?P.id:null)}>✏ Draw a new {PLACE_TYPES[childType].label.toLowerCase()}</button>}
+    {P&&<button className="sf-dm-btn" onClick={()=>{if(!drawContext(places,P.parentId,P.id).info){setNote("The map this border goes on hasn't been uploaded yet.");return;}setDraw({mode:"border",id:P.id});}}>✏ {hasRing(P)?"Redraw":"Draw"} {P.name}'s border</button>}
+  </>;
 
-  return(<div style={{position:'relative',width:'100%',height:'100%'}}>
-    {/* Black fade transition overlay */}
-    <div style={{position:'absolute',inset:0,background:'black',opacity:transitioning?1:0,transition:'opacity 0.5s ease',pointerEvents:transitioning?'all':'none',zIndex:2000}}/>
-    <div style={{position:'absolute',top:12,left:12,zIndex:1000,display:'flex',gap:8,alignItems:'center'}}>
-      <button className='btn act' onClick={onBack} style={{fontSize:12}}>← World Map</button>
-      <div style={{fontFamily:'Cinzel',fontSize:13,color:'var(--gold3)',background:'rgba(20,12,4,0.85)',padding:'4px 12px',borderRadius:4,border:'1px solid var(--gold2)'}}>Oghill Barony</div>
-      {isDM&&<div style={{fontFamily:'Cinzel',fontSize:10,color:'#ff9999',background:'rgba(80,0,0,0.85)',padding:'3px 8px',borderRadius:3,border:'1px solid rgba(255,100,100,0.4)'}}>⚔ DM VIEW</div>}
+  return(<div style={{display:"flex",height:"100%",gap:12,flexWrap:"wrap"}}>
+    {sheet&&P&&<IconSheetTool barony={P} settlements={mine} onSave={saveSheet} onClose={()=>setSheet(false)}/>}
+    {/* tree */}
+    <div style={{width:230,flex:"0 0 230px",background:"rgba(60,0,0,0.3)",border:"1px solid rgba(200,50,50,0.25)",borderRadius:6,overflowY:"auto",maxHeight:"100%"}}>
+      <div style={{...lbl,padding:"10px 12px 4px"}}>THE REALM</div>
+      <div onClick={()=>setSelId(null)} style={{padding:"8px 10px",cursor:"pointer",fontSize:13,display:"flex",gap:6,background:selId==null?"rgba(139,26,26,0.55)":"transparent",borderLeft:selId==null?"3px solid #ff7a7a":"3px solid transparent",color:"#ffd8d8",fontFamily:"Cinzel",letterSpacing:".03em"}}>🌍 World Map</div>
+      {childrenOf(null).map(p=>renderNode(p,1))}
+      <div style={{fontSize:11,color:"rgba(255,170,170,0.45)",padding:"10px 12px",lineHeight:1.5}}>👁 visible · 🙈 hidden · ✏ no border yet</div>
     </div>
 
-    <div ref={mapRef} style={{width:'100%',height:'100%',borderRadius:8}}/>
+    {/* panel */}
+    <div style={{flex:"1 1 420px",minWidth:0,display:"flex",flexDirection:"column",gap:10,minHeight:0}}>
+      {/* header */}
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        {P?<>
+          <span style={{fontSize:20}}>{PLACE_TYPES[t].icon}</span>
+          <ShInput value={P.name} onCommit={v=>v.trim()&&updPlace(P.id,{name:v.trim()})} className="" style={{fontFamily:"Cinzel",fontSize:18,color:"#ffb4b4",background:"transparent",border:"none",borderBottom:"1px solid rgba(255,120,120,0.4)",outline:"none",minWidth:120,flex:"1 1 160px",padding:"2px 0"}}/>
+          <span style={{fontFamily:"Cinzel",fontSize:10,color:"rgba(255,170,170,0.6)",letterSpacing:".08em"}}>{PLACE_TYPES[t].label.toUpperCase()}</span>
+          <button className={`sf-dm-btn${entryVisible(P)?" go":""}`} onClick={()=>updEntry("regions",P.id,toggleEntryVisible)}>{entryVisible(P)?"👁 Revealed to players":"🙈 Hidden — click to reveal"}</button>
+          <button className="sf-dm-btn" onClick={delPlace} title="Delete">🗑</button>
+        </>:<>
+          <span style={{fontSize:20}}>🌍</span>
+          <span style={{fontFamily:"Cinzel",fontSize:18,color:"#ffb4b4",flex:1}}>World Map</span>
+        </>}
+      </div>
+      {P&&entryVisible(P)&&!placeVisible(places,P,false)&&<div style={{fontSize:12,color:"#ffb08a"}}>Players still can't see this — something it's inside is hidden.</div>}
+      {/* tabs */}
+      {P&&<div style={{display:"flex",borderBottom:"1px solid rgba(200,50,50,0.3)",flexWrap:"wrap"}}>
+        <button className={`sf-tab${tab==="map"?" on":""}`} onClick={()=>setTab("map")}>Map</button>
+        {t==="barony"&&<button className={`sf-tab${tab==="sets"?" on":""}`} onClick={()=>setTab("sets")}>Settlements ({mine.length})</button>}
+        <button className={`sf-tab${tab==="lore"?" on":""}`} onClick={()=>setTab("lore")}>Lore</button>
+      </div>}
+      {(note||busy)&&<div style={{fontSize:12.5,color:busy?"#ffe0a0":"#b8f0b8",background:"rgba(0,0,0,0.3)",padding:"5px 10px",borderRadius:4}}>{busy||note}</div>}
 
-    {popup&&<div className='map-lore-popup' style={{bottom:80,right:20,maxWidth:280}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
-        <div>
-          <h3 style={{fontFamily:'Cinzel',fontSize:14,color:'var(--gold3)',letterSpacing:'0.05em'}}>{popup.name}</h3>
-          <div style={{fontSize:9,color:'var(--ink3)',fontFamily:'Cinzel',letterSpacing:'0.06em',marginTop:2}}>
-            {popup.type==='terrain'?'TERRAIN':'SETTLEMENT'}
-            {isDM&&!popup.isRevealed&&<span style={{color:'#ff9999',marginLeft:6}}>● HIDDEN</span>}
+      {/* MAP TAB */}
+      {(!P||tab==="map")&&<>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          {drawButtons}
+          {P&&(t==="kingdom"||t==="barony")&&canvasInfo(P)&&!draw&&<label className="sf-dm-btn">🖼 Replace {t} map<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadMap(e,P.id)}/></label>}
+          {P&&t==="barony"&&canvasInfo(P)&&!draw&&<button className="sf-dm-btn" onClick={()=>setSheet(true)}>⬆ Upload icon sheet</button>}
+          {placing!=null&&<span style={{fontSize:12.5,color:"#bfe9ff"}}>Click the map where {(sets.find(s=>String(s.id)===String(placing))||{}).name} goes… <button className="sf-dm-btn" onClick={()=>setPlacing(null)}>Cancel</button></span>}
+        </div>
+        {pendingRing&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",background:"rgba(10,20,30,0.6)",border:"1px solid #7fd4ff",borderRadius:6,padding:"8px 10px"}}>
+          <span style={{fontFamily:"Cinzel",fontSize:11,color:"#bfe9ff"}}>Name this {PLACE_TYPES[(placeById(places,draw.parentId)?PLACE_TYPES[typeOf(placeById(places,draw.parentId))].child:"kingdom")].label.toLowerCase()}:</span>
+          <input autoFocus value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")createPlace();}} className="sf-dm-input" style={{width:200}} placeholder="Name…"/>
+          <button className="sf-dm-btn go" onClick={createPlace} disabled={!newName.trim()}>✓ Create</button>
+          <button className="sf-dm-btn" onClick={()=>{setPendingRing(null);}}>↺ Redraw</button>
+          <button className="sf-dm-btn" onClick={()=>{setPendingRing(null);setDraw(null);}}>✕ Cancel</button>
+        </div>}
+        {mapNeedsUpload&&!draw?<div style={{flex:1,minHeight:280,border:"2px dashed rgba(220,90,90,0.4)",borderRadius:8,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,padding:20,textAlign:"center"}}>
+          <div style={{fontFamily:"Cinzel",color:"#ffb4b4",fontSize:14}}>Upload the {t} map for {P.name}</div>
+          <div style={{fontSize:13,color:"rgba(255,200,200,0.6)",maxWidth:420}}>{t==="kingdom"?"After uploading you can draw this kingdom's regions on it.":"After uploading you can place this barony's settlement icons on it."}</div>
+          <label className="sf-dm-btn go" style={{fontSize:13,padding:"9px 18px"}}>📥 Upload map<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadMap(e,P.id)}/></label>
+        </div>
+        :P&&t==="region"&&!draw&&!spec.canvas?<div style={{padding:20,color:"#ffb4b4"}}>Upload a map for the kingdom this region is in first.</div>
+        :<div style={{flex:"1 1 360px",minHeight:320,position:"relative"}}>
+          <PlaceMap canvas={spec.canvas} shapes={spec.shapes} focusRing={spec.focus} pins={spec.pins} zones={spec.zones}
+            onShapeClick={onShapeClick} onPinClick={id=>{if(!String(id).startsWith("t:")){setOpenSet(id);setTab("sets");}}} onPinMove={(id,ll)=>updSet(id,{mapY:ll[0],mapX:ll[1]})}
+            onMapClick={onMapClick} cursor={placing!=null}
+            draw={spec.draw} onDrawDone={onDrawDone} onDrawCancel={()=>{setDraw(null);setPendingRing(null);}}
+            drawHint={draw?(draw.mode==="border"?"Click around the edge to redraw the border — it snaps inside its parent and against neighbours":"Click around the edge — it snaps inside its parent and against neighbours"):""}/>
+        </div>}
+        {P&&t==="barony"&&canvasInfo(P)&&!draw&&mine.some(s=>s.mapX==null)&&<div style={{fontSize:12.5,color:"rgba(255,200,200,0.75)"}}>
+          Not on the map yet: {mine.filter(s=>s.mapX==null).map(s=><button key={s.id} className="sf-dm-btn" style={{margin:"2px 4px",padding:"3px 8px"}} onClick={()=>setPlacing(s.id)}>📍 {s.name}</button>)}
+        </div>}
+        {!P&&<div style={{fontSize:12.5,color:"rgba(255,200,200,0.6)"}}>Draw each kingdom's border on the world map, then pick it in the list to upload its map and draw its regions.</div>}
+      </>}
+
+      {/* SETTLEMENTS TAB */}
+      {P&&t==="barony"&&tab==="sets"&&<div style={{overflowY:"auto",display:"flex",flexDirection:"column",gap:6,paddingBottom:20}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {addingSet?<><input autoFocus value={newSetName} onChange={e=>setNewSetName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addSettlement();if(e.key==="Escape")setAddingSet(false);}} className="sf-dm-input" style={{width:220}} placeholder="Settlement name…"/>
+            <button className="sf-dm-btn go" onClick={addSettlement}>✓ Add</button><button className="sf-dm-btn" onClick={()=>setAddingSet(false)}>✕</button></>
+          :<button className="sf-dm-btn" onClick={()=>setAddingSet(true)}>+ Add settlement</button>}
+          <button className="sf-dm-btn" onClick={()=>setSheet(true)}>⬆ Upload icon sheet</button>
+        </div>
+        {mine.length===0&&<div style={{color:"rgba(255,180,180,0.5)",fontStyle:"italic",padding:10}}>No settlements yet.</div>}
+        {mine.map(s=>{const ic=settlementIcon(s);const open=String(openSet)===String(s.id);const vis=entryVisible(s);
+          return(<div key={s.id} style={{background:"rgba(60,0,0,0.3)",border:`1px solid ${open?"rgba(255,120,120,0.5)":"rgba(200,50,50,0.2)"}`,borderRadius:6}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",flexWrap:"wrap"}}>
+              <div style={{...checker,width:48,height:36,borderRadius:3,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{ic.img?<img src={ic.img} alt="" style={{maxWidth:46,maxHeight:34,mixBlendMode:ic.blend?"multiply":"normal"}}/>:<span>🏠</span>}</div>
+              <span style={{flex:"1 1 120px",fontFamily:"Cinzel",fontSize:12.5,color:vis?"#ffe0e0":"#ff9a8a",letterSpacing:".03em"}}>{s.name||"Unnamed"}</span>
+              <button className={`sf-dm-btn${vis?" go":""}`} onClick={()=>updEntry("settlements",s.id,toggleEntryVisible)}>{vis?"👁 Revealed":"🙈 Hidden"}</button>
+              <button className="sf-dm-btn" onClick={()=>{setPlacing(s.id);setTab("map");}}>📍 {s.mapX==null?"Place":"Move"}</button>
+              <button className="sf-dm-btn" onClick={()=>setOpenSet(open?null:s.id)}>{open?"▴":"▾"} Lore</button>
+            </div>
+            {open&&<div style={{padding:"4px 12px 12px",display:"flex",flexDirection:"column",gap:8}}>
+              <div>
+                <div style={{...lbl,display:"flex",alignItems:"center",gap:6}}>SHOWN WHEN YOU HOVER OVER IT ON THE MAP
+                  <button className="sf-dm-btn" style={{padding:"1px 6px",fontSize:10}} onClick={()=>updEntry("settlements",s.id,e=>({...e,reveal:{...(e.reveal||{entry:true,spans:{}}),fields:{...((e.reveal||{}).fields||{}),hoverLore:!fieldVisible(e,"hoverLore")}},_ts:Date.now()}))}>
+                    {fieldVisible(s,"hoverLore")?"👁 players can read it":"🙈 hidden from players"}</button></div>
+                <ShTextarea value={s.hoverLore||""} onCommit={v=>updEntry("settlements",s.id,e=>applyEntryField(e,"hoverLore",v))} className="sf-dm-input" style={{minHeight:70,resize:"vertical",lineHeight:1.5}} placeholder="A line or two players see when hovering the icon…"/>
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <label className="sf-dm-btn">🖼 Change icon<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadSetIcon(e,s.id)}/></label>
+                {s.mapX!=null&&<button className="sf-dm-btn" onClick={()=>updSet(s.id,{mapX:null,mapY:null})}>Take off map</button>}
+                <button className="sf-dm-btn" onClick={()=>onOpenOverview&&onOpenOverview("settlements",s.id)}>📜 Full lore & reveals in Overview</button>
+                <button className="sf-dm-btn" onClick={()=>delSet(s)}>🗑 Delete</button>
+              </div>
+            </div>}
+          </div>);})}
+      </div>}
+
+      {/* LORE TAB */}
+      {P&&tab==="lore"&&<div style={{overflowY:"auto",display:"flex",flexDirection:"column",gap:12,paddingBottom:20}}>
+        <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+          <div>
+            <div style={lbl}>HERALDRY</div>
+            <div style={{...checker,width:110,height:110,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
+              {imgSrc(P.heraldry)?<img src={imgSrc(P.heraldry)} alt="" style={{maxWidth:100,maxHeight:100}}/>:<span style={{fontSize:30}}>{PLACE_TYPES[t].icon}</span>}
+              <label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.65)",color:"#ffd8d8",fontSize:10,textAlign:"center",padding:3,cursor:"pointer",fontFamily:"Cinzel"}}>Upload<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadHeraldry(e,P.id)}/></label>
+            </div>
+            <div style={{fontSize:11,color:"rgba(255,180,180,0.5)",marginTop:4,maxWidth:120}}>White background is removed automatically</div>
+          </div>
+          <div style={{flex:"1 1 220px",display:"flex",flexDirection:"column",gap:8}}>
+            <div><div style={lbl}>TYPE</div>
+              <select className="sf-dm-input" value={t} onChange={e=>updPlace(P.id,{placeType:e.target.value})}>{Object.entries(PLACE_TYPES).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}</select></div>
+            {t!=="kingdom"&&<div><div style={lbl}>BELONGS TO</div>
+              <select className="sf-dm-input" value={P.parentId==null?"":String(P.parentId)} onChange={e=>updPlace(P.id,{parentId:e.target.value===""?null:(placeById(places,e.target.value)||{}).id})}>
+                <option value="">— Nothing (drawn on the world map) —</option>
+                {parentOptions.map(o=><option key={o.id} value={String(o.id)}>{PLACE_TYPES[typeOf(o)].icon} {o.name}</option>)}
+              </select>
+              <div style={{fontSize:11,color:"rgba(255,180,180,0.5)",marginTop:3}}>If you move it, redraw its border on the new map.</div></div>}
           </div>
         </div>
-        <button onClick={()=>setPopup(null)} style={{background:'none',border:'none',color:'var(--ink3)',cursor:'pointer',fontSize:16}}>✕</button>
+        <div><div style={lbl}>DESCRIPTION</div>
+          <ShTextarea value={P.description||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"description",v))} className="sf-dm-input" style={{minHeight:100,resize:"vertical",lineHeight:1.55}} placeholder="Shown in the map popup once revealed…"/></div>
+        <div><div style={lbl}>FURTHER LORE</div>
+          <ShTextarea value={P.lore||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"lore",v))} className="sf-dm-input" style={{minHeight:140,resize:"vertical",lineHeight:1.55}} placeholder="History, rulers, rumours…"/></div>
+        <div style={{fontSize:12.5,color:"rgba(255,200,200,0.7)"}}>New text starts hidden from players. Reveal it piece by piece in Overview.
+          <button className="sf-dm-btn" style={{marginLeft:8}} onClick={()=>onOpenOverview&&onOpenOverview("regions",P.id)}>📜 Open in Overview</button></div>
+      </div>}
+    </div>
+  </div>);
+}
+
+/* ════ DM: PRIVATE NOTEPAD ════ */
+function DMPrivateLore({dmLore,setDmLore}){
+  const [selId,setSelId]=useState(null);
+  const [adding,setAdding]=useState(false);
+  const [newTitle,setNewTitle]=useState("");
+  const notes=Object.values(dmLore||{}).sort((a,b)=>String(b.id).localeCompare(String(a.id)));
+  const selNote=selId?dmLore[selId]:null;
+  const addNote=()=>{
+    if(!newTitle.trim())return;
+    const id="dm_"+Date.now();
+    setDmLore(prev=>({...prev,[id]:{id,title:newTitle.trim(),content:""}}));
+    setSelId(id);setNewTitle("");setAdding(false);
+  };
+  const updNote=(f,v)=>setDmLore(prev=>prev[selId]?({...prev,[selId]:{...prev[selId],[f]:v}}):prev);
+  return(<div style={{display:"flex",gap:14,height:"100%",flexWrap:"wrap"}}>
+    <div style={{width:220,flex:"0 0 220px",display:"flex",flexDirection:"column",gap:6,overflowY:"auto",maxHeight:"100%"}}>
+      <div style={{fontFamily:"Cinzel",fontSize:11,color:"rgba(255,150,150,0.6)",letterSpacing:"0.06em"}}>DM NOTEPAD — only you see this</div>
+      {adding?<div style={{display:"flex",gap:4}}>
+        <input autoFocus value={newTitle} onChange={e=>setNewTitle(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addNote();if(e.key==="Escape")setAdding(false);}} placeholder="Note title…" className="sf-dm-input" style={{fontSize:13}}/>
+        <button className="sf-dm-btn go" onClick={addNote} disabled={!newTitle.trim()}>✓</button>
+        <button className="sf-dm-btn" onClick={()=>setAdding(false)}>✕</button>
+      </div>:<button className="sf-dm-btn" onClick={()=>setAdding(true)} style={{fontSize:13,padding:"7px"}}>+ New note</button>}
+      {notes.map(n=><div key={n.id} onClick={()=>setSelId(n.id)} style={{padding:"8px 10px",borderRadius:4,cursor:"pointer",background:selId===n.id?"rgba(139,26,26,0.5)":"rgba(80,0,0,0.2)",border:`1px solid ${selId===n.id?"rgba(200,50,50,0.5)":"rgba(200,50,50,0.15)"}`,fontFamily:"Cinzel",fontSize:11.5,color:"#ffb4b4",letterSpacing:"0.03em"}}>{n.title||"Untitled"}</div>)}
+      {!notes.length&&!adding&&<div style={{fontSize:12,color:"rgba(255,150,150,0.4)",fontStyle:"italic"}}>No notes yet.</div>}
+    </div>
+    <div style={{flex:"1 1 300px",display:"flex",flexDirection:"column",gap:10,minHeight:300}}>
+      {selNote?<>
+        <ShInput value={selNote.title||""} onCommit={v=>updNote("title",v)} className="" style={{fontFamily:"Cinzel",fontSize:16,color:"#ff9999",letterSpacing:"0.05em",background:"transparent",border:"none",borderBottom:"1px solid rgba(200,50,50,0.4)",padding:"4px 0",outline:"none"}}/>
+        <textarea value={selNote.content||""} onChange={e=>updNote("content",e.target.value)} placeholder="Ideas, plot threads, things to remember…"
+          style={{flex:1,fontFamily:"Crimson Pro,serif",background:"rgba(60,0,0,0.3)",border:"1px solid rgba(200,50,50,0.3)",color:"#ffcccc",borderRadius:6,padding:12,fontSize:15,outline:"none",resize:"none",lineHeight:1.7,minHeight:260}}/>
+        <div><button className="sf-dm-btn" onClick={()=>{if(confirm("Delete this note?")){setDmLore(prev=>{const n={...prev};delete n[selId];return n;});setSelId(null);}}}>🗑 Delete note</button></div>
+      </>:<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:"rgba(255,150,150,0.35)",fontFamily:"Cinzel",fontSize:13}}>Select a note or press + New note</div>}
+    </div>
+  </div>);
+}
+
+/* ════ DM TAB ════ */
+const DM_PASSWORD="HarveysBalls";
+function DMTab({data,setData,lore,setLore,onAuth,characters}){
+  const [authed,setAuthed]=useState(()=>sessionStorage.getItem("sf_dm")==="1");
+  const [pw,setPw]=useState("");const [pwErr,setPwErr]=useState(false);
+  const [active,setActive]=useState("overview");
+  const [target,setTarget]=useState(null);
+  const tryLogin=()=>{
+    if(pw===DM_PASSWORD){sessionStorage.setItem("sf_dm","1");setAuthed(true);onAuth&&onAuth(true);}
+    else{setPwErr(true);setTimeout(()=>setPwErr(false),1500);}
+  };
+  if(!authed)return(<div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--dark)",padding:16}}>
+    <div style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:10,padding:32,width:340,maxWidth:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
+      <h2 style={{fontFamily:"Cinzel",fontSize:18,color:"var(--gold)",marginBottom:6,letterSpacing:"0.08em"}}>⚔ DM Access</h2>
+      <p style={{fontSize:13,color:"var(--ink2)",marginBottom:20,lineHeight:1.6}}>Enter the DM password to access campaign master controls.</p>
+      <input type="password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&tryLogin()} placeholder="Password..." autoFocus
+        style={{fontFamily:"Crimson Pro,serif",background:pwErr?"rgba(139,26,26,0.1)":"var(--parch2)",border:`1px solid ${pwErr?"var(--red)":"var(--border2)"}`,color:"var(--ink)",borderRadius:4,padding:"8px 12px",width:"100%",fontSize:14,outline:"none",marginBottom:12}}/>
+      {pwErr&&<p style={{color:"var(--red)",fontSize:12,marginBottom:10}}>Incorrect password.</p>}
+      <button onClick={tryLogin} style={{fontFamily:"Cinzel",background:"var(--gold2)",color:"var(--dark)",border:"none",borderRadius:5,padding:"10px 24px",fontSize:13,cursor:"pointer",width:"100%",letterSpacing:"0.06em"}}>Enter →</button>
+    </div>
+  </div>);
+  const dmLore=data.dmLore||{};
+  const setDmLore=fn=>setData(d=>({...d,dmLore:typeof fn==="function"?fn(d.dmLore||{}):fn}));
+  const openOverview=(s,id)=>{setTarget({s,id,n:Date.now()});setActive("overview");};
+  const SECS=[{id:"overview",label:"Overview",icon:"📊"},{id:"map",label:"Map Control",icon:"🗺"},{id:"lore",label:"DM Lore",icon:"📖"}];
+  return(<div style={{display:"flex",height:"100%",background:"var(--dark)"}}>
+    <div style={{width:170,background:"rgba(40,0,0,0.9)",borderRight:"2px solid rgba(200,50,50,0.4)",display:"flex",flexDirection:"column",flexShrink:0}}>
+      <div style={{padding:"12px 14px",borderBottom:"1px solid rgba(200,50,50,0.3)"}}>
+        <div style={{fontFamily:"Cinzel",fontSize:13,color:"#ff9999",letterSpacing:"0.08em"}}>⚔ DM MODE</div>
+        <div style={{fontSize:10,color:"rgba(255,150,150,0.5)",marginTop:2}}>Josh only</div>
       </div>
-      <p style={{fontSize:13,color:'rgba(240,220,180,0.85)',lineHeight:1.6,marginBottom:10}}>{popup.desc||'No description yet.'}</p>
-      {isDM&&popup.id&&popup.type!=='terrain'&&<>
-        {!(popup.isRevealed)
-          ?<button className='btn act' onClick={()=>{setRevealed(popup.id,true);setPopup(null);}} style={{width:'100%',fontSize:11,padding:'5px',background:'rgba(0,100,0,0.3)',borderColor:'rgba(100,200,100,0.5)',color:'#90ee90'}}>
-            ✓ Reveal to Players
-          </button>
-          :<button className='btn' onClick={()=>{setRevealed(popup.id,false);setPopup(null);}} style={{width:'100%',fontSize:11,padding:'5px',color:'#ff9999',borderColor:'rgba(255,100,100,0.4)'}}>
-            ✕ Hide from Players
-          </button>}
-      </>}
-    </div>}
+      {SECS.map(s=><div key={s.id} onClick={()=>setActive(s.id)} style={{padding:"11px 14px",cursor:"pointer",fontSize:12,fontFamily:"Cinzel",letterSpacing:"0.04em",color:active===s.id?"#ffaaaa":"rgba(255,150,150,0.6)",background:active===s.id?"rgba(139,26,26,0.4)":"transparent",borderLeft:active===s.id?"3px solid #ff6666":"3px solid transparent",display:"flex",alignItems:"center",gap:8}}><span>{s.icon}</span><span>{s.label}</span></div>)}
+      <div style={{flex:1}}/>
+      <button onClick={()=>{sessionStorage.removeItem("sf_dm");setAuthed(false);onAuth&&onAuth(false);}} style={{margin:10,fontFamily:"Cinzel",background:"transparent",border:"1px solid rgba(255,100,100,0.3)",color:"rgba(255,150,150,0.6)",borderRadius:4,padding:"6px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>🔒 Lock DM</button>
+    </div>
+    <div style={{flex:1,minWidth:0,overflow:"hidden",background:"rgba(20,5,5,0.95)",padding:active==="overview"?0:14}}>
+      {active==="overview"&&<LorePanel lore={lore} setLore={setLore} characters={characters} readOnly={false} dmMode={true} openTarget={target}/>}
+      {active==="map"&&<MapControl lore={lore} setLore={setLore} onOpenOverview={openOverview}/>}
+      {active==="lore"&&<DMPrivateLore dmLore={dmLore} setDmLore={setDmLore}/>}
+    </div>
   </div>);
 }
 
