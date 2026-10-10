@@ -9,7 +9,7 @@ const jsx = fs.readFileSync('src/App.jsx', 'utf8');
 
 // Transpile with Babel
 const result = babel.transformSync(jsx, {
-  presets: ['@babel/preset-react'],
+  presets: [['@babel/preset-react', { runtime: 'classic', development: false }]],
   plugins: ['@babel/plugin-transform-class-properties'],
   retainLines: false,
 });
