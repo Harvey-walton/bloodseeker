@@ -115,6 +115,137 @@ async function saveIcon(sb,name,imgData){
   await dbUpsert(sb,`sf_asset_icon_${name}`,{img:imgData});
 }
 
+/* ════ LIVE SYNC (v2) ════
+   Every lore entry, character, image and setting is its own row (id "sf2_...").
+   Changes are pushed automatically ~0.7s after an edit and arrive on everyone
+   else's screen through Supabase Realtime (with polling as a backup).
+   Row data is wrapped: {v: payload, by: clientId, at: time} or {del:true} for removed items. */
+const CLIENT_ID=Math.random().toString(36).slice(2)+Date.now().toString(36);
+function stableStr(v){
+  if(v===undefined||v===null)return "null";
+  if(typeof v!=="object")return JSON.stringify(v);
+  if(Array.isArray(v))return "["+v.map(stableStr).join(",")+"]";
+  return "{"+Object.keys(v).filter(k=>v[k]!==undefined).sort().map(k=>JSON.stringify(k)+":"+stableStr(v[k])).join(",")+"}";
+}
+// app data  ->  logical docs
+function docsFromData(data){
+  const docs={};const lore=data.lore||{};
+  Object.keys(lore).forEach(sec=>{
+    if(sec==="__customSections"){docs["sf2_meta:sections"]=lore.__customSections||[];return;}
+    const arr=lore[sec]||[];
+    docs["sf2_order:"+sec]=arr.map(e=>String(e.id));
+    arr.forEach(e=>{docs["sf2_lore:"+sec+":"+e.id]=e;});
+  });
+  const chars=data.characters||[];
+  docs["sf2_order:__chars"]=chars.map(c=>String(c.id));
+  chars.forEach(c=>{docs["sf2_char:"+c.id]=c;});
+  Object.keys(data).forEach(k=>{if(k!=="lore"&&k!=="characters"&&data[k]!==undefined)docs["sf2_top:"+k]=data[k];});
+  return docs;
+}
+// logical docs  ->  app data
+function dataFromDocs(docs){
+  const lore={},chars=[],data={},orders={};
+  Object.keys(docs).forEach(id=>{
+    const v=docs[id];if(v===null||v===undefined)return;
+    if(id==="sf2_meta:sections")lore.__customSections=v;
+    else if(id.indexOf("sf2_order:")===0)orders[id.slice(10)]=v;
+    else if(id.indexOf("sf2_lore:")===0){const r=id.slice(9);const sec=r.slice(0,r.indexOf(":"));(lore[sec]=lore[sec]||[]).push(v);}
+    else if(id.indexOf("sf2_char:")===0)chars.push(v);
+    else if(id.indexOf("sf2_top:")===0)data[id.slice(8)]=v;
+  });
+  const sortBy=(arr,ord)=>{const pos={};(ord||[]).forEach((x,i)=>{pos[x]=i;});const P=x=>(String(x.id) in pos)?pos[String(x.id)]:1e9;return arr.slice().sort((a,b)=>P(a)-P(b));};
+  Object.keys(orders).forEach(sec=>{if(sec!=="__chars"&&!lore[sec])lore[sec]=[];});
+  Object.keys(lore).forEach(sec=>{if(sec!=="__customSections")lore[sec]=sortBy(lore[sec],orders[sec]);});
+  data.lore=lore;
+  data.characters=sortBy(chars,orders.__chars);
+  return data;
+}
+// Big pictures (portraits, heraldry, maps) live in their own rows so updates stay small
+const IMG_MIN=4000;
+function splitImages(docs){
+  const out={};
+  Object.keys(docs).forEach(id=>{
+    const v=docs[id];
+    if(v&&typeof v==="object"&&!Array.isArray(v)&&(id.indexOf("sf2_lore:")===0||id.indexOf("sf2_char:")===0)){
+      let copy=null;
+      Object.keys(v).forEach(k=>{const x=v[k];if(typeof x==="string"&&x.indexOf("data:")===0&&x.length>IMG_MIN){copy=copy||{...v};copy[k]="@img";out["sf2_img:"+k+":"+id]=x;}});
+      out[id]=copy||v;
+    }else out[id]=v;
+  });
+  return out;
+}
+function joinImages(phys){
+  const out={},imgs=[];
+  Object.keys(phys).forEach(id=>{if(id.indexOf("sf2_img:")===0)imgs.push(id);else out[id]=phys[id];});
+  imgs.forEach(id=>{const r=id.slice(8);const i=r.indexOf(":");const f=r.slice(0,i),owner=r.slice(i+1);
+    if(out[owner]&&typeof out[owner]==="object")out[owner]={...out[owner],[f]:phys[id]};});
+  return out;
+}
+const physFromData=d=>splitImages(docsFromData(d));
+const dataFromPhys=P=>dataFromDocs(joinImages(P));
+const imgSrc=v=>(v&&v!=="@img")?v:null; // "@img" = picture still downloading
+
+async function sbUpsertRows(sb,rows,keepalive){
+  if(!rows.length)return;
+  const body=JSON.stringify(rows);
+  for(let attempt=1;attempt<=3;attempt++){
+    try{
+      const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),45000);
+      const r=await fetch(`${sb.url}/rest/v1/campaign`,{method:"POST",headers:sbH(sb,{"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"}),body,signal:ctrl.signal,keepalive:!!keepalive&&body.length<60000});
+      clearTimeout(t);if(r.ok)return;
+      const txt=await r.text().catch(()=>"");
+      if(attempt===3)throw new Error(`Save failed (${r.status}) ${txt.slice(0,150)}`);
+    }catch(e){if(attempt===3)throw e;}
+    await new Promise(res=>setTimeout(res,1200*attempt));
+  }
+}
+async function sbFetchDocs(sb,since){
+  let out=[],offset=0;
+  for(;;){
+    const q=`${sb.url}/rest/v1/campaign?select=id,data,updated_at&id=like.sf2_*&order=updated_at.asc,id.asc&limit=200&offset=${offset}`+(since?`&updated_at=gt.${encodeURIComponent(since)}`:"");
+    const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),45000);
+    const r=await fetch(q,{headers:sbH(sb),signal:ctrl.signal});clearTimeout(t);
+    if(!r.ok)throw new Error("Load failed "+r.status);
+    const rows=await r.json();out=out.concat(rows);
+    if(rows.length<200)break;offset+=200;
+  }
+  return out;
+}
+async function sbFetchDoc(sb,id){
+  const r=await fetch(`${sb.url}/rest/v1/campaign?select=id,data,updated_at&id=eq.${encodeURIComponent(id)}`,{headers:sbH(sb)});
+  if(!r.ok)return null;const rows=await r.json();return rows[0]||null;
+}
+// Supabase Realtime over a plain websocket (Phoenix protocol)
+function connectRealtime(sb,onRow,onStatus){
+  let ws=null,hb=null,ref=0,closed=false,retry=0;
+  const base=sb.url.replace(/^http/,"ws");
+  const open=()=>{
+    try{ws=new WebSocket(`${base}/realtime/v1/websocket?apikey=${encodeURIComponent(sb.key)}&vsn=1.0.0`);}catch(e){onStatus("poll");return;}
+    ws.onopen=()=>{
+      retry=0;
+      const payload={config:{broadcast:{self:false},presence:{key:""},postgres_changes:[{event:"*",schema:"public",table:"campaign"}]}};
+      if(sb.key&&sb.key.indexOf("eyJ")===0)payload.access_token=sb.key;
+      ws.send(JSON.stringify({topic:"realtime:sf-campaign",event:"phx_join",payload,ref:String(++ref),join_ref:"1"}));
+      hb=setInterval(()=>{try{ws.send(JSON.stringify({topic:"phoenix",event:"heartbeat",payload:{},ref:String(++ref)}));}catch(e){}},25000);
+    };
+    ws.onmessage=e=>{
+      let m;try{m=JSON.parse(e.data);}catch(err){return;}
+      if(m.topic!=="realtime:sf-campaign")return;
+      if(m.event==="phx_reply")onStatus(m.payload&&m.payload.status==="ok"?"live":"poll");
+      else if(m.event==="system"&&m.payload)onStatus(m.payload.status==="ok"?"live":"poll");
+      else if(m.event==="phx_error"||m.event==="phx_close")onStatus("poll");
+      else if(m.event==="postgres_changes"&&m.payload&&m.payload.data){
+        const d=m.payload.data;const rec=d.record||d.old_record||{};
+        onRow(rec.id,d.type,d.record?d.record.data:undefined,rec.updated_at);
+      }
+    };
+    ws.onclose=()=>{clearInterval(hb);onStatus("poll");if(!closed)setTimeout(open,Math.min(30000,2000*(++retry)));};
+    ws.onerror=()=>{};
+  };
+  open();
+  return()=>{closed=true;clearInterval(hb);try{ws&&ws.close();}catch(e){}};
+}
+
 const LOCAL="sf_v1";
 const localLoad=()=>{try{const r=localStorage.getItem(LOCAL);return r?JSON.parse(r):null}catch{return null}};
 const localSave=d=>{try{localStorage.setItem(LOCAL,JSON.stringify(d))}catch{}};
@@ -162,28 +293,102 @@ const ShTextarea=memo(({value,onCommit,placeholder,className,style})=>{
   return <textarea ref={ref} defaultValue={value||""} onBlur={e=>onCommit(e.target.value)} placeholder={placeholder||""} className={className||"sh-input-box"} style={style}/>;
 });
 
-/* ════ LORE PANEL ════ */
-const LoreVF=memo(({label,value,field,multi,height,editMode,onCommit})=>{
-  if(!editMode&&!(value||"").trim())return null;
+/* ════ LAYERED REVEAL SYSTEM ════
+   An entry with a `reveal` object is DM-controlled:
+     reveal.entry      -> players can see the entry at all
+     reveal.fields[f]  -> single attributes (eye icon)
+     reveal.spans[f]   -> [[start,end],...] revealed character ranges of long text fields
+   Entries WITHOUT `reveal` are fully public (player-made / older entries). */
+const PHYS_FIELDS=[["Race / Species","raceSp"],["Age","age"],["Eye Colour","eyeColour"],["Hair Colour","hairColour"],["Build","build"],["Clothing","clothing"],["Voice / Accent","voiceAccent"],["Personality","personality"],["Goal or Secret","goalSecret"]];
+const REVEAL_TEXT_FIELDS=["description","lore","abilities","tactics","relationships","featsWithParty","keyEvents"];
+const HIDDEN_RED="#a3241e";
+const isControlled=e=>!!(e&&e.reveal);
+const entryVisible=e=>!e||!e.reveal||!!e.reveal.entry;
+const fieldVisible=(e,f)=>!e||!e.reveal||!!(e.reveal.fields&&e.reveal.fields[f]);
+function normSpans(sp,len){
+  const a=(sp||[]).map(([x,y])=>[Math.max(0,x),len==null?y:Math.min(len,y)]).filter(([x,y])=>y>x).sort((m,n)=>m[0]-n[0]);
+  const out=[];a.forEach(r=>{const l=out[out.length-1];if(l&&r[0]<=l[1])l[1]=Math.max(l[1],r[1]);else out.push([r[0],r[1]]);});
+  return out;
+}
+const addSpan=(sp,a,b)=>normSpans([...(sp||[]),[a,b]]);
+function subSpan(sp,a,b){
+  const out=[];(sp||[]).forEach(([x,y])=>{if(y<=a||x>=b){out.push([x,y]);return;}if(x<a)out.push([x,a]);if(y>b)out.push([b,y]);});
+  return normSpans(out);
+}
+// Keep reveals attached to the right words when Josh edits the text.
+// Edits strictly inside a revealed passage stay revealed; new text anywhere else starts hidden.
+function remapSpans(sp,oldT,newT){
+  if(!sp||!sp.length)return sp||[];
+  oldT=oldT||"";newT=newT||"";
+  const m=Math.min(oldT.length,newT.length);
+  let p=0;while(p<m&&oldT[p]===newT[p])p++;
+  let q=0;while(q<m-p&&oldT[oldT.length-1-q]===newT[newT.length-1-q])q++;
+  const oEnd=oldT.length-q,d=newT.length-oldT.length;
+  const out=[];
+  sp.forEach(([x,y])=>{
+    if(x<p&&y>oEnd){out.push([x,y+d]);return;}
+    if(x<p)out.push([x,Math.min(y,p)]);
+    if(y>oEnd)out.push([Math.max(x,oEnd)+d,y+d]);
+  });
+  return normSpans(out,newT.length);
+}
+// What players see: only the revealed pieces, in order
+function visibleText(t,sp){
+  t=t||"";let out="",lastEnd=null;
+  normSpans(sp,t.length).forEach(([x,y])=>{
+    const piece=t.slice(x,y).trim();if(!piece)return;
+    if(out){const gap=t.slice(lastEnd,x);out+=gap.includes("\n")?"\n":gap.trim()===""?" ":" … ";}
+    out+=piece;lastEnd=y;
+  });
+  return out;
+}
+const EyeBtn=({on,onClick,size})=>(<button title={on?"Visible to players — click to hide":"Hidden from players — click to reveal"}
+  onMouseDown={e=>e.preventDefault()} onClick={onClick}
+  style={{background:on?"rgba(60,140,60,0.15)":"rgba(163,36,30,0.12)",border:`1px solid ${on?"rgba(60,140,60,0.5)":"rgba(163,36,30,0.45)"}`,borderRadius:3,cursor:"pointer",fontSize:size||10,lineHeight:1,padding:"1px 4px",marginLeft:5,verticalAlign:"middle"}}>{on?"👁":"🙈"}</button>);
+
+// DM view of a long text field: revealed text normal, hidden text red. Josh highlights text here to reveal it.
+const RevealTextField=memo(({label,text,spans,field})=>{
+  text=text||"";if(!text.trim())return null;
+  const sp=normSpans(spans,text.length);
+  const segs=[];let pos=0;
+  sp.forEach(([x,y])=>{if(x>pos)segs.push([pos,x,false]);segs.push([x,y,true]);pos=y;});
+  if(pos<text.length)segs.push([pos,text.length,false]);
+  const any=sp.length>0;
+  const all=any&&segs.every(([x,y,r])=>r||!text.slice(x,y).trim());
   return(<div style={{marginBottom:12}}>
-    <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>{label.toUpperCase()}</div>
+    <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>
+      {label.toUpperCase()} <span style={{color:all?"#3c8c3c":any?"var(--gold)":HIDDEN_RED}}>· {all?"REVEALED":any?"PARTLY REVEALED":"HIDDEN"}</span>
+    </div>
+    <p data-reveal-field={field} style={{fontSize:15,lineHeight:1.7,fontFamily:"Crimson Pro",whiteSpace:"pre-wrap",cursor:"text"}}>
+      {segs.map(([x,y,r],i)=><span key={i} style={{color:r?"var(--ink)":HIDDEN_RED,background:r?"rgba(196,154,48,0.14)":"transparent"}}>{text.slice(x,y)}</span>)}
+    </p>
+  </div>);
+});
+
+/* ════ LORE PANEL ════ */
+const LoreVF=memo(({label,value,field,multi,height,editMode,onCommit,eyeState,onEye})=>{
+  if(!editMode&&!(value||"").trim())return null;
+  const hasEye=eyeState!==undefined&&!editMode;
+  return(<div style={{marginBottom:12}}>
+    <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>{label.toUpperCase()}{hasEye&&<EyeBtn on={eyeState} onClick={()=>onEye(field)}/>}</div>
     {editMode?(multi
       ?<ShTextarea value={value||""} onCommit={v=>onCommit(field,v)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 9px",fontSize:14,width:"100%",resize:"vertical",minHeight:height||80,lineHeight:1.6,outline:"none"}}/>
       :<ShInput value={value||""} onCommit={v=>onCommit(field,v)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 9px",fontSize:14,width:"100%",outline:"none"}} className=""/>)
-      :<p style={{fontSize:15,color:"var(--ink)",lineHeight:1.7,fontFamily:"Crimson Pro",whiteSpace:"pre-wrap"}}>{value}</p>}
+      :<p style={{fontSize:15,color:hasEye&&!eyeState?HIDDEN_RED:"var(--ink)",lineHeight:1.7,fontFamily:"Crimson Pro",whiteSpace:"pre-wrap"}}>{value}</p>}
   </div>);
 });
 
-const LoreIF=memo(({label,value,field,editMode,onCommit})=>{
+const LoreIF=memo(({label,value,field,editMode,onCommit,eyeState,onEye})=>{
   if(!editMode&&!(value||"").trim())return null;
+  const hasEye=eyeState!==undefined&&!editMode;
   return(<div style={{flex:"1 1 120px"}}>
-    <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>{label.toUpperCase()}</div>
+    <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>{label.toUpperCase()}{hasEye&&<EyeBtn on={eyeState} onClick={()=>onEye(field)}/>}</div>
     {editMode?<ShInput value={value||""} onCommit={v=>onCommit(field,v)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"4px 7px",fontSize:13,width:"100%",outline:"none"}} className=""/>
-      :<div style={{fontSize:14,color:"var(--ink)",fontFamily:"Crimson Pro"}}>{value||"—"}</div>}
+      :<div style={{fontSize:14,color:hasEye&&!eyeState?HIDDEN_RED:"var(--ink)",fontFamily:"Crimson Pro"}}>{value||"—"}</div>}
   </div>);
 });
 
-function LorePanel({lore,setLore,characters,readOnly}){
+function LorePanel({lore,setLore,characters,readOnly,isDM}){
   const [allSections,setAllSections]=useState(()=>{
     const custom=lore.__customSections||[];
     return[...DEFAULT_SECTIONS,...custom];
@@ -201,18 +406,67 @@ function LorePanel({lore,setLore,characters,readOnly}){
   const [showAddSection,setShowAddSection]=useState(false);
   const [newSectionName,setNewSectionName]=useState("");
   const dragId=useRef(null);
+  const [previewPlayer,setPreviewPlayer]=useState(false);
+  const [hasSel,setHasSel]=useState(false);
+  const detailRef=useRef(null);
+  const dmView=!!isDM&&!readOnly&&!previewPlayer;
 
   const selItem=sel.s?lore[sel.s]&&lore[sel.s].find(i=>i.id===sel.id):null;
-  useEffect(()=>{setLocal(selItem?{...selItem}:null);},[sel.s,sel.id]);
+  useEffect(()=>{setLocal(selItem?{...selItem}:null);},[sel.s,sel.id,selItem]);
+  useEffect(()=>{if(!isDM&&selItem&&!entryVisible(selItem)){setSel({s:null,id:null});setLocal(null);}},[isDM,selItem]);
 
+  // Apply a field edit; keeps revealed passages attached to the right words
+  const applyField=(i,field,value)=>{
+    const n={...i,[field]:value};
+    if(i.reveal&&REVEAL_TEXT_FIELDS.includes(field)&&(i[field]||"")!==(value||"")){
+      const spans=(i.reveal.spans||{});
+      n.reveal={...i.reveal,spans:{...spans,[field]:remapSpans(spans[field],i[field],value)}};
+    }
+    if(i.reveal)n._ts=Date.now();
+    return n;
+  };
   const commitField=useCallback((field,value)=>{
-    setLore(prev=>({...prev,[sel.s]:prev[sel.s].map(i=>i.id===sel.id?{...i,[field]:value}:i)}));
-    setLocal(prev=>prev?{...prev,[field]:value}:prev);
+    setLore(prev=>({...prev,[sel.s]:prev[sel.s].map(i=>i.id===sel.id?applyField(i,field,value):i)}));
+    setLocal(prev=>prev?applyField(prev,field,value):prev);
   },[sel.s,sel.id,setLore]);
+  // Change the reveal state of the selected entry
+  const updReveal=useCallback(fn=>{
+    const ap=i=>({...i,reveal:fn(i.reveal||{entry:false,fields:{},spans:{}}),_ts:Date.now()});
+    setLore(prev=>({...prev,[sel.s]:prev[sel.s].map(i=>i.id===sel.id?ap(i):i)}));
+    setLocal(prev=>prev?ap(prev):prev);
+  },[sel.s,sel.id,setLore]);
+  const toggleField=useCallback(f=>updReveal(r=>({...r,fields:{...(r.fields||{}),[f]:!(r.fields&&r.fields[f])}})),[updReveal]);
+
+  // Work out which text Josh has highlighted, per field, as character ranges
+  const getSelSpans=()=>{
+    const ws=window.getSelection();
+    if(!ws||ws.rangeCount===0||ws.isCollapsed||!detailRef.current)return null;
+    const r=ws.getRangeAt(0);const out={};
+    detailRef.current.querySelectorAll("[data-reveal-field]").forEach(el=>{
+      if(!r.intersectsNode(el))return;
+      const off=(node,o)=>{const rr=document.createRange();rr.selectNodeContents(el);rr.setEnd(node,o);return rr.toString().length;};
+      const a=el.contains(r.startContainer)?off(r.startContainer,r.startOffset):0;
+      const b=el.contains(r.endContainer)?off(r.endContainer,r.endOffset):el.textContent.length;
+      if(b>a)out[el.getAttribute("data-reveal-field")]=[a,b];
+    });
+    return Object.keys(out).length?out:null;
+  };
+  useEffect(()=>{
+    if(!dmView)return;
+    const h=()=>setHasSel(!!getSelSpans());
+    document.addEventListener("selectionchange",h);
+    return()=>document.removeEventListener("selectionchange",h);
+  },[dmView,sel.id]);
+  const applySelection=reveal=>{
+    const ss=getSelSpans();if(!ss)return;
+    updReveal(r=>{const spans={...(r.spans||{})};Object.entries(ss).forEach(([f,[a,b]])=>{spans[f]=reveal?addSpan(spans[f],a,b):subSpan(spans[f],a,b);});return{...r,spans};});
+    window.getSelection().removeAllRanges();setHasSel(false);
+  };
 
   const createItem=s=>{
     if(!newName.trim())return;
     const item={...EMPTY_ENTRY(),name:newName.trim()};
+    if(isDM&&s!=="regions"){item.reveal={entry:false,fields:{},spans:{}};item._ts=Date.now();}
     setLore(prev=>({...prev,[s]:[...(prev[s]||[]),item]}));
     setSel({s,id:item.id});setLocal({...item});setCreating(null);setNewName("");if(!readOnly)setEditMode(true);
   };
@@ -238,12 +492,25 @@ function LorePanel({lore,setLore,characters,readOnly}){
 
   const filteredItems=useMemo(()=>{
     const s=openSection;if(!s||!lore[s])return[];
-    const items=lore[s]||[];
+    const items=(lore[s]||[]).filter(i=>isDM||entryVisible(i));
     const sorted=[...items.filter(i=>i.pinned),...items.filter(i=>!i.pinned)];
     return search.trim()?sorted.filter(i=>(i.name||"").toLowerCase().includes(search.toLowerCase())):sorted;
-  },[lore,openSection,search]);
+  },[lore,openSection,search,isDM]);
 
   const hasPhys=s=>["allies","enemies"].includes(s);
+  const ctrl=isControlled(local);
+  const ed=editMode&&!readOnly;
+  // Attribute (eye icon)
+  const AF=(lbl,f)=><LoreIF key={f} label={lbl} value={(!ctrl||dmView||fieldVisible(local,f))?local[f]:""} field={f} editMode={ed} onCommit={commitField} eyeState={ctrl&&dmView?fieldVisible(local,f):undefined} onEye={toggleField}/>;
+  // Single-line field (eye icon)
+  const SF=(lbl,f)=><LoreVF label={lbl} value={(!ctrl||dmView||fieldVisible(local,f))?local[f]:""} field={f} editMode={ed} onCommit={commitField} eyeState={ctrl&&dmView?fieldVisible(local,f):undefined} onEye={toggleField}/>;
+  // Long text field (highlight to reveal)
+  const TF=(lbl,f,h)=>{
+    if(ed||!ctrl)return <LoreVF label={lbl} value={local[f]} field={f} multi height={h} editMode={ed} onCommit={commitField}/>;
+    const sp=(local.reveal.spans||{})[f]||[];
+    if(dmView)return <RevealTextField label={lbl} text={local[f]} spans={sp} field={f}/>;
+    return <LoreVF label={lbl} value={visibleText(local[f],sp)} field={f} multi editMode={false} onCommit={commitField}/>;
+  };
 
   return(<div style={{display:"flex",height:"100%",background:"var(--dark)"}}>
     {delT&&!readOnly&&<DelModal name={delT.label} onOk={confirmDel} onNo={()=>setDelT(null)}/>}
@@ -253,7 +520,7 @@ function LorePanel({lore,setLore,characters,readOnly}){
       {readOnly&&<div className="tales-banner" style={{margin:"8px",fontSize:9}}>📖 BLOOD SEEKER — ARCHIVED (READ ONLY)</div>}
       <div style={{overflowY:"auto",flex:1}}>
         {allSections.map(s=>{
-          const items=lore[s.id]||[];const isO=openSection===s.id;
+          const items=(lore[s.id]||[]).filter(i=>isDM||entryVisible(i));const isO=openSection===s.id;
           return(<div key={s.id} style={{borderBottom:"1px solid var(--border)"}}>
             <div style={{display:"flex",alignItems:"center",background:isO?"var(--parch3)":"var(--parch2)",borderLeft:isO?"3px solid var(--gold2)":"3px solid transparent"}}>
               <div onClick={()=>{setOpenSection(s.id);setSearch("");setListEditMode(false);}} style={{flex:1,padding:"10px 8px 10px 11px",cursor:"pointer",fontSize:12,fontFamily:"Cinzel",letterSpacing:"0.04em",color:isO?"var(--gold)":"var(--ink2)",display:"flex",alignItems:"center",gap:7,userSelect:"none"}}>
@@ -284,8 +551,8 @@ function LorePanel({lore,setLore,characters,readOnly}){
                   {listEditMode&&<span style={{fontSize:12,color:"var(--ink3)",flexShrink:0}}>⠿</span>}
                   {listEditMode&&!readOnly&&<button onClick={e=>{e.stopPropagation();togglePin(s.id,item.id);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"0 2px",color:item.pinned?"var(--gold2)":"var(--ink3)",flexShrink:0}}>{item.pinned?"📌":"📍"}</button>}
                   {!listEditMode&&item.pinned&&<span style={{fontSize:9,flexShrink:0}}>📌</span>}
-                  {item.portrait&&<img src={item.portrait} alt="" style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>}
-                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name||<em style={{opacity:.5,fontSize:10}}>Unnamed</em>}</span>
+                  {imgSrc(item.portrait)&&<img src={imgSrc(item.portrait)} alt="" style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>}
+                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:isDM&&!entryVisible(item)?HIDDEN_RED:undefined}}>{isDM&&!entryVisible(item)&&"🙈 "}{item.name||<em style={{opacity:.5,fontSize:10}}>Unnamed</em>}</span>
                 </div>);
               })}
               {!listEditMode&&!readOnly&&(creating===s.id
@@ -295,7 +562,7 @@ function LorePanel({lore,setLore,characters,readOnly}){
                   <button className="btn" onClick={()=>setCreating(null)} style={{padding:"2px 6px",fontSize:11}}>✕</button>
                 </div>
                 :<div style={{padding:"5px 8px",borderTop:"1px solid var(--border)"}}>
-                  <button className="btn" onClick={()=>setCreating(s.id)} style={{width:"100%",fontSize:10,border:"1px dashed var(--border2)",padding:"3px"}}>+ Add {s.label.replace(/s$/,"")}</button>
+                  <button className="btn" onClick={()=>setCreating(s.id)} style={{width:"100%",fontSize:10,border:"1px dashed var(--border2)",padding:"3px"}}>+ Add {s.label.replace(/ies$/,"y").replace(/s$/,"")}</button>
                 </div>
               )}
             </div>}
@@ -313,7 +580,12 @@ function LorePanel({lore,setLore,characters,readOnly}){
     </div>
 
     {/* RIGHT detail */}
-    <div style={{flex:1,overflowY:"auto",background:"var(--parch)"}}>
+    <div ref={detailRef} style={{flex:1,overflowY:"auto",background:"var(--parch)",display:"flex",flexDirection:"column"}}>
+      {isDM&&!readOnly&&<div style={{position:"sticky",top:0,zIndex:5,background:"rgba(80,10,10,0.92)",color:"#ffcccc",fontFamily:"Cinzel",fontSize:10,letterSpacing:"0.06em",padding:"6px 14px",display:"flex",alignItems:"center",gap:10}}>
+        <span>⚔ {previewPlayer?"PREVIEWING AS A PLAYER":"DM VIEW — RED IS HIDDEN FROM PLAYERS"}</span>
+        <button onClick={()=>{setPreviewPlayer(p=>!p);setEditMode(false);}} style={{marginLeft:"auto",fontFamily:"Cinzel",fontSize:10,background:"transparent",border:"1px solid rgba(255,180,180,0.5)",color:"#ffcccc",borderRadius:3,padding:"2px 8px",cursor:"pointer"}}>{previewPlayer?"Back to DM view":"👁 Preview as player"}</button>
+      </div>}
+      <div style={{flex:1}}>
       {!local?<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",color:"var(--ink3)",textAlign:"center",padding:40}}>
         <div style={{fontSize:50,marginBottom:14,opacity:.28}}>{(allSections.find(s=>s.id===openSection)||{}).icon||"📜"}</div>
         <h3 style={{fontFamily:"Cinzel",fontSize:16,color:"var(--ink3)",marginBottom:8}}>{(allSections.find(s=>s.id===openSection)||{}).label||"Lore"}</h3>
@@ -325,9 +597,10 @@ function LorePanel({lore,setLore,characters,readOnly}){
           <div style={{flex:1,marginRight:14}}>
             {editMode&&!readOnly?<ShInput value={local.name||""} onCommit={v=>commitField("name",v)} style={{fontSize:24,fontFamily:"Cinzel",color:"var(--gold)",background:"transparent",border:"none",borderBottom:"2px solid var(--gold2)",padding:"2px 0",width:"100%",outline:"none"}} className=""/>
               :<h2 style={{fontSize:24,color:"var(--gold)",letterSpacing:"0.06em"}}>{local.name||"Unnamed"}</h2>}
-            {!editMode&&local.raceSp&&<p style={{fontSize:13,color:"var(--ink3)",marginTop:3,fontStyle:"italic",fontFamily:"Cinzel"}}>{local.raceSp}{local.age?` · Age ${local.age}`:""}</p>}
+            {!editMode&&(()=>{const rs=(dmView||fieldVisible(local,"raceSp"))?local.raceSp:"";const ag=(dmView||fieldVisible(local,"age"))?local.age:"";
+              return rs?<p style={{fontSize:13,color:"var(--ink3)",marginTop:3,fontStyle:"italic",fontFamily:"Cinzel"}}>{rs}{ag?` · Age ${ag}`:""}</p>:null;})()}
           </div>
-          {!readOnly&&<div style={{display:"flex",gap:5,flexShrink:0}}>
+          {!readOnly&&(dmView||!isControlled(local))&&<div style={{display:"flex",gap:5,flexShrink:0}}>
             <button className={`btn${editMode?" act":""}`} onClick={()=>setEditMode(m=>!m)} style={{fontSize:12,padding:"4px 11px"}}>{editMode?"✓ Done":"✏️ Edit"}</button>
             {editMode&&<button className="btn red" onClick={reqDel} style={{fontSize:12,padding:"4px 9px"}}>🗑</button>}
           </div>}
@@ -340,8 +613,8 @@ function LorePanel({lore,setLore,characters,readOnly}){
             <div style={{flexShrink:0}}>
               <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:6}}>HERALDRY</div>
               <div style={{width:100,height:100,background:"var(--parch2)",border:"2px solid var(--border2)",borderRadius:6,overflow:"hidden",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                {local.heraldry
-                  ?<img src={local.heraldry} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+                {imgSrc(local.heraldry)
+                  ?<img src={imgSrc(local.heraldry)} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
                   :<div style={{color:"var(--ink3)",fontSize:28,textAlign:"center"}}>⚔</div>}
                 {editMode&&!readOnly&&<label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.65)",color:"var(--gold3)",fontSize:9,textAlign:"center",padding:"3px",cursor:"pointer",fontFamily:"Cinzel"}}>
                   Upload<input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
@@ -380,7 +653,7 @@ function LorePanel({lore,setLore,characters,readOnly}){
               {local.mapImage
                 ?<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
                   <div style={{width:80,height:60,background:"var(--parch2)",border:"1px solid var(--border2)",borderRadius:3,overflow:"hidden"}}>
-                    <img src={local.mapImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    <img src={imgSrc(local.mapImage)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                   </div>
                   <div>
                     <div style={{fontSize:11,color:"var(--gold3)",fontFamily:"Cinzel",marginBottom:4}}>✓ Map uploaded</div>
@@ -406,37 +679,31 @@ function LorePanel({lore,setLore,characters,readOnly}){
           </div>
         </div>}
         {sel.s!=="regions"&&<div style={{display:"flex",gap:20,marginBottom:18,flexWrap:"wrap"}}>
-          <div style={{flexShrink:0}}>
+          {(dmView||editMode||fieldVisible(local,"portrait"))&&<div style={{flexShrink:0}}>
             <div style={{width:140,height:180,background:"var(--parch2)",border:"2px solid var(--border2)",borderRadius:4,overflow:"hidden",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              {local.portrait?<img src={local.portrait} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{color:"var(--ink3)",fontSize:11,fontStyle:"italic",textAlign:"center",padding:8}}>No portrait</div>}
+              {imgSrc(local.portrait)?<img src={imgSrc(local.portrait)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{color:"var(--ink3)",fontSize:11,fontStyle:"italic",textAlign:"center",padding:8}}>No portrait</div>}
               {editMode&&!readOnly&&<label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.65)",color:"var(--gold3)",fontSize:10,textAlign:"center",padding:"4px",cursor:"pointer",fontFamily:"Cinzel"}}>📷 Upload<input type="file" accept="image/*" onChange={handlePortrait} style={{display:"none"}}/></label>}
+              {dmView&&!editMode&&isControlled(local)&&local.portrait&&<div style={{position:"absolute",top:4,right:4}}><EyeBtn on={fieldVisible(local,"portrait")} onClick={()=>toggleField("portrait")} size={13}/></div>}
+              {dmView&&!editMode&&isControlled(local)&&local.portrait&&!fieldVisible(local,"portrait")&&<div style={{position:"absolute",inset:0,border:`3px solid ${HIDDEN_RED}`,pointerEvents:"none"}}/>}
             </div>
-          </div>
-          {hasPhys(sel.s)&&<div style={{flex:1}}>
+          </div>}
+          {hasPhys(sel.s)&&(editMode||dmView||!isControlled(local)||PHYS_FIELDS.some(([,f])=>fieldVisible(local,f)&&(local[f]||"").trim()))&&<div style={{flex:1}}>
             <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:8}}>PHYSICAL ATTRIBUTES</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
-              <LoreIF label="Race / Species" value={local.raceSp} field="raceSp" editMode={editMode&&!readOnly} onCommit={commitField}/>
-              <LoreIF label="Age" value={local.age} field="age" editMode={editMode&&!readOnly} onCommit={commitField}/>
-              <LoreIF label="Eye Colour" value={local.eyeColour} field="eyeColour" editMode={editMode&&!readOnly} onCommit={commitField}/>
-              <LoreIF label="Hair Colour" value={local.hairColour} field="hairColour" editMode={editMode&&!readOnly} onCommit={commitField}/>
-              <LoreIF label="Build" value={local.build} field="build" editMode={editMode&&!readOnly} onCommit={commitField}/>
-              <LoreIF label="Clothing" value={local.clothing} field="clothing" editMode={editMode&&!readOnly} onCommit={commitField}/>
-              <LoreIF label="Voice / Accent" value={local.voiceAccent} field="voiceAccent" editMode={editMode&&!readOnly} onCommit={commitField}/>
-              <LoreIF label="Personality" value={local.personality} field="personality" editMode={editMode&&!readOnly} onCommit={commitField}/>
-              <LoreIF label="Goal or Secret" value={local.goalSecret} field="goalSecret" editMode={editMode&&!readOnly} onCommit={commitField}/>
+              {PHYS_FIELDS.map(([lbl,f])=>AF(lbl,f))}
             </div>
           </div>}
         </div>}
         <Ornament/>
-        <LoreVF label="Description" value={local.description} field="description" multi height={100} editMode={editMode&&!readOnly} onCommit={commitField}/>
-        <LoreVF label="Background & Lore" value={local.lore} field="lore" multi height={120} editMode={editMode&&!readOnly} onCommit={commitField}/>
-        {["allies","enemies","factions"].includes(sel.s)&&<LoreVF label="Abilities & Powers" value={local.abilities} field="abilities" multi height={90} editMode={editMode&&!readOnly} onCommit={commitField}/>}
-        {sel.s==="enemies"&&<><LoreVF label="Threat Level" value={local.threatLevel} field="threatLevel" editMode={editMode&&!readOnly} onCommit={commitField}/><LoreVF label="Tactics & Weaknesses" value={local.tactics} field="tactics" multi height={90} editMode={editMode&&!readOnly} onCommit={commitField}/></>}
-        {!["sessions","history"].includes(sel.s)&&<LoreVF label="Relationships & Connections" value={local.relationships} field="relationships" multi height={90} editMode={editMode&&!readOnly} onCommit={commitField}/>}
-        {["allies","enemies"].includes(sel.s)&&<LoreVF label="Feats with the Party" value={local.featsWithParty} field="featsWithParty" multi height={90} editMode={editMode&&!readOnly} onCommit={commitField}/>}
-        {sel.s==="sessions"&&<LoreVF label="Key Events & Decisions" value={local.keyEvents} field="keyEvents" multi height={120} editMode={editMode&&!readOnly} onCommit={commitField}/>}
-        <LoreVF label="Tags" value={local.tags} field="tags" editMode={editMode&&!readOnly} onCommit={commitField}/>
-        {["allies","enemies"].includes(sel.s)&&!readOnly&&<>
+        {TF("Description","description",100)}
+        {TF("Background & Lore","lore",120)}
+        {["allies","enemies","factions"].includes(sel.s)&&TF("Abilities & Powers","abilities",90)}
+        {sel.s==="enemies"&&<>{SF("Threat Level","threatLevel")}{TF("Tactics & Weaknesses","tactics",90)}</>}
+        {!["sessions","history"].includes(sel.s)&&TF("Relationships & Connections","relationships",90)}
+        {["allies","enemies"].includes(sel.s)&&TF("Feats with the Party","featsWithParty",90)}
+        {sel.s==="sessions"&&TF("Key Events & Decisions","keyEvents",120)}
+        {SF("Tags","tags")}
+        {["allies","enemies"].includes(sel.s)&&!readOnly&&(dmView||!isControlled(local))&&<>
           <Ornament/>
           <div style={{marginBottom:12}}>
             <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:5}}>LINKED CHARACTER</div>
@@ -446,6 +713,20 @@ function LorePanel({lore,setLore,characters,readOnly}){
             </select>:local.linkedCharId?<p style={{fontSize:14,color:"var(--ink)"}}>{(characters.find(c=>String(c.id)===String(local.linkedCharId))||{}).name||"Unknown"}</p>:null}
           </div>
         </>}
+      </div>}
+      </div>
+      {dmView&&local&&!editMode&&sel.s!=="regions"&&<div style={{position:"sticky",bottom:0,zIndex:5,background:"var(--parch2)",borderTop:"2px solid var(--gold2)",padding:"10px 18px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        {!isControlled(local)
+          ?<><span style={{fontSize:12,color:"var(--ink2)",fontStyle:"italic",flex:1}}>Players can currently see all of this entry.</span>
+            <button className="btn" onClick={()=>updReveal(()=>({entry:false,fields:{},spans:{}}))} style={{fontSize:11,padding:"5px 12px",color:HIDDEN_RED,borderColor:HIDDEN_RED}}>🔒 Hide from players &amp; control reveals</button></>
+          :<>
+            <button className="btn" onMouseDown={e=>e.preventDefault()} onClick={()=>updReveal(r=>({...r,entry:!r.entry}))}
+              style={{fontSize:11,padding:"5px 12px",color:local.reveal.entry?"#3c8c3c":HIDDEN_RED,borderColor:local.reveal.entry?"#3c8c3c":HIDDEN_RED}}>
+              {local.reveal.entry?`👁 ${local.name||"Entry"} is known to players`:`🙈 ${local.name||"Entry"} is hidden — click to reveal`}</button>
+            <div style={{flex:1,fontSize:11,color:"var(--ink3)",fontStyle:"italic",textAlign:"center"}}>{hasSel?"Highlighted text ready":"Highlight any text above to reveal or hide it"}</div>
+            <button className="btn" disabled={!hasSel} onMouseDown={e=>e.preventDefault()} onClick={()=>applySelection(false)} style={{fontSize:11,padding:"5px 12px",opacity:hasSel?1:0.4}}>🙈 Hide highlighted</button>
+            <button className={`btn${hasSel?" act":""}`} disabled={!hasSel} onMouseDown={e=>e.preventDefault()} onClick={()=>applySelection(true)} style={{fontSize:11,padding:"5px 14px",opacity:hasSel?1:0.4}}>👁 Reveal highlighted</button>
+          </>}
       </div>}
     </div>
   </div>);
@@ -523,8 +804,9 @@ function CharSheet({char,onChange}){
   const [editMode,setEditMode]=useState(false);
   const [L,setL]=useState({...char});
   const flush=useRef(null);
-  useEffect(()=>{setL({...char});},[char.id]);
-  const commit=useCallback((f,v)=>{setL(prev=>{const u={...prev,[f]:v};clearTimeout(flush.current);flush.current=setTimeout(()=>onChange(u),150);return u;});},[onChange]);
+  const pending=useRef(false);
+  useEffect(()=>{if(!pending.current)setL({...char});},[char]);
+  const commit=useCallback((f,v)=>{setL(prev=>{const u={...prev,[f]:v};pending.current=true;clearTimeout(flush.current);flush.current=setTimeout(()=>{pending.current=false;onChange(u);},150);return u;});},[onChange]);
   const commitNum=useCallback((f,v)=>commit(f,parseInt(v)||0),[commit]);
   const prof=parseInt(((L.statRows||[]).find(r=>r.label==="PROF BONUS")||{}).value)||parseInt(L.profBonus)||2;
   const calcMod=s=>Math.floor((s-10)/2);
@@ -577,7 +859,7 @@ function CharSheet({char,onChange}){
       </button>
       {/* Portrait */}
       <div style={{position:"relative",width:80,height:96,background:"rgba(255,255,255,0.08)",border:"2px solid rgba(255,255,255,0.2)",borderRadius:3,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        {L.portrait?<img src={L.portrait} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{color:"rgba(255,255,255,0.2)",fontSize:10}}>Portrait</span>}
+        {imgSrc(L.portrait)?<img src={imgSrc(L.portrait)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{color:"rgba(255,255,255,0.2)",fontSize:10}}>Portrait</span>}
         {editMode&&<label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.7)",color:"rgba(255,255,255,0.7)",fontSize:8,textAlign:"center",padding:"3px",cursor:"pointer",fontFamily:"Cinzel"}}>📷<input type="file" accept="image/*" onChange={handlePortrait} style={{display:"none"}}/></label>}
       </div>
       {/* Name + fields */}
@@ -770,14 +1052,14 @@ function CharSheet({char,onChange}){
 /* ════ DM TAB ════ */
 const DM_PASSWORD="HarveysBalls";
 
-function DMTab({data,setData,lore,setLore,sbCfg}){
+function DMTab({data,setData,lore,setLore,sbCfg,onAuth}){
   const [authed,setAuthed]=useState(()=>sessionStorage.getItem("sf_dm")==="1");
   const [pw,setPw]=useState("");
   const [pwErr,setPwErr]=useState(false);
   const [activeSection,setActiveSection]=useState("overview");
 
   const tryLogin=()=>{
-    if(pw===DM_PASSWORD){sessionStorage.setItem("sf_dm","1");setAuthed(true);}
+    if(pw===DM_PASSWORD){sessionStorage.setItem("sf_dm","1");setAuthed(true);onAuth&&onAuth(true);}
     else{setPwErr(true);setTimeout(()=>setPwErr(false),1500);}
   };
 
@@ -816,7 +1098,6 @@ function DMTab({data,setData,lore,setLore,sbCfg}){
         {id:"overview",label:"Overview",icon:"📊"},
         {id:"map",label:"Map Control",icon:"🗺"},
         {id:"lore",label:"DM Lore",icon:"📖"},
-        {id:"reveal",label:"Reveal Manager",icon:"👁"},
       ].map(s=><div key={s.id} onClick={()=>setActiveSection(s.id)}
         style={{padding:"10px 14px",cursor:"pointer",fontSize:12,fontFamily:"Cinzel",letterSpacing:"0.04em",
           color:activeSection===s.id?"#ffaaaa":"rgba(255,150,150,0.6)",
@@ -826,7 +1107,7 @@ function DMTab({data,setData,lore,setLore,sbCfg}){
         <span>{s.icon}</span><span>{s.label}</span>
       </div>)}
       <div style={{flex:1}}/>
-      <button onClick={()=>{sessionStorage.removeItem("sf_dm");setAuthed(false);}}
+      <button onClick={()=>{sessionStorage.removeItem("sf_dm");setAuthed(false);onAuth&&onAuth(false);}}
         style={{margin:10,fontFamily:"Cinzel",background:"transparent",border:"1px solid rgba(255,100,100,0.3)",color:"rgba(255,150,150,0.6)",borderRadius:4,padding:"6px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>
         🔒 Lock DM
       </button>
@@ -942,7 +1223,6 @@ function DMTab({data,setData,lore,setLore,sbCfg}){
 
       {activeSection==="lore"&&<DMPrivateLore dmLore={dmLore} setDmLore={setDmLore} lore={lore} setLore={setLore}/>}
 
-      {activeSection==="reveal"&&<DMRevealManager lore={lore} setLore={setLore}/>}
 
     </div>
   </div>);
@@ -1001,91 +1281,13 @@ function DMPrivateLore({dmLore,setDmLore,lore,setLore}){
   </div>);
 }
 
-/* DM Reveal Manager — reveal specific lore entries or text chunks to players */
-function DMRevealManager({lore,setLore}){
-  const [selSection,setSelSection]=useState("allies");
-  const [selId,setSelId]=useState(null);
-  const [selText,setSelText]=useState("");
-  const ALL_SECS=["allies","enemies","factions","settlements","history","sessions","terrain"];
-  const items=(lore[selSection]||[]);
-  const selItem=selId?items.find(i=>i.id===selId):null;
-
-  const revealEntry=id=>{
-    setLore(prev=>({...prev,[selSection]:prev[selSection].map(i=>i.id===id?{...i,dmRevealed:true}:i)}));
-  };
-  const hideEntry=id=>{
-    setLore(prev=>({...prev,[selSection]:prev[selSection].map(i=>i.id===id?{...i,dmRevealed:false}:i)}));
-  };
-  const revealText=()=>{
-    if(!selText.trim()||!selItem)return;
-    const existing=(selItem.revealedTexts)||[];
-    if(!existing.includes(selText.trim())){
-      setLore(prev=>({...prev,[selSection]:prev[selSection].map(i=>i.id===selId?{...i,revealedTexts:[...existing,selText.trim()]}:i)}));
-    }
-    setSelText("");
-  };
-
-  return(<>
-    <h2 style={{fontFamily:"Cinzel",fontSize:18,color:"#ff9999",marginBottom:12,letterSpacing:"0.08em"}}>Reveal Manager</h2>
-    <p style={{fontSize:13,color:"rgba(255,180,180,0.7)",marginBottom:16,lineHeight:1.6}}>Control what lore players can see. Reveal an entire entry at once, or select specific text to reveal piece by piece.</p>
-    <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-      {ALL_SECS.map(s=><button key={s} onClick={()=>{setSelSection(s);setSelId(null);}}
-        style={{fontFamily:"Cinzel",fontSize:10,padding:"4px 10px",borderRadius:3,cursor:"pointer",border:"none",
-          background:selSection===s?"rgba(139,26,26,0.6)":"rgba(80,0,0,0.3)",
-          color:selSection===s?"#ffaaaa":"rgba(255,150,150,0.5)",letterSpacing:"0.04em"}}>
-        {s.toUpperCase()}
-      </button>)}
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:"200px 1fr",gap:14,height:"calc(100vh - 260px)"}}>
-      <div style={{overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
-        {items.length===0&&<div style={{fontSize:11,color:"rgba(255,150,150,0.3)",fontStyle:"italic",padding:"8px 0"}}>No entries yet</div>}
-        {items.map(item=><div key={item.id} onClick={()=>setSelId(item.id)}
-          style={{padding:"7px 10px",borderRadius:4,cursor:"pointer",
-            background:selId===item.id?"rgba(139,26,26,0.5)":"rgba(80,0,0,0.2)",
-            border:`1px solid ${item.dmRevealed?"rgba(100,200,100,0.3)":"rgba(200,50,50,0.15)"}`,
-            fontFamily:"Cinzel",fontSize:11,color:item.dmRevealed?"#90ee90":"#ff9999",letterSpacing:"0.03em"}}>
-          {item.dmRevealed?"✓ ":""}{item.name||"Unnamed"}
-        </div>)}
-      </div>
-      <div style={{overflowY:"auto"}}>
-        {selItem?<>
-          <div style={{fontFamily:"Cinzel",fontSize:14,color:"#ff9999",marginBottom:10}}>{selItem.name}</div>
-          <div style={{display:"flex",gap:8,marginBottom:14}}>
-            {!selItem.dmRevealed
-              ?<button onClick={()=>revealEntry(selItem.id)} style={{fontFamily:"Cinzel",background:"rgba(0,100,0,0.4)",border:"1px solid rgba(100,200,100,0.4)",color:"#90ee90",borderRadius:4,padding:"6px 14px",fontSize:11,cursor:"pointer",letterSpacing:"0.04em"}}>
-                ✓ Reveal Entire Entry
-              </button>
-              :<button onClick={()=>hideEntry(selItem.id)} style={{fontFamily:"Cinzel",background:"rgba(139,26,26,0.4)",border:"1px solid rgba(200,50,50,0.4)",color:"#ff9999",borderRadius:4,padding:"6px 14px",fontSize:11,cursor:"pointer",letterSpacing:"0.04em"}}>
-                ✕ Hide Entry
-              </button>}
-          </div>
-          <div style={{fontSize:10,color:"rgba(255,150,150,0.5)",fontFamily:"Cinzel",letterSpacing:"0.06em",marginBottom:6}}>REVEAL SPECIFIC TEXT</div>
-          <p style={{fontSize:11,color:"rgba(255,180,180,0.5)",marginBottom:8,lineHeight:1.5}}>Paste or type specific text from this entry to reveal just that part to players. Players will see these revealed snippets highlighted in gold.</p>
-          <textarea value={selText} onChange={e=>setSelText(e.target.value)}
-            placeholder="Paste the specific text you want to reveal..."
-            style={{width:"100%",fontFamily:"Crimson Pro,serif",background:"rgba(60,0,0,0.3)",border:"1px solid rgba(200,50,50,0.3)",color:"#ffcccc",borderRadius:4,padding:"8px",fontSize:13,outline:"none",resize:"vertical",minHeight:80,lineHeight:1.6,marginBottom:8}}/>
-          <button onClick={revealText} disabled={!selText.trim()} style={{fontFamily:"Cinzel",background:"rgba(0,80,0,0.4)",border:"1px solid rgba(100,200,100,0.4)",color:"#90ee90",borderRadius:4,padding:"6px 16px",fontSize:11,cursor:"pointer",opacity:selText.trim()?1:0.4,letterSpacing:"0.04em"}}>
-            Reveal Selected Text →
-          </button>
-          {((selItem.revealedTexts)||[]).length>0&&<>
-            <div style={{fontSize:10,color:"rgba(255,150,150,0.5)",fontFamily:"Cinzel",letterSpacing:"0.06em",marginTop:14,marginBottom:6}}>CURRENTLY REVEALED SNIPPETS</div>
-            {((selItem.revealedTexts)||[]).map((t,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:6,padding:"6px 10px",background:"rgba(0,60,0,0.2)",border:"1px solid rgba(100,200,100,0.2)",borderRadius:4}}>
-              <div style={{flex:1,fontSize:12,color:"rgba(200,255,200,0.8)",lineHeight:1.5,fontFamily:"Crimson Pro"}}>{t}</div>
-              <button onClick={()=>setLore(prev=>({...prev,[selSection]:prev[selSection].map(it=>it.id===selId?{...it,revealedTexts:it.revealedTexts.filter((_,j)=>j!==i)}:it)}))}
-                style={{background:"none",border:"none",color:"rgba(255,100,100,0.5)",cursor:"pointer",fontSize:11,flexShrink:0}}>✕</button>
-            </div>)}
-          </>}
-        </>:<div style={{color:"rgba(255,150,150,0.3)",fontFamily:"Cinzel",fontSize:12,marginTop:20}}>Select a lore entry to manage its reveal state</div>}
-      </div>
-    </div>
-  </>);
-}
-
 /* ════ ROOT APP ════ */
 function App(){
   const [sbCfg,setSbCfg]=useState(()=>{const c=getSBConfig();if(c){initSB(c.url,c.key);return c;}return null;});
   const [data,setData]=useState(null);
-  const [syncStatus,setSyncStatus]=useState("idle");
+  const [syncStatus,setSyncStatus]=useState("connecting"); // connecting | live | poll | saving | offline
+  const S=useRef({synced:{},ready:false,timer:null,pushing:false,again:false,live:false,lastSeen:null,failed:false}).current;
+  const dataRef=useRef(null);
   const [page,setPage]=useState("map");
   const [mapView,setMapView]=useState("world"); // "world" | "barony" | region mapId
   const [transitioning,setTransitioning]=useState(false);
@@ -1127,75 +1329,126 @@ function App(){
     else{const ld=document.getElementById("loading-screen");if(ld)ld.style.display="none";}
   };
 
-  useEffect(()=>{
-    // ALWAYS show the app immediately using local data or defaults
-    // Then try to sync with Supabase in the background
-    const localData=localLoad()||DEFAULT_DATA;
-    setData(localData);
-    hideLoader();
+  // Apply changes that came from someone else
+  const applyRemote=useCallback(rows=>{
+    const changes=[];
+    rows.forEach(({id,val})=>{
+      const str=(val===null||val===undefined)?undefined:stableStr(val);
+      if(S.synced[id]===str)return;
+      if(str===undefined)delete S.synced[id];else S.synced[id]=str;
+      changes.push([id,val]);
+    });
+    if(!changes.length)return;
+    setData(cur=>{if(!cur)return cur;const P=physFromData(cur);changes.forEach(([id,val])=>{if(val===null||val===undefined)delete P[id];else P[id]=val;});return dataFromPhys(P);});
+  },[]);
+  const noteSeen=ts=>{if(ts&&(!S.lastSeen||ts>S.lastSeen))S.lastSeen=ts;};
+  const rowToChange=r=>{const w=r.data||{};return{id:r.id,val:w.del?null:(w.v===undefined?null:w.v),by:w.by};};
 
-    if(!sbCfg)return; // No config = show setup screen (setData triggers re-render)
-
-    // Background sync - don't block the UI
-    const sb=getSB();
-    setSyncStatus("syncing");
-    const doSync=async()=>{
-      try{
-        loadAssets(sb).catch(()=>{});
-        const raw=await dbLoad(sb);
-        if(raw){
-          setData(raw);
-          localSave(raw);
-        } else {
-          dbSave(sb,localData).catch(()=>{});
-        }
-        setSyncStatus("saved");
-        setTimeout(()=>setSyncStatus("idle"),2000);
-      } catch(err){
-        setSyncStatus("error");
-      }
-    };
-    doSync();
+  // Push whatever changed locally
+  const pushNow=useCallback(async(keepalive)=>{
+    if(!S.ready||!dataRef.current||!sbCfg)return;
+    if(S.pushing){S.again=true;return;}
+    const P=physFromData(dataRef.current);
+    const changed=Object.keys(P).filter(id=>stableStr(P[id])!==S.synced[id]);
+    const removed=Object.keys(S.synced).filter(id=>!(id in P));
+    if(!changed.length&&!removed.length)return;
+    S.pushing=true;setSyncStatus("saving");
+    const sb=getSB();const t0=Date.now();
+    const row=(id,v,n)=>({id,data:v===null?{del:true,by:CLIENT_ID,at:t0}:{v,by:CLIENT_ID,at:t0},updated_at:new Date(t0+n).toISOString()});
+    try{
+      // pictures first, then entries, then list orders, then removals
+      const imgs=changed.filter(id=>id.indexOf("sf2_img:")===0);
+      for(const id of imgs){await sbUpsertRows(sb,[row(id,P[id],0)],keepalive);S.synced[id]=stableStr(P[id]);}
+      const main=changed.filter(id=>id.indexOf("sf2_img:")!==0&&id.indexOf("sf2_order:")!==0&&id!=="sf2_meta:sections");
+      for(let i=0;i<main.length;i+=25){const ch=main.slice(i,i+25);await sbUpsertRows(sb,ch.map(id=>row(id,P[id],1)),keepalive);ch.forEach(id=>{S.synced[id]=stableStr(P[id]);});}
+      const meta=changed.filter(id=>id.indexOf("sf2_order:")===0||id==="sf2_meta:sections");
+      if(meta.length){await sbUpsertRows(sb,meta.map(id=>row(id,P[id],2)),keepalive);meta.forEach(id=>{S.synced[id]=stableStr(P[id]);});}
+      if(removed.length){await sbUpsertRows(sb,removed.map(id=>row(id,null,3)),keepalive);removed.forEach(id=>{delete S.synced[id];});}
+      S.failed=false;setSyncStatus(S.live?"live":"poll");
+    }catch(e){
+      console.warn("Sync push failed:",e);S.failed=true;setSyncStatus("offline");
+      clearTimeout(S.timer);S.timer=setTimeout(()=>pushNow(),8000);
+    }finally{
+      S.pushing=false;
+      if(S.again){S.again=false;pushNow();}
+    }
   },[sbCfg]);
 
-  // Auto-local-save
-  useEffect(()=>{if(data)localSave(data);},[data]);
+  // Start up: show local copy instantly, then load the live campaign
+  useEffect(()=>{
+    const localData=localLoad()||DEFAULT_DATA;
+    setData(localData);dataRef.current=localData;
+    hideLoader();
+    if(!sbCfg)return;
+    const sb=getSB();let cancelled=false,stopRT=null,pollT=null,initT=null;
+    loadAssets(sb).catch(()=>{});
+
+    const poll=async()=>{
+      if(cancelled)return;
+      try{
+        const since=S.lastSeen?new Date(new Date(S.lastSeen).getTime()-120000).toISOString():null;
+        const rows=await sbFetchDocs(sb,since);
+        rows.forEach(r=>noteSeen(r.updated_at));
+        applyRemote(rows.map(rowToChange).filter(c=>c.by!==CLIENT_ID));
+        if(!S.failed)setSyncStatus(S.pushing?"saving":S.live?"live":"poll");
+      }catch(e){if(!S.live)setSyncStatus("offline");}
+      if(!cancelled)pollT=setTimeout(poll,S.live?30000:4000);
+    };
+
+    const init=async()=>{
+      try{
+        setSyncStatus("connecting");
+        const rows=await sbFetchDocs(sb,null);
+        if(cancelled)return;
+        let d;
+        if(rows.length){
+          const P={};
+          rows.forEach(r=>{noteSeen(r.updated_at);const c=rowToChange(r);if(c.val===null)return;P[r.id]=c.val;S.synced[r.id]=stableStr(c.val);});
+          d=dataFromPhys(P);
+        }else{
+          // First run on the new system: convert the old save (it's left untouched as a backup)
+          const old=await dbLoad(sb).catch(()=>null);
+          d=old?{...old}:{...localData};
+        }
+        // Keep anything that only existed on this device (e.g. DM notes the old save never uploaded)
+        Object.keys(localData).forEach(k=>{if(!(k in d))d[k]=localData[k];});
+        if(!d.lore)d.lore={};if(!d.characters)d.characters=[];
+        dataRef.current=d;setData(d);
+        S.ready=true;setSyncStatus("poll");
+        stopRT=connectRealtime(sb,async(id,type,wrapped,ts)=>{
+          if(!id||String(id).indexOf("sf2_")!==0)return;
+          noteSeen(ts);
+          if(type==="DELETE"){applyRemote([{id,val:null}]);return;}
+          let w=wrapped;
+          if(!w){const r=await sbFetchDoc(sb,id).catch(()=>null);if(!r)return;w=r.data;}
+          if(!w||w.by===CLIENT_ID)return;
+          applyRemote([{id,val:w.del?null:w.v}]);
+        },st=>{S.live=st==="live";if(!S.pushing&&!S.failed)setSyncStatus(st);});
+        pollT=setTimeout(poll,4000);
+        pushNow();
+      }catch(e){
+        console.warn("Campaign load failed, retrying:",e);
+        setSyncStatus("offline");
+        if(!cancelled)initT=setTimeout(init,8000);
+      }
+    };
+    init();
+    const onHide=()=>{clearTimeout(S.timer);pushNow(true);};
+    window.addEventListener("pagehide",onHide);
+    return()=>{cancelled=true;stopRT&&stopRT();clearTimeout(pollT);clearTimeout(initT);window.removeEventListener("pagehide",onHide);};
+  },[sbCfg]);
+
+  // Save locally + push to everyone shortly after any change
+  useEffect(()=>{
+    if(!data)return;
+    dataRef.current=data;localSave(data);
+    if(!S.ready)return;
+    clearTimeout(S.timer);S.timer=setTimeout(()=>pushNow(),700);
+  },[data]);
 
   const setMapItems=useCallback(fn=>setData(d=>({...d,mapItems:typeof fn==="function"?fn(d.mapItems):fn})),[]);
   const setLore=useCallback(fn=>setData(d=>({...d,lore:typeof fn==="function"?fn(d.lore):fn})),[]);
   const updateChar=useCallback((idx,ch)=>setData(d=>{const cs=[...d.characters];cs[idx]=ch;return{...d,characters:cs};}),[]);
-
-  const manualSave=useCallback(async()=>{
-    if(!data)return;setSyncStatus("syncing");localSave(data);
-    if(sbCfg){const sb=getSB();
-      try{
-        // Pull latest, merge, push
-        const cloudRaw=await dbLoad(sb);let toSave=data;
-        if(cloudRaw){
-          const merged={...cloudRaw};
-          merged.characters=(data.characters||[]).map((lc,i)=>{const cc=(cloudRaw.characters||[])[i];return cc?{...cc,...lc}:lc;});
-          const secs=Object.keys(data.lore||{}).filter(k=>k!=="__customSections");
-          merged.lore={...cloudRaw.lore};
-          secs.forEach(sec=>{
-            const li=data.lore[sec]||[];const ci=(cloudRaw.lore&&cloudRaw.lore[sec])||[];
-            const cmap={};ci.forEach(e=>{cmap[e.id]=e;});const lmap={};li.forEach(e=>{lmap[e.id]=e;});
-            const ids=new Set([...ci.map(e=>e.id),...li.map(e=>e.id)]);
-            merged.lore[sec]=[...ids].map(id=>lmap[id]&&cmap[id]?{...cmap[id],...lmap[id]}:lmap[id]||cmap[id]);
-          });
-          merged.lore.__customSections=data.lore.__customSections||[];
-          merged.mapItems=data.mapItems;merged.mapImage=data.mapImage||cloudRaw.mapImage;merged.baronyImage=data.baronyImage||cloudRaw.baronyImage;
-          toSave=merged;
-        }
-        await dbSave(sb,toSave);localSave(toSave);setData(toSave);setSyncStatus("saved");setTimeout(()=>setSyncStatus("idle"),2000);
-      }catch(e){setSyncStatus("error");throw e;}
-    }else{setSyncStatus("saved");setTimeout(()=>setSyncStatus("idle"),1500);}
-  },[data,sbCfg]);
-
-  const pullLatest=useCallback(async()=>{
-    if(!sbCfg)return;setSyncStatus("syncing");const sb=getSB();
-    try{const raw=await dbLoad(sb);if(raw){setData(raw);localSave(raw);}setSyncStatus("saved");setTimeout(()=>setSyncStatus("idle"),2000);}
-    catch{setSyncStatus("error");}
-  },[sbCfg]);
 
   // Esc key to exit barony view
   useEffect(()=>{
@@ -1210,8 +1463,9 @@ function App(){
     </div>
   );
 
-  const syncColor={idle:"transparent",syncing:"var(--gold3)",saved:"rgba(100,200,100,0.8)",error:"var(--red)"}[syncStatus];
-  const syncLabel={idle:"",syncing:"⟳",saved:"✓ SAVED",error:"⚠ ERROR"}[syncStatus];
+  const syncColor={connecting:"var(--gold3)",live:"rgba(110,210,110,0.9)",poll:"rgba(110,210,110,0.9)",saving:"var(--gold3)",offline:"#ff7a6a"}[syncStatus]||"var(--gold3)";
+  const syncLabel={connecting:"● CONNECTING",live:"● LIVE",poll:"● SYNCED",saving:"● SAVING…",offline:"⚠ OFFLINE — RETRYING"}[syncStatus]||"";
+  const syncTitle={live:"Live — changes appear for everyone instantly",poll:"Synced — checking for changes every few seconds",saving:"Saving your change…",offline:"Can't reach the database. Your changes are kept on this device and will upload when it reconnects.",connecting:"Connecting…"}[syncStatus];
 
   const NAV=[{id:"map",label:"Map",icon:"🗺"},{id:"lore",label:"Lore",icon:"📜"},{id:"chars",label:"Characters",icon:"⚔"}];
 
@@ -1230,13 +1484,11 @@ function App(){
         {data.characters.map((c,i)=><button key={c.id} onClick={()=>setCharIdx(i)} className={`btn${charIdx===i?" act":""}`} style={{padding:"3px 10px",fontSize:11,fontFamily:"Cinzel"}}>{c.name||`Player ${i+1}`}</button>)}
       </div>}
       <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
-        <span style={{fontSize:9,color:syncColor,fontFamily:"Cinzel",letterSpacing:"0.06em",transition:"color .3s",minWidth:60,textAlign:"right"}}>{syncLabel}</span>
-        <button onClick={pullLatest} className="btn" style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel"}}>⟳</button>
-        <button onClick={manualSave} className="btn act" style={{fontSize:10,padding:"3px 10px",fontFamily:"Cinzel",fontWeight:"bold"}}>💾 Save</button>
+        <span title={syncTitle} style={{fontSize:9,color:syncColor,fontFamily:"Cinzel",letterSpacing:"0.06em",transition:"color .3s",minWidth:60,textAlign:"right",cursor:"default"}}>{syncLabel}</span>
         <button onClick={()=>setShowTheme(t=>!t)} className={`btn${showTheme?" act":""}`} style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel"}}>🎨</button>
         <button onClick={()=>{if(confirm("Change DB settings?\\nThis will reload.")){localStorage.removeItem(SB_KEY);window.location.reload();}}} className="btn" style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel"}}>⚙</button>
         <button onClick={()=>{const j=JSON.stringify(data,null,2);const b=new Blob([j],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="steelfire-backup.json";a.click();URL.revokeObjectURL(u);}} className="btn" style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel"}}>⬇</button>
-        <label className="btn" style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel",cursor:"pointer"}}>⬆<input type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=(e.target.files&&e.target.files[0]);if(!f)return;const r=new FileReader();r.onload=ev=>{try{const p=JSON.parse(ev.target.result);if(confirm("Replace all data with import?\\nThis cannot be undone.")){setData(p);localSave(p);if(sbCfg){const sb=getSB();dbSave(sb,p).catch(()=>{});}}}catch{alert("Invalid file.");}};r.readAsText(f);e.target.value="";}}/></label>
+        <label className="btn" style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel",cursor:"pointer"}}>⬆<input type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=(e.target.files&&e.target.files[0]);if(!f)return;const r=new FileReader();r.onload=ev=>{try{const p=JSON.parse(ev.target.result);if(confirm("Replace all data with import?\\nThis cannot be undone.")){setData(p);localSave(p);}}catch{alert("Invalid file.");}};r.readAsText(f);e.target.value="";}}/></label>
       </div>
     </header>
 
@@ -1245,10 +1497,10 @@ function App(){
       {page==="map"&&(mapView==="world"
         ?<WorldMap data={data} setData={setData} onNavigate={navigateToMap} isDM={isDM} transitioning={transitioning} setTransitioning={setTransitioning}/>
         :<BaronyMap data={data} setData={setData} onBack={navigateToWorld} isDM={isDM} transitioning={transitioning}/>)}
-      {page==="lore"&&<LorePanel lore={data.lore} setLore={setLore} characters={data.characters} readOnly={false}/>}
+      {page==="lore"&&<LorePanel lore={data.lore} setLore={setLore} characters={data.characters} readOnly={false} isDM={isDM}/>}
       {page==="chars"&&<CharSheet char={data.characters[charIdx]} onChange={c=>updateChar(charIdx,c)}/>}
       {page==="tales"&&<TalesPanel/>}
-      {page==="dm"&&<DMTab data={data} setData={setData} lore={data.lore} setLore={setLore} sbCfg={sbCfg}/>}
+      {page==="dm"&&<DMTab data={data} setData={setData} lore={data.lore} setLore={setLore} sbCfg={sbCfg} onAuth={setIsDM}/>}
     </main>
 
     {/* Theme panel */}
@@ -1295,7 +1547,6 @@ class ErrorBoundary extends React.Component{
 }
 ErrorBoundary.getDerivedStateFromError=function(e){return{error:e};};
 
-ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
 // Babel compiled successfully - app is mounting
 console.log("Steel & Fire: React mounted");
 const _ld=document.getElementById("loading-screen");
@@ -1464,7 +1715,7 @@ function WorldMap({data,setData,onNavigate,isDM,transitioning,setTransitioning})
       // Heraldry icon - centre of polygon
       const bounds=poly.getBounds();
       const centre=bounds.getCenter();
-      const heraldryImg=region.heraldry||null;
+      const heraldryImg=imgSrc(region.heraldry);
 
       // Create heraldry marker
       const shieldHtml=heraldryImg
@@ -1619,7 +1870,7 @@ function WorldMap({data,setData,onNavigate,isDM,transitioning,setTransitioning})
 }
 
 
-function BaronyMap({data,setData,onBack,isDM}){
+function BaronyMap({data,setData,onBack,isDM,transitioning}){
   const mapRef=useRef(null);
   const leafletRef=useRef(null);
   const [popup,setPopup]=useState(null);
