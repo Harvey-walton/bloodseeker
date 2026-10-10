@@ -1,5 +1,5 @@
 
-const {useState,useRef,useEffect,useCallback,useMemo,memo}=React;
+const {useState,useRef,useEffect,useCallback,useMemo,memo,useContext}=React;
 
 /* ════ TALES ARCHIVE (Blood Seeker campaign 1 — read only) ════ */
 const TALES_DATA={"mapItems":[{"id":1,"type":"city","x":69.3,"y":62.4,"label":"Minith Tirith","color":"#c0392b","icon":"⚏","notes":""},{"id":2,"type":"town","x":32.3,"y":26.6,"label":"Bree","color":"#d35400","icon":"⌂","notes":""},{"id":3,"type":"city","x":49.7,"y":67.2,"label":"Dol Amroth","color":"#c0392b","icon":"⚏","notes":""},{"id":4,"type":"city","x":72.4,"y":22.0,"label":"Dale","color":"#c0392b","icon":"⚏","notes":""},{"id":5,"type":"city","x":49.3,"y":27.2,"label":"Rivendel","color":"#c0392b","icon":"⚏","notes":""}],"mapImage":null,"lore":{"allies":[{"id":"a1","name":"The Iron Captain","raceSp":"","age":"","hairColour":"","eyeColour":"","build":"","clothing":"","voiceAccent":"","personality":"","goalSecret":"","description":"poop","lore":"","abilities":"","relationships":"","featsWithParty":"","tags":""},{"id":"a2","name":"Vitalis","raceSp":"","age":"","description":"","lore":"","relationships":"","featsWithParty":"","tags":""},{"id":"a3","name":"Brok","raceSp":"dwarf","age":"20","hairColour":"black/dark brown","eyeColour":"brown","build":"like a brick shithouse","clothing":"basic garbo with bear pelt","voiceAccent":"rough like","personality":"whimsical but serious","goalSecret":"fight the strongest","description":"Brok left his home town of blacksmiths and he wanted to be more free so he ventured to [@Wolfham](lore:settlements:s1) and met gaydar and vitamin, he is short and stocky and is covered in scars from is few but life threatening battles, he is cheerful and whimsical but when he needs to he can be serious.","lore":"Was a blacksmith in the famous silver village that forged all of the silver weapons and armour for people, he wanted to find out what the world was like outside the village so after an argument with his dad he left to find a new path in life and that brought him to vitamin and gaydar","relationships":"Serulia- wife (dead)","featsWithParty":"","tags":""},{"id":"a4","name":"Arthur","description":"","lore":"","tags":""},{"id":"a5","name":"Damion","description":"","lore":"","tags":""},{"id":"a6","name":"Irene","description":"","lore":"","tags":""},{"id":"a7","name":"Burn Kara","description":"","lore":"","tags":""},{"id":"a8","name":"Captain Hadock","description":"","lore":"","tags":""},{"id":"a9","name":"The Red Lady","description":"","lore":"","tags":""},{"id":"a10","name":"Calahan","description":"","lore":"","tags":""},{"id":"a11","name":"Steel Dame","description":"","lore":"","tags":""},{"id":"a12","name":"Myrr","description":"","lore":"","tags":""},{"id":"a13","name":"Lord Dylan of House Rane","description":"","lore":"","tags":""},{"id":"a14","name":"Kanai","description":"","lore":"","tags":""}],"enemies":[{"id":"e1","name":"Mark Horigan","description":"","lore":"","tags":""},{"id":"e2","name":"Fire Elf","description":"","lore":"","tags":""},{"id":"e3","name":"Glice","description":"","lore":"","tags":""},{"id":"e4","name":"Hayan","description":"","lore":"","tags":""},{"id":"e5","name":"Balarion","description":"","lore":"","tags":""},{"id":"e6","name":"Valairon","description":"","lore":"","tags":""}],"factions":[{"id":"f1","name":"Pirate Council","description":"","lore":"","tags":""},{"id":"f2","name":"Inquisition","description":"","lore":"","tags":""},{"id":"f3","name":"Angles","description":"","lore":"","tags":""},{"id":"f4","name":"Gothwin","description":"","lore":"","tags":""}],"settlements":[{"id":"s1","name":"Wolfham","description":"","lore":"","tags":""},{"id":"s2","name":"Serinea","description":"","lore":"","tags":""},{"id":"s3","name":"Silver Isles","description":"","lore":"","tags":""},{"id":"s4","name":"westrun","description":"","lore":"","tags":""},{"id":"s5","name":"Isis Balon","description":"","lore":"","tags":""},{"id":"s6","name":"Austora","description":"","lore":"","tags":""},{"id":"s7","name":"kanai","description":"","lore":"","tags":""}],"history":[{"id":"h1","name":"Bears of the Beastlands","description":"","lore":"","tags":""},{"id":"h2","name":"Ironwood Expansion","description":"","lore":"","tags":""}],"sessions":[{"id":"ss1","name":"Session 27","description":"","lore":"","tags":""},{"id":"ss2","name":"Session 28","description":"","lore":"","tags":""},{"id":"ss3","name":"Session 29","description":"","lore":"","tags":""}]},"characters":[{"id":1,"name":"Headar","background":"Soldier","charClass":"Wanderer","species":"Human","subclass":"Hunter","level":12,"ac":18,"hpCurrent":108,"hpMax":108,"hpTemp":0,"hitDieMax":"d10","hitDieSpent":0,"profBonus":3,"str":16,"dex":12,"con":14,"int":8,"wis":10,"cha":14,"savingThrows":{},"skills":{},"classFeatures":[{"id":"cf1","name":"Wanderers Quarry","desc":""},{"id":"cf2","name":"Ambuscade","desc":""},{"id":"cf3","name":"Merciless Strike","desc":""},{"id":"cf4","name":"Extra Attack","desc":""},{"id":"cf5","name":"Feral Senses","desc":""},{"id":"cf6","name":"Cunning Parry","desc":""}],"knacks":[{"id":"k1","name":"Slayer I","desc":""},{"id":"k2","name":"Strider","desc":""},{"id":"k3","name":"Strider +2","desc":""},{"id":"k4","name":"Hedge Knight","desc":""}],"exploits":[{"id":"ex1","name":"First Aid","desc":""},{"id":"ex2","name":"Feint","desc":""},{"id":"ex3","name":"Precision Strike","desc":""},{"id":"ex4","name":"Arresting Strike","desc":""},{"id":"ex5","name":"Cunning Instinct","desc":""}],"exploitDC":14,"weapons":[{"id":1,"name":"Dreammaker","attackBonus":"+12","damage":"d10+8","notes":"3x per long rest, 3d8 Psychic Damage"},{"id":2,"name":"Longbow","attackBonus":"+6","damage":"d8+6","notes":"120/300ft range"},{"id":3,"name":"Long Sword","attackBonus":"+6","damage":"d10+6","notes":""}],"statRows":[{"id":1,"label":"INITIATIVE","value":"1"},{"id":2,"label":"SPEED","value":"30"},{"id":3,"label":"SIZE","value":"Medium"},{"id":4,"label":"PASSIVE PERCEPTION","value":"13"},{"id":5,"label":"EXPLOITS KNOWN","value":"19"},{"id":6,"label":"EXPLOIT DIE","value":"D6"},{"id":7,"label":"EXPLOIT DICE AVAIL","value":"3"},{"id":8,"label":"KNACKS KNOWN","value":"5"},{"id":9,"label":"PROF BONUS","value":"3"}],"featsArr":[{"id":"ft1","name":"Sharpshooter","desc":""},{"id":"ft2","name":"Sentinel","desc":""},{"id":"ft3","name":"Roguish Initiate","desc":""}],"speciesTraits":"Cosmar","armorProf":{"light":true,"medium":true,"heavy":false,"shields":false},"weaponsProf":"Martial","currency":{"pp":0,"gp":0,"sp":0,"cp":0},"inventory":""},{"id":2,"name":"","level":1,"charClass":"","str":10,"dex":10,"con":10,"int":10,"wis":10,"cha":10},{"id":3,"name":"","level":1,"charClass":"","str":10,"dex":10,"con":10,"int":10,"wis":10,"cha":10}]};
@@ -342,39 +342,124 @@ function visibleText(t,sp){
   });
   return out;
 }
+/* Open / closed eye (replaces the monkey emoji) */
+const Eye=({open,size,color})=>(<svg width={size||12} height={size||12} viewBox="0 0 24 24" fill="none" stroke={color||"currentColor"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline-block",verticalAlign:"-0.15em",flexShrink:0}}>
+  <path d="M1.5 12s3.8-7 10.5-7 10.5 7 10.5 7-3.8 7-10.5 7S1.5 12 1.5 12z"/>{open?<circle cx="12" cy="12" r="3.2"/>:<line x1="3" y1="21" x2="21" y2="3"/>}</svg>);
+const RED_LOCK_SVG="url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='4' y='10.5' width='16' height='11' rx='2' fill='%23b3261e'/><path d='M8 10.5V7a4 4 0 0 1 8 0v3.5' fill='none' stroke='%23b3261e' stroke-width='2.6'/></svg>\")";
+
+/* ════ @ LINKS — stored as [@Name](lore:section:id), shown as gold text ════ */
+const LINK_RE=/\[@([^\]\n]+)\]\(lore:([^:)\s]+):([^)\s]+)\)/g;
+const LinkCtx=React.createContext(null);
+function linkTokens(t){
+  t=t||"";const out=[];let last=0,d=0,m;const re=new RegExp(LINK_RE.source,"g");
+  while((m=re.exec(t))){
+    if(m.index>last){out.push({r0:last,r1:m.index,d0:d,d1:d+(m.index-last)});d+=m.index-last;}
+    out.push({r0:m.index,r1:m.index+m[0].length,d0:d,d1:d+m[1].length,link:{name:m[1],sec:m[2],id:m[3]}});d+=m[1].length;last=m.index+m[0].length;
+  }
+  if(last<t.length)out.push({r0:last,r1:t.length,d0:d,d1:d+t.length-last});
+  return out;
+}
+const plainLinks=t=>(t||"").replace(new RegExp(LINK_RE.source,"g"),"$1");
+// position in the shown text → position in the stored text (links are kept whole)
+function dispToRaw(t,dpos,isEnd){
+  const toks=linkTokens(t);if(dpos<=0)return 0;
+  for(const k of toks){
+    const inside=isEnd?(dpos>k.d0&&dpos<=k.d1):(dpos>=k.d0&&dpos<k.d1);
+    if(inside)return k.link?(isEnd?k.r1:k.r0):k.r0+(dpos-k.d0);
+  }
+  return(t||"").length;
+}
+function richNodes(text,ctx){
+  return linkTokens(text).map((k,i)=>{
+    if(!k.link)return <React.Fragment key={i}>{text.slice(k.r0,k.r1)}</React.Fragment>;
+    const ok=ctx&&ctx.can&&ctx.can(k.link.sec,k.link.id);
+    if(!ok)return <span key={i}>{k.link.name}</span>;
+    return <a key={i} className="sf-link" onClick={e=>{e.preventDefault();e.stopPropagation();ctx.open(k.link.sec,k.link.id);}}>{k.link.name}</a>;
+  });
+}
+function linkEntries(lore){
+  const out=[];Object.keys(lore||{}).forEach(sec=>{if(sec==="__customSections"||!Array.isArray(lore[sec]))return;lore[sec].forEach(e=>{if(e&&(e.name||"").trim())out.push({name:e.name.replace(/[\[\]]/g,""),sec,id:e.id});});});
+  return out;
+}
+const sectionIcon=sec=>({regions:"🌍",allies:"🤝",enemies:"💀",factions:"⚔️",settlements:"🏰",history:"📖",sessions:"📋",terrain:"🗺"}[sec]||"📌");
+// Text box where typing @ suggests wiki entries to link
+function MentionTextarea({value,onCommit,style,className,placeholder}){
+  const ctx=useContext(LinkCtx);const ref=useRef(null);
+  const [q,setQ]=useState(null);const [hi,setHi]=useState(0);
+  useEffect(()=>{if(ref.current&&document.activeElement!==ref.current)ref.current.value=value||"";},[value]);
+  const all=(ctx&&ctx.entries)||[];
+  const matches=q?all.filter(e=>e.name.toLowerCase().includes(q.query.toLowerCase())).slice(0,8):[];
+  const check=()=>{
+    const el=ref.current;if(!el)return;const pos=el.selectionStart;const before=el.value.slice(0,pos);
+    const m=/(^|[\s(>"'])@([^@\n\[\]()]{0,40})$/.exec(before);
+    if(m&&!/\s{2}/.test(m[2])){setQ({start:pos-m[2].length-1,end:pos,query:m[2]});setHi(0);}else setQ(null);
+  };
+  const choose=e=>{
+    const el=ref.current;if(!el||!q)return;
+    const ins=`[@${e.name}](lore:${e.sec}:${e.id})`;
+    el.value=el.value.slice(0,q.start)+ins+el.value.slice(q.end);
+    const c=q.start+ins.length;el.focus();el.setSelectionRange(c,c);setQ(null);
+  };
+  const onKey=e=>{
+    if(!q||!matches.length)return;
+    if(e.key==="ArrowDown"){e.preventDefault();setHi(h=>(h+1)%matches.length);}
+    else if(e.key==="ArrowUp"){e.preventDefault();setHi(h=>(h-1+matches.length)%matches.length);}
+    else if(e.key==="Enter"||e.key==="Tab"){e.preventDefault();choose(matches[hi]);}
+    else if(e.key==="Escape"){setQ(null);}
+  };
+  return(<div style={{position:"relative"}}>
+    <textarea ref={ref} defaultValue={value||""} placeholder={placeholder||""} className={className||"sh-input-box"} style={style}
+      onInput={check} onKeyUp={e=>{if(["ArrowLeft","ArrowRight","Home","End"].includes(e.key))check();}} onClick={check} onKeyDown={onKey}
+      onBlur={e=>{setQ(null);onCommit(e.target.value);}}/>
+    {q&&matches.length>0&&<div className="sf-mention-list">
+      <div style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".08em",color:"var(--ink3)",padding:"4px 8px"}}>LINK TO…</div>
+      {matches.map((e,i)=><div key={e.sec+e.id} onMouseDown={ev=>{ev.preventDefault();choose(e);}} onMouseEnter={()=>setHi(i)} className={`sf-mention-item${i===hi?" on":""}`}>{sectionIcon(e.sec)} {e.name}</div>)}
+    </div>}
+    <div style={{fontSize:10,color:"var(--ink3)",marginTop:2,fontStyle:"italic",opacity:.75}}>Type @ to link another entry</div>
+  </div>);
+}
+
 const EyeBtn=({on,onClick,size})=>(<button title={on?"Visible to players — click to hide":"Hidden from players — click to reveal"}
   onMouseDown={e=>e.preventDefault()} onClick={onClick}
-  style={{background:on?"rgba(60,140,60,0.15)":"rgba(163,36,30,0.12)",border:`1px solid ${on?"rgba(60,140,60,0.5)":"rgba(163,36,30,0.45)"}`,borderRadius:3,cursor:"pointer",fontSize:size||10,lineHeight:1,padding:"1px 4px",marginLeft:5,verticalAlign:"middle"}}>{on?"👁":"🙈"}</button>);
+  style={{background:on?"rgba(60,140,60,0.15)":"rgba(163,36,30,0.12)",border:`1px solid ${on?"rgba(60,140,60,0.5)":"rgba(163,36,30,0.45)"}`,borderRadius:3,cursor:"pointer",fontSize:size||10,lineHeight:1,padding:"1px 4px",marginLeft:5,verticalAlign:"middle",color:on?"#2f7a2f":HIDDEN_RED}}><Eye open={on} size={(size||10)+2}/></button>);
 
-// DM view of a long text field: revealed text normal, hidden text red. Josh highlights text here to reveal it.
+// DM view of a long text field: revealed text normal, hidden text red with a red lock column. Josh highlights text here to reveal it.
 const RevealTextField=memo(({label,text,spans,field})=>{
+  const ctx=useContext(LinkCtx);
   text=text||"";if(!text.trim())return null;
   const sp=normSpans(spans,text.length);
-  const segs=[];let pos=0;
-  sp.forEach(([x,y])=>{if(x>pos)segs.push([pos,x,false]);segs.push([x,y,true]);pos=y;});
-  if(pos<text.length)segs.push([pos,text.length,false]);
+  const isRev=i=>sp.some(([x,y])=>i>=x&&i<y);
+  const paras=[];let s0=0;for(let i=0;i<=text.length;i++){if(i===text.length||text[i]==="\n"){paras.push([s0,i]);s0=i+1;}}
+  const segsOf=(a,b)=>{const cuts=new Set([a,b]);sp.forEach(([x,y])=>{if(x>a&&x<b)cuts.add(x);if(y>a&&y<b)cuts.add(y);});const c=[...cuts].sort((m,n)=>m-n);const out=[];for(let i=0;i<c.length-1;i++)out.push([c[i],c[i+1],isRev(c[i])]);return out;};
+  const hasHidden=[...text].some((ch,i)=>ch.trim()&&!isRev(i));
   const any=sp.length>0;
-  const all=any&&segs.every(([x,y,r])=>r||!text.slice(x,y).trim());
   return(<div style={{marginBottom:12}}>
     <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>
-      {label.toUpperCase()} <span style={{color:all?"#3c8c3c":any?"var(--gold)":HIDDEN_RED}}>· {all?"REVEALED":any?"PARTLY REVEALED":"HIDDEN"}</span>
+      {label.toUpperCase()} <span style={{color:!hasHidden?"#3c8c3c":any?"var(--gold)":HIDDEN_RED}}>· {!hasHidden?"REVEALED":any?"PARTLY REVEALED":"HIDDEN"}</span>
     </div>
-    <p data-reveal-field={field} style={{fontSize:15,lineHeight:1.7,fontFamily:"Crimson Pro",whiteSpace:"pre-wrap",cursor:"text"}}>
-      {segs.map(([x,y,r],i)=><span key={i} style={{color:r?"var(--ink)":HIDDEN_RED,background:r?"rgba(196,154,48,0.14)":"transparent"}}>{text.slice(x,y)}</span>)}
-    </p>
+    <div data-reveal-field={field} style={{fontSize:15,lineHeight:1.7,fontFamily:"Crimson Pro",whiteSpace:"pre-wrap",cursor:"text"}}>
+      {paras.map(([a,b],pi)=>{
+        const segs=segsOf(a,b);const hidden=segs.some(([x,y,r])=>!r&&text.slice(x,y).trim());
+        return(<div key={pi} className={hidden?"sf-hidden-para":"sf-para"} style={{minHeight:"1.7em"}}>
+          {segs.map(([x,y,r],i)=><span key={i} style={{color:r?"var(--ink)":HIDDEN_RED,background:r?"rgba(196,154,48,0.14)":"transparent"}}>{richNodes(text.slice(x,y),ctx)}</span>)}
+          {pi<paras.length-1&&<span style={{display:"none"}}>{"\n"}</span>}
+        </div>);
+      })}
+    </div>
   </div>);
 });
 
 /* ════ LORE PANEL ════ */
 const LoreVF=memo(({label,value,field,multi,height,editMode,onCommit,eyeState,onEye})=>{
+  const ctx=useContext(LinkCtx);
   if(!editMode&&!(value||"").trim())return null;
   const hasEye=eyeState!==undefined&&!editMode;
   return(<div style={{marginBottom:12}}>
     <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>{label.toUpperCase()}{hasEye&&<EyeBtn on={eyeState} onClick={()=>onEye(field)}/>}</div>
     {editMode?(multi
-      ?<ShTextarea value={value||""} onCommit={v=>onCommit(field,v)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 9px",fontSize:14,width:"100%",resize:"vertical",minHeight:height||80,lineHeight:1.6,outline:"none"}}/>
+      ?<MentionTextarea value={value||""} onCommit={v=>onCommit(field,v)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 9px",fontSize:14,width:"100%",resize:"vertical",minHeight:height||80,lineHeight:1.6,outline:"none"}}/>
       :<ShInput value={value||""} onCommit={v=>onCommit(field,v)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 9px",fontSize:14,width:"100%",outline:"none"}} className=""/>)
-      :<p style={{fontSize:15,color:hasEye&&!eyeState?HIDDEN_RED:"var(--ink)",lineHeight:1.7,fontFamily:"Crimson Pro",whiteSpace:"pre-wrap"}}>{value}</p>}
+      :<p style={{fontSize:15,color:hasEye&&!eyeState?HIDDEN_RED:"var(--ink)",lineHeight:1.7,fontFamily:"Crimson Pro",whiteSpace:"pre-wrap"}}>{richNodes(value,ctx)}</p>}
   </div>);
 });
 
@@ -408,13 +493,26 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
   const [newSectionName,setNewSectionName]=useState("");
   const dragId=useRef(null);
   const [previewPlayer,setPreviewPlayer]=useState(false);
+  const [openNodes,setOpenNodes]=useState(()=>new Set());
+  const realmTree=!readOnly; // Steel & Fire: settlements live inside the Regions tree
+  const toggleNode=k=>setOpenNodes(prev=>{const n=new Set(prev);n.has(k)?n.delete(k):n.add(k);return n;});
+  // open every folder above an entry so it can be seen
+  const expandTo=(sec,id)=>{
+    const places=getPlaces(lore);let start=null;
+    if(sec==="settlements"){const e=(lore.settlements||[]).find(x=>String(x.id)===String(id));if(!e)return;start=e.placeId!=null?placeById(places,e.placeId):null;if(!start){setOpenNodes(prev=>new Set([...prev,"none"]));return;}}
+    else if(sec==="regions"){const e=placeById(places,id);if(!e)return;start=e.parentId!=null?placeById(places,e.parentId):null;}
+    else return;
+    const keys=[];let cur=start,g=0;while(cur&&g++<10){keys.push("p:"+cur.id);cur=cur.parentId!=null?placeById(places,cur.parentId):null;}
+    if(keys.length)setOpenNodes(prev=>new Set([...prev,...keys]));
+  };
+  const goEntry=(sec,id)=>{const realSec=realmTree&&sec==="settlements"?"regions":sec;setOpenSection(realSec);setSel({s:sec,id});setEditMode(false);setSearch("");setListEditMode(false);expandTo(sec,id);};
   const [hasSel,setHasSel]=useState(false);
   const detailRef=useRef(null);
   const dmView=!!isDM&&!readOnly&&!previewPlayer;
 
   const selItem=sel.s?lore[sel.s]&&lore[sel.s].find(i=>i.id===sel.id):null;
   useEffect(()=>{setLocal(selItem?{...selItem}:null);},[sel.s,sel.id,selItem]);
-  useEffect(()=>{if(openTarget&&openTarget.s){setOpenSection(openTarget.s);setSel({s:openTarget.s,id:openTarget.id});setEditMode(false);setSearch("");setListEditMode(false);}},[openTarget&&openTarget.n]);
+  useEffect(()=>{if(openTarget&&openTarget.s)goEntry(openTarget.s,openTarget.id);},[openTarget&&openTarget.n]);
   useEffect(()=>{if(!isDM&&selItem&&!entryVisible(selItem)){setSel({s:null,id:null});setLocal(null);}},[isDM,selItem]);
 
   // Apply a field edit; keeps revealed passages attached to the right words
@@ -461,7 +559,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
   },[dmView,sel.id]);
   const applySelection=reveal=>{
     const ss=getSelSpans();if(!ss)return;
-    updReveal(r=>{const spans={...(r.spans||{})};Object.entries(ss).forEach(([f,[a,b]])=>{spans[f]=reveal?addSpan(spans[f],a,b):subSpan(spans[f],a,b);});return{...r,spans};});
+    updReveal(r=>{const spans={...(r.spans||{})};Object.entries(ss).forEach(([f,[a,b]])=>{const t=(local&&local[f])||"";const ra=dispToRaw(t,a,false),rb=dispToRaw(t,b,true);if(rb>ra)spans[f]=reveal?addSpan(spans[f],ra,rb):subSpan(spans[f],ra,rb);});return{...r,spans};});
     window.getSelection().removeAllRanges();setHasSel(false);
   };
 
@@ -472,6 +570,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
     if(isDM){item.reveal={entry:false,fields:{},spans:{}};item._ts=Date.now();}
     setLore(prev=>({...prev,[s]:[...(prev[s]||[]),item]}));
     setSel({s,id:item.id});setLocal({...item});setCreating(null);setNewName("");if(!readOnly)setEditMode(true);
+    if(s==="settlements")setOpenNodes(prev=>new Set([...prev,"none"]));
   };
   const reqDel=()=>{if(!selItem)return;setDelT({label:(selItem.description||"").trim()||(selItem.lore||"").trim()?selItem.name:""});};
   const confirmDel=()=>{
@@ -501,23 +600,27 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
   },[lore,openSection,search,isDM]);
 
   const hasPhys=s=>["allies","enemies"].includes(s);
-  // Regions show as a tree; settlements are grouped under the barony they're in
+  const places0=getPlaces(lore);
+  // Regions: one foldable tree — kingdoms › regions › baronies › settlements
   const groupRows=(sec,items)=>{
-    if(listEditMode||search.trim()||(sec!=="regions"&&sec!=="settlements"))return items.map(item=>({item}));
-    const places=getPlaces(lore);
-    if(sec==="regions"){
-      const shown=new Set(items.map(i=>String(i.id)));
-      const out=[];const seen=new Set();
-      const walk=(pid,depth)=>items.filter(i=>{const par=placeById(places,i.parentId);return pid==null?(i.parentId==null||!par||!shown.has(String(par.id))):String(i.parentId)===String(pid);})
-        .forEach(i=>{if(seen.has(String(i.id)))return;seen.add(String(i.id));out.push({item:i,depth});walk(i.id,depth+1);});
-      walk(null,0);items.forEach(i=>{if(!seen.has(String(i.id)))out.push({item:i,depth:0});});
-      return out;
-    }
-    const groups={};const order=[];
-    items.forEach(i=>{const k=i.placeId==null?"":String(i.placeId);if(!groups[k]){groups[k]=[];order.push(k);}groups[k].push(i);});
-    const label=k=>{if(!k)return"NOT IN A BARONY";const pl=placeById(places,k);if(!pl||(!isDM&&!placeVisible(places,pl,false)))return"UNCHARTED";const anc=ancestorsOf(places,pl).filter(a=>isDM||entryVisible(a)).map(a=>a.name);return [...anc,pl.name].join(" › ").toUpperCase();};
-    order.sort((a,b)=>(a===""?1:0)-(b===""?1:0));
-    const out=[];order.forEach(k=>{out.push({header:label(k),key:k});groups[k].forEach(i=>out.push({item:i,depth:0}));});
+    if(listEditMode||sec!=="regions"||!realmTree)return items.map(item=>({item}));
+    const places=getPlaces(lore).filter(p=>isDM||placeVisible(places0,p,false));
+    const sets=(lore.settlements||[]).filter(e=>isDM||entryVisible(e));
+    const q=search.trim().toLowerCase();
+    if(q)return[...places.map(p=>({item:p,sec:"regions"})),...sets.map(e=>({item:e,sec:"settlements"}))].filter(r=>(r.item.name||"").toLowerCase().includes(q));
+    const shown=new Set(places.map(p=>String(p.id)));
+    const out=[];const seen=new Set();
+    const kidsOf=pid=>places.filter(p=>{const par=p.parentId!=null&&shown.has(String(p.parentId));return pid==null?!par:String(p.parentId)===String(pid);});
+    const setsOf=pid=>sets.filter(e=>e.placeId!=null&&String(e.placeId)===String(pid));
+    const walk=(pid,depth)=>kidsOf(pid).forEach(p=>{
+      if(seen.has(String(p.id)))return;seen.add(String(p.id));
+      const kp=kidsOf(p.id),ks=setsOf(p.id);const key="p:"+p.id;
+      out.push({item:p,sec:"regions",depth,kids:kp.length+ks.length,nodeKey:key});
+      if(openNodes.has(key)){walk(p.id,depth+1);ks.forEach(e=>out.push({item:e,sec:"settlements",depth:depth+1}));}
+    });
+    walk(null,0);
+    const loose=sets.filter(e=>e.placeId==null||!shown.has(String(e.placeId)));
+    if(loose.length){out.push({folder:"Not in a barony",nodeKey:"none",kids:loose.length,depth:0});if(openNodes.has("none"))loose.forEach(e=>out.push({item:e,sec:"settlements",depth:1}));}
     return out;
   };
   const ctrl=isControlled(local);
@@ -534,15 +637,18 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
     return <LoreVF label={lbl} value={visibleText(local[f],sp)} field={f} multi editMode={false} onCommit={commitField}/>;
   };
 
-  return(<div style={{display:"flex",height:"100%",background:"var(--dark)"}}>
+  const innerLinks={entries:linkEntries(lore),
+    open:(sec,id)=>{if(!lore[sec])return;goEntry(sec,(lore[sec].find(x=>String(x.id)===String(id))||{}).id);},
+    can:(sec,id)=>{const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));return !!e&&(isDM||readOnly||entryVisible(e));}};
+  return(<LinkCtx.Provider value={innerLinks}><div style={{display:"flex",height:"100%",background:"var(--dark)"}}>
     {delT&&!readOnly&&<DelModal name={delT.label} onOk={confirmDel} onNo={()=>setDelT(null)}/>}
 
     {/* LEFT sidebar */}
     <div className="sf-lore-side" style={{width:220,display:"flex",flexDirection:"column",background:"var(--parch2)",borderRight:"2px solid var(--gold2)",flexShrink:0,overflow:"hidden"}}>
       {readOnly&&<div className="tales-banner" style={{margin:"8px",fontSize:9}}>📖 BLOOD SEEKER — ARCHIVED (READ ONLY)</div>}
       <div style={{overflowY:"auto",flex:1}}>
-        {allSections.map(s=>{
-          const items=(lore[s.id]||[]).filter(i=>isDM||entryVisible(i));const isO=openSection===s.id;
+        {allSections.filter(s=>!(realmTree&&s.id==="settlements")).map(s=>{
+          const items=realmTree&&s.id==="regions"?[...(lore.regions||[]).filter(p=>isDM||placeVisible(places0,p,false)),...(lore.settlements||[]).filter(i=>isDM||entryVisible(i))]:(lore[s.id]||[]).filter(i=>isDM||entryVisible(i));const isO=openSection===s.id;
           return(<div key={s.id} style={{borderBottom:"1px solid var(--border)"}}>
             <div style={{display:"flex",alignItems:"center",background:isO?"var(--parch3)":"var(--parch2)",borderLeft:isO?"3px solid var(--gold2)":"3px solid transparent"}}>
               <div onClick={()=>{setOpenSection(s.id);setSearch("");setListEditMode(false);}} style={{flex:1,padding:"10px 8px 10px 11px",cursor:"pointer",fontSize:12,fontFamily:"Cinzel",letterSpacing:"0.04em",color:isO?"var(--gold)":"var(--ink2)",display:"flex",alignItems:"center",gap:7,userSelect:"none"}}>
@@ -559,34 +665,40 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
               {!listEditMode&&<div style={{padding:"5px 8px",borderBottom:"1px solid var(--border)"}}>
                 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",width:"100%",fontSize:11,outline:"none"}}/>
               </div>}
-              {filteredItems.length===0&&<div style={{padding:"7px 14px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>No entries</div>}
+              {items.length===0&&<div style={{padding:"7px 14px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>No entries</div>}
               {groupRows(s.id,filteredItems).map(row=>{
-                if(row.header)return <div key={"h:"+row.key} style={{padding:"6px 10px 3px",fontSize:9,fontFamily:"Cinzel",letterSpacing:"0.07em",color:"var(--gold)",background:"var(--parch2)",borderBottom:"1px solid var(--border)"}}>{row.header}</div>;
-                const item=row.item;
-                const isSel=sel.id===item.id&&sel.s===s.id;const isDO=dragOver===item.id;
-                return(<div key={item.id} draggable={listEditMode}
+                if(row.folder)return <div key={"f:"+row.nodeKey} onClick={()=>toggleNode(row.nodeKey)} style={{padding:`7px 8px 7px ${10+(row.depth||0)*14}px`,fontSize:11.5,fontStyle:"italic",color:"var(--ink3)",cursor:"pointer",borderBottom:"1px solid var(--border)",display:"flex",gap:6,alignItems:"center",userSelect:"none"}}>
+                  <span style={{width:12,display:"inline-block",fontStyle:"normal"}}>{openNodes.has(row.nodeKey)?"▾":"▸"}</span>{row.folder} <span style={{fontSize:9,opacity:.7}}>({row.kids})</span></div>;
+                const item=row.item;const rsec=row.sec||s.id;
+                const isSel=sel.id===item.id&&sel.s===rsec;const isDO=dragOver===item.id;
+                return(<div key={rsec+":"+item.id} draggable={listEditMode}
                   onDragStart={e=>{dragId.current=item.id;e.dataTransfer.effectAllowed="move";}}
                   onDragOver={e=>{if(!listEditMode)return;e.preventDefault();setDragOver(item.id);}}
                   onDragLeave={()=>setDragOver(null)}
                   onDrop={e=>{e.preventDefault();if(dragId.current&&dragId.current!==item.id)reorder(s.id,dragId.current,item.id);dragId.current=null;setDragOver(null);}}
                   onDragEnd={()=>{dragId.current=null;setDragOver(null);}}
-                  onClick={()=>{if(!listEditMode){setSel({s:s.id,id:item.id});setEditMode(false);}}}
+                  onClick={()=>{if(!listEditMode){setSel({s:rsec,id:item.id});setEditMode(false);}}}
                   style={{padding:`7px 8px 7px ${10+(row.depth||0)*14}px`,cursor:listEditMode?"grab":"pointer",fontSize:12,fontFamily:"Crimson Pro",background:isDO?"var(--parch3)":isSel&&!listEditMode?"var(--parch4)":"transparent",color:isSel&&!listEditMode?"var(--gold)":"var(--ink)",borderLeft:isSel&&!listEditMode?"3px solid var(--gold2)":"3px solid transparent",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:6,borderTop:isDO?"2px solid var(--gold2)":"2px solid transparent",userSelect:"none"}}>
                   {listEditMode&&<span style={{fontSize:12,color:"var(--ink3)",flexShrink:0}}>⠿</span>}
+                  {row.nodeKey!==undefined&&<span onClick={e=>{e.stopPropagation();if(row.kids)toggleNode(row.nodeKey);}} style={{width:14,flexShrink:0,textAlign:"center",color:"var(--ink3)",fontSize:11,cursor:row.kids?"pointer":"default"}}>{row.kids?(openNodes.has(row.nodeKey)?"▾":"▸"):""}</span>}
+                  {row.sec&&!listEditMode&&<span style={{fontSize:11,flexShrink:0}}>{row.sec==="settlements"?"🏠":PLACE_TYPES[placeType(item)].icon}</span>}
                   {listEditMode&&!readOnly&&<button onClick={e=>{e.stopPropagation();togglePin(s.id,item.id);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"0 2px",color:item.pinned?"var(--gold2)":"var(--ink3)",flexShrink:0}}>{item.pinned?"📌":"📍"}</button>}
                   {!listEditMode&&item.pinned&&<span style={{fontSize:9,flexShrink:0}}>📌</span>}
                   {imgSrc(item.portrait)&&<img src={imgSrc(item.portrait)} alt="" style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>}
-                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:isDM&&!entryVisible(item)?HIDDEN_RED:undefined}}>{isDM&&!entryVisible(item)&&"🙈 "}{item.name||<em style={{opacity:.5,fontSize:10}}>Unnamed</em>}</span>
+                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:isDM&&!entryVisible(item)?HIDDEN_RED:undefined}}>{isDM&&!entryVisible(item)&&<><Eye open={false} size={11} color={HIDDEN_RED}/> </>}{item.name||<em style={{opacity:.5,fontSize:10}}>Unnamed</em>}</span>
                 </div>);
               })}
-              {!listEditMode&&!readOnly&&(creating===s.id
+              {!listEditMode&&!readOnly&&(creating===s.id||(realmTree&&s.id==="regions"&&creating==="settlements")
                 ?<div style={{padding:"6px 8px",display:"flex",gap:4,borderTop:"1px solid var(--border)"}}>
-                  <input autoFocus placeholder="Name..." value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")createItem(s.id);if(e.key==="Escape")setCreating(null);}} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",flex:1,fontSize:11,outline:"none"}}/>
-                  <button className="btn" onClick={()=>createItem(s.id)} style={{padding:"2px 6px",fontSize:11}}>✓</button>
+                  <input autoFocus placeholder={creating==="settlements"?"Settlement name...":"Name..."} value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")createItem(creating);if(e.key==="Escape")setCreating(null);}} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",flex:1,fontSize:11,outline:"none"}}/>
+                  <button className="btn" onClick={()=>createItem(creating)} style={{padding:"2px 6px",fontSize:11}}>✓</button>
                   <button className="btn" onClick={()=>setCreating(null)} style={{padding:"2px 6px",fontSize:11}}>✕</button>
                 </div>
                 :<div style={{padding:"5px 8px",borderTop:"1px solid var(--border)"}}>
-                  <button className="btn" onClick={()=>setCreating(s.id)} style={{width:"100%",fontSize:10,border:"1px dashed var(--border2)",padding:"3px"}}>+ Add {s.label.replace(/ies$/,"y").replace(/s$/,"")}</button>
+                  <div style={{display:"flex",gap:4}}>
+                  <button className="btn" onClick={()=>setCreating(s.id)} style={{flex:1,fontSize:10,border:"1px dashed var(--border2)",padding:"3px"}}>+ Add {s.label.replace(/ies$/,"y").replace(/s$/,"")}</button>
+                  {realmTree&&s.id==="regions"&&<button className="btn" onClick={()=>setCreating("settlements")} style={{flex:1,fontSize:10,border:"1px dashed var(--border2)",padding:"3px"}}>+ Add Settlement</button>}
+                  </div>
                 </div>
               )}
             </div>}
@@ -607,7 +719,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
     <div ref={detailRef} style={{flex:1,overflowY:"auto",background:"var(--parch)",display:"flex",flexDirection:"column"}}>
       {isDM&&!readOnly&&<div style={{position:"sticky",top:0,zIndex:5,background:"rgba(80,10,10,0.92)",color:"#ffcccc",fontFamily:"Cinzel",fontSize:10,letterSpacing:"0.06em",padding:"6px 14px",display:"flex",alignItems:"center",gap:10}}>
         <span>⚔ {previewPlayer?"PREVIEWING AS A PLAYER":"DM OVERVIEW — RED IS HIDDEN FROM PLAYERS · HIGHLIGHT TEXT, THEN REVEAL"}</span>
-        <button onClick={()=>{setPreviewPlayer(p=>!p);setEditMode(false);}} style={{marginLeft:"auto",fontFamily:"Cinzel",fontSize:10,background:"transparent",border:"1px solid rgba(255,180,180,0.5)",color:"#ffcccc",borderRadius:3,padding:"2px 8px",cursor:"pointer"}}>{previewPlayer?"Back to DM view":"👁 Preview as player"}</button>
+        <button onClick={()=>{setPreviewPlayer(p=>!p);setEditMode(false);}} style={{marginLeft:"auto",fontFamily:"Cinzel",fontSize:10,background:"transparent",border:"1px solid rgba(255,180,180,0.5)",color:"#ffcccc",borderRadius:3,padding:"2px 8px",cursor:"pointer"}}>{previewPlayer?"Back to DM view":<><Eye open={true} size={11}/> Preview as player</>}</button>
       </div>}
       <div style={{flex:1}}>
       {!local?<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",color:"var(--ink3)",textAlign:"center",padding:40}}>
@@ -700,21 +812,21 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
         </>}
       </div>}
       </div>
-      {dmView&&local&&!editMode&&sel.s!=="regions"&&<div style={{position:"sticky",bottom:0,zIndex:5,background:"var(--parch2)",borderTop:"2px solid var(--gold2)",padding:"10px 18px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+      {dmView&&local&&!editMode&&<div style={{position:"sticky",bottom:0,zIndex:5,background:"var(--parch2)",borderTop:"2px solid var(--gold2)",padding:"10px 18px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         {!isControlled(local)
           ?<><span style={{fontSize:12,color:"var(--ink2)",fontStyle:"italic",flex:1}}>Players can currently see all of this entry.</span>
             <button className="btn" onClick={()=>updReveal(()=>({entry:false,fields:{},spans:{}}))} style={{fontSize:11,padding:"5px 12px",color:HIDDEN_RED,borderColor:HIDDEN_RED}}>🔒 Hide from players &amp; control reveals</button></>
           :<>
             <button className="btn" onMouseDown={e=>e.preventDefault()} onClick={()=>updReveal(r=>({...r,entry:!r.entry}))}
               style={{fontSize:11,padding:"5px 12px",color:local.reveal.entry?"#3c8c3c":HIDDEN_RED,borderColor:local.reveal.entry?"#3c8c3c":HIDDEN_RED}}>
-              {local.reveal.entry?`👁 ${local.name||"Entry"} is known to players`:`🙈 ${local.name||"Entry"} is hidden — click to reveal`}</button>
+              <Eye open={local.reveal.entry} size={12}/> {local.reveal.entry?`${local.name||"Entry"} is known to players`:`${local.name||"Entry"} is hidden — click to reveal`}</button>
             <div style={{flex:1,fontSize:11,color:"var(--ink3)",fontStyle:"italic",textAlign:"center"}}>{hasSel?"Highlighted text ready":"Highlight any text above to reveal or hide it"}</div>
-            <button className="btn" disabled={!hasSel} onMouseDown={e=>e.preventDefault()} onClick={()=>applySelection(false)} style={{fontSize:11,padding:"5px 12px",opacity:hasSel?1:0.4}}>🙈 Hide highlighted</button>
-            <button className={`btn${hasSel?" act":""}`} disabled={!hasSel} onMouseDown={e=>e.preventDefault()} onClick={()=>applySelection(true)} style={{fontSize:11,padding:"5px 14px",opacity:hasSel?1:0.4}}>👁 Reveal highlighted</button>
+            <button className="btn" disabled={!hasSel} onMouseDown={e=>e.preventDefault()} onClick={()=>applySelection(false)} style={{fontSize:11,padding:"5px 12px",opacity:hasSel?1:0.4}}><Eye open={false} size={12}/> Hide highlighted</button>
+            <button className={`btn${hasSel?" act":""}`} disabled={!hasSel} onMouseDown={e=>e.preventDefault()} onClick={()=>applySelection(true)} style={{fontSize:11,padding:"5px 14px",opacity:hasSel?1:0.4}}><Eye open={true} size={12}/> Reveal highlighted</button>
           </>}
       </div>}
     </div>
-  </div>);
+  </div></LinkCtx.Provider>);
 }
 
 /* ════ TALES PANEL (archived Blood Seeker campaign, read-only) ════ */
@@ -785,6 +897,42 @@ function TalesPanel(){
 
 /* ════ CHARACTER SHEET (carried over, uncontrolled) ════ */
 // [Abbreviated for space — full sheet with all features]
+/* ════ CHARACTER SHEET HELPERS ════ */
+// A number you can tap to type a new value, without going into Edit mode
+function QuickNum({value,onCommit,style,title}){
+  const [ed,setEd]=useState(false);
+  if(ed)return <input autoFocus type="number" defaultValue={value||0} onFocus={e=>e.target.select()} onBlur={e=>{setEd(false);onCommit(parseInt(e.target.value)||0);}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEd(false);}} style={{...style,background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.35)",borderRadius:3,outline:"none"}}/>;
+  return <div title={title||"Tap to change"} onClick={()=>setEd(true)} style={{...style,cursor:"pointer",borderBottom:"1px dashed rgba(255,255,255,0.3)"}}>{value||0}</div>;
+}
+// On/off slider
+function Switch({on,onChange,label}){
+  return(<label style={{display:"inline-flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:10,fontFamily:"Cinzel",color:"#555",letterSpacing:".04em",userSelect:"none"}} onClick={e=>e.stopPropagation()}>
+    <span onClick={()=>onChange(!on)} style={{width:28,height:15,borderRadius:8,background:on?"#7a5a14":"#c9bba0",position:"relative",transition:"background .15s",flexShrink:0}}>
+      <span style={{position:"absolute",top:2,left:on?15:2,width:11,height:11,borderRadius:"50%",background:"white",transition:"left .15s",boxShadow:"0 1px 2px rgba(0,0,0,0.3)"}}/></span>
+    <span onClick={()=>onChange(!on)}>{label}</span></label>);
+}
+// A row of tick boxes (like death marks) — tick them off in play, ↺ to reset
+function TickCounter({max,used,onChange,small}){
+  const n=Math.max(0,Math.min(40,parseInt(max)||0));const u=Math.min(n,parseInt(used)||0);
+  const sz=small?13:18;
+  return(<div style={{display:"flex",gap:3,flexWrap:"wrap",alignItems:"center"}} onClick={e=>e.stopPropagation()}>
+    {Array.from({length:n}).map((_,i)=><div key={i} onClick={()=>onChange(i<u?i:i+1)} title={i<u?"Used — click to restore":"Click to use"}
+      style={{width:sz,height:sz,border:"2px solid "+(i<u?"#5a3e1b":"#b8a070"),borderRadius:3,cursor:"pointer",background:i<u?"#5a3e1b":"rgba(255,255,255,0.6)",display:"flex",alignItems:"center",justifyContent:"center",color:"#f0e0c0",fontSize:sz-6,lineHeight:1}}>{i<u?"✕":""}</div>)}
+    {n>0&&<button onClick={()=>onChange(0)} title="Reset" style={{background:"none",border:"none",cursor:"pointer",color:"#8a6a3a",fontSize:small?11:13,padding:"0 2px"}}>↺</button>}
+    {n>0&&<span style={{fontSize:small?9:10,fontFamily:"Cinzel",color:"#777"}}>{n-u}/{n}</span>}
+  </div>);
+}
+const defaultBoxes=L=>{
+  const exTotal=parseInt(((L.statRows||[]).find(r=>r.label==="EXPLOIT DICE AVAIL")||{}).value)||0;
+  return[
+    {id:"b_cf",title:"CLASS FEATURES",kind:"list",items:L.classFeatures||[]},
+    {id:"b_kn",title:"KNACKS",kind:"list",items:L.knacks||[]},
+    {id:"b_ex",title:"EXPLOITS",kind:"list",items:L.exploits||[],dcOn:true,dc:L.exploitDC||10,ctrOn:exTotal>0,ctrMax:exTotal,ctrUsed:(L.exploitDiceUsed||[]).filter(Boolean).length},
+    {id:"b_ft",title:"FEATS",kind:"list",items:L.featsArr||[]},
+    {id:"b_sp",title:"SPECIES TRAITS",kind:"text",text:L.speciesTraits||""},
+  ];
+};
+
 function CharSheet({char,onChange}){
   const [editMode,setEditMode]=useState(false);
   const [L,setL]=useState({...char});
@@ -814,12 +962,25 @@ function CharSheet({char,onChange}){
   const setMagAtt=(i,v)=>{const a=[...(L.magicAttunements||["","",""])];a[i]=v;commit("magicAttunements",a);};
   const toggleSaveProf=ab=>{const cur=(L.savingThrows&&L.savingThrows[ab])||{prof:false,override:null};commit("savingThrows",{...L.savingThrows,[ab]:{...cur,prof:!cur.prof}});};
   const setSaveOverride=(ab,v)=>{const cur=(L.savingThrows&&L.savingThrows[ab])||{prof:false,override:null};commit("savingThrows",{...L.savingThrows,[ab]:{...cur,override:v===""?null:v}});};
-  const toggleSkillProf=sk=>{const cur=(L.skills&&L.skills[sk])||{prof:false,override:null};commit("skills",{...L.skills,[sk]:{...cur,prof:!cur.prof}});};
+  const toggleSkillProf=sk=>{const cur=(L.skills&&L.skills[sk])||{prof:false,override:null};const next=!cur.prof?{prof:true,exp:false}:!cur.exp?{prof:true,exp:true}:{prof:false,exp:false};commit("skills",{...L.skills,[sk]:{...cur,...next}});};
   const setSkillOverride=(sk,v)=>{const cur=(L.skills&&L.skills[sk])||{prof:false,override:null};commit("skills",{...L.skills,[sk]:{...cur,override:v===""?null:v}});};
   const handlePortrait=async e=>{const f=(e.target.files&&e.target.files[0]);if(!f)return;const c=await compressImage(f,400,0.72);commit("portrait",c);};
   const getSaveBonus=ab=>{const s=(L.savingThrows&&L.savingThrows[ab]);const hasO=(s&&s.override)!==null&&(s&&s.override)!==undefined&&(s&&s.override)!=="";return hasO?parseInt(s.override)||0:calcMod(L[ab]||10)+((s&&s.prof)?prof:0);};
   const getSaveProf=ab=>!!(((L.savingThrows&&L.savingThrows[ab])||{}).prof);
-  const getSkBonus=(sk,ab)=>{const d=(L.skills&&L.skills[sk]);if(!d)return calcMod(L[ab]||10);if(d.override!==null&&d.override!==undefined&&d.override!=="")return parseInt(d.override)||0;return calcMod(L[ab]||10)+(d.prof?prof:0);};
+  const autoSk=(sk,ab)=>{const d=(L.skills&&L.skills[sk])||{};return calcMod(L[ab]||10)+(d.prof?(d.exp?2*prof:prof):0);};
+  const getSkBonus=(sk,ab)=>{const d=(L.skills&&L.skills[sk]);if(!d)return calcMod(L[ab]||10);if(d.override!==null&&d.override!==undefined&&d.override!=="")return parseInt(d.override)||0;return autoSk(sk,ab);};
+  const hasOv=o=>o!==null&&o!==undefined&&o!=="";
+  // HP in play
+  const [hpAmt,setHpAmt]=useState("");
+  const damage=()=>{const n=parseInt(hpAmt)||0;if(!n)return;let t=L.hpTemp||0,c=L.hpCurrent||0;const fromT=Math.min(t,n);t-=fromT;c=Math.max(0,c-(n-fromT));commit("hpTemp",t);setTimeout(()=>commit("hpCurrent",c),0);setHpAmt("");};
+  const heal=()=>{const n=parseInt(hpAmt)||0;if(!n)return;const mx=L.hpMax||0;let c=(L.hpCurrent||0)+n;if(mx>0)c=Math.min(mx,c);commit("hpCurrent",c);setHpAmt("");};
+  // customisable boxes
+  const boxes=L.boxes||defaultBoxes(L);
+  const setBoxes=b=>commit("boxes",b);
+  const updBox=(id,patch)=>setBoxes(boxes.map(b=>b.id===id?{...b,...patch}:b));
+  const updItem=(bid,iid,patch)=>setBoxes(boxes.map(b=>b.id===bid?{...b,items:(b.items||[]).map(x=>x.id===iid?{...x,...patch}:x)}:b));
+  const moveBox=(id,d)=>{const i=boxes.findIndex(b=>b.id===id);const j=i+d;if(j<0||j>=boxes.length)return;const a=[...boxes];[a[i],a[j]]=[a[j],a[i]];setBoxes(a);};
+  const [boxOpen,setBoxOpen]=useState({});
   const ExpandList=({items,open,setOpen,onUpd,onDel,onAdd,sec})=>(<div>
     {sec&&<div className="sh-section">{sec}</div>}
     {(items||[]).map(x=><div key={x.id} style={{marginBottom:5,border:"1px solid #b8a070",borderRadius:3,overflow:"hidden"}}>
@@ -874,9 +1035,17 @@ function CharSheet({char,onChange}){
           {[["hpCurrent","CURRENT",20],["hpMax","MAX",20],["hpTemp","TEMP",14]].map(([f,lbl,sz],i)=><React.Fragment key={f}>{i>0&&<div style={{color:"rgba(255,255,255,0.3)",fontSize:14}}>{i===1?"/":"+"}</div>}<div style={{textAlign:"center"}}>
             <div style={{fontSize:7,color:"rgba(255,255,255,0.35)",fontFamily:"Cinzel",marginBottom:1}}>{lbl}</div>
             {editMode?<ShNumInput value={L[f]||0} onCommit={v=>commitNum(f,v)} style={{fontFamily:"Cinzel",background:"transparent",border:"none",color:f==="hpCurrent"&&L.hpCurrent>0&&L.hpMax>0&&L.hpCurrent<L.hpMax/2?"#ff8888":"white",fontSize:sz,textAlign:"center",width:f==="hpTemp"?34:44,outline:"none",fontWeight:700}}/>
-              :<div style={{fontFamily:"Cinzel",color:f==="hpCurrent"&&L.hpCurrent>0&&L.hpMax>0&&L.hpCurrent<L.hpMax/2?"#ff8888":"white",fontSize:sz,fontWeight:700,minWidth:f==="hpTemp"?34:44,textAlign:"center"}}>{L[f]||0}</div>}
+              :f==="hpMax"?<div style={{fontFamily:"Cinzel",color:"white",fontSize:sz,fontWeight:700,minWidth:44,textAlign:"center"}}>{L[f]||0}</div>
+              :<QuickNum value={L[f]||0} onCommit={v=>commit(f,v)} style={{fontFamily:"Cinzel",color:f==="hpCurrent"&&L.hpCurrent>0&&L.hpMax>0&&L.hpCurrent<L.hpMax/2?"#ff8888":"white",fontSize:sz,fontWeight:700,width:f==="hpTemp"?34:48,minWidth:f==="hpTemp"?34:44,textAlign:"center"}}/>}
           </div></React.Fragment>)}
         </div>
+        {!editMode&&<div style={{display:"flex",gap:4,alignItems:"center",marginBottom:6}}>
+          <button title="-1 HP" onClick={()=>commit("hpCurrent",Math.max(0,(L.hpCurrent||0)-1))} style={{width:22,height:22,borderRadius:3,border:"1px solid rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.08)",color:"white",cursor:"pointer",fontSize:14,lineHeight:1}}>−</button>
+          <button title="+1 HP" onClick={()=>{const mx=L.hpMax||0;commit("hpCurrent",mx>0?Math.min(mx,(L.hpCurrent||0)+1):(L.hpCurrent||0)+1);}} style={{width:22,height:22,borderRadius:3,border:"1px solid rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.08)",color:"white",cursor:"pointer",fontSize:14,lineHeight:1}}>+</button>
+          <input type="number" value={hpAmt} onChange={e=>setHpAmt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")damage();}} placeholder="amt" style={{width:44,fontFamily:"Cinzel",fontSize:12,background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.3)",color:"white",borderRadius:3,padding:"2px 4px",outline:"none"}}/>
+          <button onClick={damage} style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(255,120,120,0.6)",background:"rgba(160,30,30,0.5)",color:"#ffd0d0",cursor:"pointer"}}>DAMAGE</button>
+          <button onClick={heal} style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(120,220,120,0.6)",background:"rgba(30,110,30,0.5)",color:"#d0ffd0",cursor:"pointer"}}>HEAL</button>
+        </div>}
         <div style={{display:"flex",gap:8}}>
           <div><div style={{fontSize:7,color:"rgba(255,255,255,0.35)",fontFamily:"Cinzel",marginBottom:1}}>HIT DIE</div>
             {editMode?<select value={L.hitDieMax||"d8"} onChange={e=>commit("hitDieMax",e.target.value)} style={{fontFamily:"Cinzel",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"white",fontSize:12,padding:"2px 4px",outline:"none",borderRadius:2}}>{["d4","d6","d8","d10","d12"].map(d=><option key={d} style={{background:"#333"}}>{d}</option>)}</select>
@@ -907,7 +1076,7 @@ function CharSheet({char,onChange}){
           <ShInput value={r.value} onCommit={v=>updSR(r.id,"value",v)} style={{fontFamily:"Cinzel",background:"rgba(255,255,255,0.6)",border:"1px solid #b8a070",color:"#2a2a3a",fontSize:13,textAlign:"center",width:"100%",outline:"none",borderRadius:2,padding:"1px 0",fontWeight:600}}/>
           <button onClick={()=>delSR(r.id)} style={{background:"none",border:"none",color:"#bbb",cursor:"pointer",fontSize:8,marginTop:1,padding:0}}>✕</button></>
         :<><div style={{fontFamily:"Cinzel",color:"#555",fontSize:7,letterSpacing:"0.04em",textTransform:"uppercase",marginBottom:2}}>{r.label}</div>
-          <div style={{fontFamily:"Cinzel",color:"#2a2a3a",fontSize:14,fontWeight:600}}>{r.value||"—"}</div></>}
+          <div style={{fontFamily:"Cinzel",color:"#2a2a3a",fontSize:14,fontWeight:600}}>{r.value||(r.label==="PASSIVE PERCEPTION"?10+getSkBonus("Perception","wis"):"—")}</div></>}
       </div>)}
       {editMode&&<button onClick={addSR} style={{alignSelf:"center",fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.4)",border:"1px dashed #b8a070",color:"#888",borderRadius:3,padding:"3px 7px",fontSize:10,cursor:"pointer"}}>+ Stat</button>}
     </div>
@@ -933,18 +1102,23 @@ function CharSheet({char,onChange}){
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <span className={`prof-dot${savP?" filled":""}`} onClick={()=>editMode&&toggleSaveProf(ab)} style={{cursor:editMode?"pointer":"default"}}/>
                   <span style={{fontSize:12,fontFamily:"Cinzel",color:"#2a2a3a",flex:1,fontWeight:600}}>{fmtMod(savB)}</span>
-                  {editMode&&<ShNumInput value={((L.savingThrows&&L.savingThrows[ab])||{}).override||""} onCommit={v=>setSaveOverride(ab,v)} placeholder="?" style={{width:34,fontSize:9,padding:"1px 2px"}} className="sh-num"/>}
+                  {editMode&&(()=>{const o=((L.savingThrows&&L.savingThrows[ab])||{}).override;return(<>
+                    <button title={hasOv(o)?"Remove override":"Override this number"} onClick={()=>setSaveOverride(ab,hasOv(o)?"":String(calcMod(L[ab]||10)+(savP?prof:0)))} style={{fontSize:8,fontFamily:"Cinzel",border:"1px solid #b8a070",background:hasOv(o)?"#7a5a14":"rgba(255,255,255,0.5)",color:hasOv(o)?"white":"#7a5a14",borderRadius:2,padding:"0 3px",cursor:"pointer"}}>OVR</button>
+                    {hasOv(o)&&<ShNumInput value={o} onCommit={v=>setSaveOverride(ab,v)} style={{width:34,fontSize:10,padding:"1px 2px"}} className="sh-num"/>}</>);})()}
                 </div>
               </div>
               {sks.length>0&&<div className="sh" style={{padding:"4px 5px"}}>
                 <div className="sh-label">SKILLS</div>
                 {sks.map(sk=>{const d=(L.skills&&L.skills[sk])||{prof:false,override:null};const b=getSkBonus(sk,ab);return(<div key={sk} style={{marginBottom:4}}>
                   <div style={{display:"flex",alignItems:"center",gap:3,marginBottom:1}}>
-                    <span className={`prof-dot${d.prof?" filled":""}`} onClick={()=>editMode&&toggleSkillProf(sk)} style={{cursor:editMode?"pointer":"default"}}/>
+                    <span title={d.exp?"Expertise (double proficiency)":d.prof?"Proficient":"Not proficient"} className={`prof-dot${d.prof?" filled":""}`} onClick={()=>editMode&&toggleSkillProf(sk)} style={{cursor:editMode?"pointer":"default",boxShadow:d.exp?"0 0 0 2px #f0ebe0, 0 0 0 3.5px #2a2a3a":"none"}}/>
                     <span style={{fontSize:10,color:"#2a2a3a",flex:1,lineHeight:1.2}}>{sk}</span>
                     <span style={{fontSize:10,fontFamily:"Cinzel",color:"#2a2a3a",fontWeight:600}}>{fmtMod(b)}</span>
                   </div>
-                  {editMode&&<ShNumInput value={d.override||""} onCommit={v=>setSkillOverride(sk,v)} placeholder="?" style={{fontSize:9,padding:"1px 3px",height:16}} className="sh-num"/>}
+                  {editMode&&<div style={{display:"flex",gap:3,alignItems:"center",marginLeft:14}}>
+                    <button title={hasOv(d.override)?"Remove override":"Override this number"} onClick={()=>setSkillOverride(sk,hasOv(d.override)?"":String(autoSk(sk,ab)))} style={{fontSize:8,fontFamily:"Cinzel",border:"1px solid #b8a070",background:hasOv(d.override)?"#7a5a14":"rgba(255,255,255,0.5)",color:hasOv(d.override)?"white":"#7a5a14",borderRadius:2,padding:"0 3px",cursor:"pointer"}}>OVERRIDE</button>
+                    {hasOv(d.override)&&<ShNumInput value={d.override} onCommit={v=>setSkillOverride(sk,v)} style={{fontSize:10,padding:"1px 3px",height:17,width:38}} className="sh-num"/>}
+                  </div>}
                 </div>);})}
               </div>}
             </div>);
@@ -963,24 +1137,59 @@ function CharSheet({char,onChange}){
         </div>)}
         {editMode&&<button onClick={addW} style={{fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.4)",border:"1px dashed #b8a070",color:"#888",borderRadius:3,padding:"3px 8px",fontSize:11,cursor:"pointer",marginTop:2}}>+ Add Weapon</button>}
       </div>
-      {/* Features/Knacks/Exploits */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-        <div className="sh"><ExpandList items={L.classFeatures||[]} open={cfO} setOpen={setCfO} onUpd={updCF} onDel={delCF} onAdd={addCF} sec="CLASS FEATURES"/></div>
-        <div className="sh"><ExpandList items={L.knacks||[]} open={knO} setOpen={setKnO} onUpd={updKn} onDel={delKn} onAdd={addKn} sec="KNACKS"/></div>
-        <div className="sh">
-          <div className="sh-section">EXPLOITS</div>
-          <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:7}}>
-            <div className="sh-label" style={{margin:0,flexShrink:0}}>EXPLOIT DC:</div>
-            {editMode?<ShNumInput value={L.exploitDC||10} onCommit={v=>commitNum("exploitDC",v)} style={{width:46,fontSize:13}} className="sh-num"/>:<div style={{fontFamily:"Cinzel",fontSize:15,color:"#2a2a3a",fontWeight:700}}>{L.exploitDC||10}</div>}
-          </div>
-          {(()=>{const total=parseInt(((L.statRows||[]).find(r=>r.label==="EXPLOIT DICE AVAIL")||{}).value)||0;const used=L.exploitDiceUsed||[];return total>0?<div style={{marginBottom:8}}><div className="sh-label">EXPLOIT DICE</div><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{Array.from({length:total}).map((_,i)=><div key={i} onClick={()=>{const a=[...(L.exploitDiceUsed||[])];a[i]=!a[i];commit("exploitDiceUsed",a);}} style={{width:20,height:20,borderRadius:3,border:"2px solid #b8a070",background:used[i]?"#2a2a3a":"rgba(255,255,255,0.5)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{used[i]&&<span style={{color:"white",fontSize:10,fontWeight:"bold"}}>✕</span>}</div>)}</div><div style={{fontSize:8,color:"#aaa",marginTop:2,fontFamily:"Cinzel"}}>{(used.filter(Boolean).length)} USED · {total-(used.filter(Boolean).length)} LEFT</div></div>:null;})()}
-          <ExpandList items={L.exploits||[]} open={exO} setOpen={setExO} onUpd={updEx} onDel={delEx} onAdd={addEx} sec=""/>
-        </div>
-      </div>
-      {/* Feats + Species */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        <div className="sh"><ExpandList items={L.featsArr||[]} open={ftO} setOpen={setFtO} onUpd={updFt} onDel={delFt} onAdd={addFt} sec="FEATS"/></div>
-        <div className="sh"><div className="sh-section">SPECIES TRAITS</div>{editMode?<ShTextarea value={L.speciesTraits||""} onCommit={v=>commit("speciesTraits",v)} className="sh-input-box" style={{resize:"vertical",minHeight:70,fontSize:12,lineHeight:1.6}}/>:<p style={{fontSize:12,color:"#2a2a3a",lineHeight:1.6,whiteSpace:"pre-wrap",minHeight:30}}>{L.speciesTraits||<em style={{opacity:.4}}>—</em>}</p>}</div>
+      {/* Customisable boxes (Class Features, Knacks, Exploits, Feats, Species Traits, and your own) */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10}}>
+        {boxes.map((b,bi)=><div key={b.id} className="sh">
+          {editMode?<div style={{marginBottom:6}}>
+            <div style={{display:"flex",gap:3,alignItems:"center",marginBottom:5}}>
+              <ShInput value={b.title||""} onCommit={v=>updBox(b.id,{title:v.toUpperCase()})} placeholder="BOX TITLE" className="sh-input-box" style={{fontFamily:"Cinzel",fontSize:11,letterSpacing:".08em",flex:1}}/>
+              <button title="Move left" onClick={()=>moveBox(b.id,-1)} disabled={bi===0} style={{border:"1px solid #b8a070",background:"rgba(255,255,255,0.5)",borderRadius:2,cursor:"pointer",fontSize:10,padding:"1px 5px",opacity:bi===0?.35:1}}>◀</button>
+              <button title="Move right" onClick={()=>moveBox(b.id,1)} disabled={bi===boxes.length-1} style={{border:"1px solid #b8a070",background:"rgba(255,255,255,0.5)",borderRadius:2,cursor:"pointer",fontSize:10,padding:"1px 5px",opacity:bi===boxes.length-1?.35:1}}>▶</button>
+              <button title="Delete box" onClick={()=>{if(confirm(`Delete the ${b.title||"untitled"} box and everything in it?`))setBoxes(boxes.filter(x=>x.id!==b.id));}} style={{border:"1px solid var(--red)",background:"none",color:"var(--red)",borderRadius:2,cursor:"pointer",fontSize:11,padding:"0 5px"}}>✕</button>
+            </div>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+              <Switch on={!!b.dcOn} onChange={v=>updBox(b.id,{dcOn:v})} label="DC"/>
+              <Switch on={!!b.ctrOn} onChange={v=>updBox(b.id,{ctrOn:v})} label="COUNTER"/>
+              {b.ctrOn&&<span style={{display:"inline-flex",gap:3,alignItems:"center",fontSize:9,fontFamily:"Cinzel",color:"#666"}}>MAX <ShNumInput value={b.ctrMax||0} onCommit={v=>updBox(b.id,{ctrMax:parseInt(v)||0})} style={{width:38,fontSize:11}} className="sh-num"/></span>}
+              {b.ctrOn&&<ShInput value={b.ctrLabel||""} onCommit={v=>updBox(b.id,{ctrLabel:v})} placeholder="Counter name (e.g. Exploit dice)" className="sh-input-box" style={{fontSize:10,flex:"1 1 140px"}}/>}
+            </div>
+          </div>:<div className="sh-section">{b.title||"UNTITLED"}</div>}
+          {b.dcOn&&<div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+            <div className="sh-label" style={{margin:0}}>DC</div>
+            {editMode?<ShNumInput value={b.dc||10} onCommit={v=>updBox(b.id,{dc:parseInt(v)||0})} style={{width:46,fontSize:13}} className="sh-num"/>:<div style={{fontFamily:"Cinzel",fontSize:15,color:"#2a2a3a",fontWeight:700}}>{b.dc||10}</div>}
+          </div>}
+          {b.ctrOn&&(b.ctrMax||0)>0&&<div style={{marginBottom:7}}>
+            {b.ctrLabel&&<div className="sh-label">{b.ctrLabel.toUpperCase()}</div>}
+            <TickCounter max={b.ctrMax} used={b.ctrUsed||0} onChange={v=>updBox(b.id,{ctrUsed:v})}/>
+          </div>}
+          {b.kind==="text"
+            ?(editMode?<ShTextarea value={b.text||""} onCommit={v=>updBox(b.id,{text:v})} className="sh-input-box" style={{resize:"vertical",minHeight:70,fontSize:12,lineHeight:1.6}}/>
+              :<p style={{fontSize:12,color:"#2a2a3a",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{b.text||<em style={{opacity:.4}}>—</em>}</p>)
+            :<div>
+              {(b.items||[]).map(x=>{const o=!!boxOpen[b.id+":"+x.id];return(<div key={x.id} style={{marginBottom:5,border:"1px solid #b8a070",borderRadius:3,overflow:"hidden"}}>
+                <div style={{display:"flex",alignItems:"center",gap:5,padding:"5px 8px",background:"#e8d9b8",cursor:"pointer",userSelect:"none",flexWrap:"wrap"}} onClick={()=>setBoxOpen(m=>({...m,[b.id+":"+x.id]:!o}))}>
+                  {editMode?<span style={{flex:1,minWidth:100}} onClick={e=>e.stopPropagation()}><ShInput value={x.name||""} onCommit={v=>updItem(b.id,x.id,{name:v})} className="sh-input" style={{fontSize:12}} placeholder="Name..."/></span>
+                    :<span style={{flex:1,fontSize:12,fontFamily:"Cinzel",color:"#2a2a3a"}}>{x.name||<em style={{opacity:.5}}>Unnamed</em>}</span>}
+                  {!editMode&&x.ctrOn&&(x.ctrMax||0)>0&&<TickCounter small max={x.ctrMax} used={x.ctrUsed||0} onChange={v=>updItem(b.id,x.id,{ctrUsed:v})}/>}
+                  <span style={{fontSize:9,color:"#888"}}>{o?"▲":"▼"}</span>
+                  {editMode&&<button onClick={e=>{e.stopPropagation();setBoxes(boxes.map(bb=>bb.id===b.id?{...bb,items:bb.items.filter(y=>y.id!==x.id)}:bb));}} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:12}}>✕</button>}
+                </div>
+                {(o||editMode&&x.ctrOn)&&<div style={{padding:"7px 9px",background:"#f0ebe0"}}>
+                  {editMode&&<div style={{display:"flex",gap:10,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
+                    <Switch on={!!x.ctrOn} onChange={v=>updItem(b.id,x.id,{ctrOn:v})} label="COUNTER"/>
+                    {x.ctrOn&&<span style={{display:"inline-flex",gap:3,alignItems:"center",fontSize:9,fontFamily:"Cinzel",color:"#666"}}>USES <ShNumInput value={x.ctrMax||0} onCommit={v=>updItem(b.id,x.id,{ctrMax:parseInt(v)||0})} style={{width:38,fontSize:11}} className="sh-num"/></span>}
+                  </div>}
+                  {o&&<><div className="sh-label">DESCRIPTION</div>
+                  {editMode?<ShTextarea value={x.desc||""} onCommit={v=>updItem(b.id,x.id,{desc:v})} className="sh-input-box" style={{fontSize:12,minHeight:50,resize:"vertical"}}/>:<p style={{fontSize:12,color:"#2a2a3a",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{x.desc||<em style={{opacity:.4}}>—</em>}</p>}</>}
+                </div>}
+              </div>);})}
+              {editMode&&<button onClick={()=>updBox(b.id,{items:[...(b.items||[]),{id:Date.now(),name:"",desc:""}]})} style={{fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.4)",border:"1px dashed #b8a070",color:"#666",borderRadius:3,padding:"3px 8px",fontSize:11,cursor:"pointer",width:"100%",marginTop:3}}>+ Add</button>}
+            </div>}
+        </div>)}
+        {editMode&&<div style={{display:"flex",flexDirection:"column",gap:6,justifyContent:"center",border:"2px dashed #b8a070",borderRadius:4,padding:12,minHeight:90}}>
+          <button onClick={()=>setBoxes([...boxes,{id:"b_"+Date.now(),title:"NEW BOX",kind:"list",items:[]}])} style={{fontFamily:"Cinzel",fontSize:11,border:"1px solid #b8a070",background:"rgba(255,255,255,0.5)",borderRadius:3,padding:"6px",cursor:"pointer",color:"#5a3e1b"}}>+ New list box</button>
+          <button onClick={()=>setBoxes([...boxes,{id:"b_"+Date.now(),title:"NOTES",kind:"text",text:""}])} style={{fontFamily:"Cinzel",fontSize:11,border:"1px solid #b8a070",background:"rgba(255,255,255,0.5)",borderRadius:3,padding:"6px",cursor:"pointer",color:"#5a3e1b"}}>+ New notes box</button>
+        </div>}
       </div>
       {/* Armour + Currency + Inventory */}
       <div style={{display:"grid",gridTemplateColumns:"180px 1fr 1fr",gap:10}}>
@@ -1219,6 +1428,11 @@ function App(){
   // One-time upgrade to the kingdom/region/barony layout
   useEffect(()=>{if(!ready||!data)return;const m=migratePlaces(data);if(m)setData(m);},[ready,data&&data.placesV2]);
   const openLore=(sec,id)=>{setLoreTarget({s:sec,id,n:Date.now()});setPage("lore");};
+  const linkCtxVal=useMemo(()=>{
+    const lore=(data&&data.lore)||{};const places=getPlaces(lore);
+    return{entries:linkEntries(lore),open:openLore,
+      can:(sec,id)=>{const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));if(!e)return false;if(isDM)return true;return sec==="regions"?placeVisible(places,e,false):entryVisible(e);}};
+  },[data&&data.lore,isDM]);
 
   if(!sbCfg)return <SetupScreen onSave={cfg=>{initSB(cfg.url,cfg.key);setSbCfg(cfg);}}/>;
   if(!data)return(
@@ -1233,7 +1447,7 @@ function App(){
 
   const NAV=[{id:"map",label:"Map",icon:"🗺"},{id:"lore",label:"Lore",icon:"📜"},{id:"chars",label:"Characters",icon:"⚔"}];
 
-  return(<div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--dark)"}}>
+  return(<LinkCtx.Provider value={linkCtxVal}><div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--dark)"}}>
     {/* Header */}
     <header className="sf-hdr">
       <h1 style={{fontSize:16,letterSpacing:"0.16em",color:"var(--gold3)",whiteSpace:"nowrap",fontFamily:"Cinzel",textShadow:"0 0 16px rgba(200,160,40,0.3)"}}>⚔ STEEL & FIRE</h1>
@@ -1281,7 +1495,7 @@ function App(){
         </div>
       </div>
     </div>}
-  </div>);
+  </div></LinkCtx.Provider>);
 }
 
 
@@ -1434,9 +1648,9 @@ html,body,#root{height:100%;}
 .sf-place-tip:before{display:none}
 .sf-pin-tip{background:rgba(20,12,4,0.95);border:1px solid var(--gold2);color:#f0dcb4;font-family:'Crimson Pro',serif;font-size:13px;padding:6px 10px;border-radius:5px;width:max-content;min-width:120px;max-width:240px;white-space:normal;box-shadow:0 2px 12px rgba(0,0,0,0.6)}
 .sf-pin-tip b{font-family:Cinzel,serif;color:var(--gold3);font-size:12px;letter-spacing:0.04em;font-weight:600}
-.sf-pin-icon{width:84px;height:64px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s,filter .15s;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.55))}
-.sf-pin-icon:hover{transform:scale(1.12);filter:drop-shadow(0 0 8px rgba(232,200,96,0.95))}
-.sf-pin-icon img{width:84px!important;height:64px!important;object-fit:contain;pointer-events:none}
+.sf-pin-icon{display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s,filter .15s;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.55))}
+.sf-pin-icon:hover{filter:drop-shadow(0 0 8px rgba(232,200,96,0.95))}
+.sf-pin-icon img{width:100%!important;height:100%!important;object-fit:contain;pointer-events:none}
 .sf-pin-icon img.sf-blend{mix-blend-mode:multiply}
 .sf-pin-hidden{opacity:0.62}
 .sf-pin-hidden:after{content:"HIDDEN";position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);font:600 8px Cinzel,serif;letter-spacing:.08em;color:#fff;background:#a3241e;padding:1px 4px;border-radius:2px}
@@ -1456,6 +1670,15 @@ html,body,#root{height:100%;}
 .sf-dm-input{font-family:'Crimson Pro',serif;background:rgba(60,0,0,0.35);border:1px solid rgba(220,80,80,0.4);color:#ffd8d8;border-radius:4px;padding:6px 9px;font-size:14px;outline:none;width:100%}
 .sf-tab{font-family:Cinzel,serif;font-size:11px;letter-spacing:.05em;padding:6px 14px;cursor:pointer;color:rgba(255,170,170,0.6);border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none}
 .sf-tab.on{color:#ffc4c4;border-bottom-color:#ff7a7a}
+.sf-link{color:#a87a10;font-weight:600;cursor:pointer;text-decoration:none;border-bottom:1px solid rgba(168,122,16,0.35)}
+.sf-link:hover{color:#c4900c;border-bottom-color:#c4900c}
+.sf-panel .sf-link{color:var(--gold3);border-bottom-color:rgba(232,200,96,0.4)}
+.sf-mention-list{position:absolute;z-index:50;left:0;top:100%;margin-top:2px;min-width:240px;max-width:100%;background:var(--parch);border:1px solid var(--gold2);border-radius:5px;box-shadow:0 6px 20px rgba(0,0,0,0.35);overflow:hidden}
+.sf-mention-item{padding:6px 10px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--ink);cursor:pointer}
+.sf-mention-item.on{background:var(--parch3);color:var(--gold)}
+.sf-hidden-para{position:relative;border-left:3px solid #b3261e;padding-left:24px;background:rgba(179,38,30,0.045);border-radius:0 3px 3px 0}
+.sf-hidden-para:before{content:"";position:absolute;left:5px;top:0.42em;width:13px;height:13px;background-image:${RED_LOCK_SVG};background-size:contain;background-repeat:no-repeat}
+.sf-para{padding-left:27px}
 .sf-hdr{display:flex;align-items:center;gap:10px;padding:6px 14px;min-height:46px;border-bottom:2px solid var(--gold2);background:var(--dark2);flex-shrink:0;flex-wrap:wrap;row-gap:6px}
 .sf-nav{display:flex;gap:3px;flex-wrap:wrap}
 @media (max-width:900px){
@@ -1534,7 +1757,7 @@ function startCleanIcons(){
     const img=new Image();
     img.onload=()=>{try{
       const c=document.createElement("canvas");c.width=img.width;c.height=img.height;const ctx=c.getContext("2d",{willReadFrequently:true});ctx.drawImage(img,0,0);
-      const bg=edgeBackground(ctx.getImageData(0,0,c.width,c.height).data,c.width,c.height,226);
+      const bg=edgeBackground(ctx.getImageData(0,0,c.width,c.height).data,c.width,c.height);
       CLEAN_ICONS[k]=cutBox(ctx,bg,c.width,{x:0,y:0,w:c.width,h:c.height},220);
       cleanIconListeners.forEach(f=>f());
     }catch(e){}};
@@ -1575,6 +1798,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
   const elRef=useRef(null),mapRef=useRef(null),layerRef=useRef(null),drawLayerRef=useRef(null),focusRef=useRef(null);
   const cb=useRef({});
   const [pts,setPts]=useState([]);const ptsRef=useRef([]);
+  const [zoom,setZoom]=useState(0);
   const drawing=!!draw;
   cb.current={onShapeClick,onPinClick,onPinMove,onMapClick,drawing};
   const W=canvas?canvas.W:0,H=canvas?canvas.H:0;
@@ -1612,6 +1836,9 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
     L.imageOverlay(canvas.img,[[0,0],[H,W]],{interactive:false}).addTo(map);
     layerRef.current=L.layerGroup().addTo(map);
     drawLayerRef.current=L.layerGroup().addTo(map);
+    map.on("zoomend",()=>setZoom(Math.round(map.getZoom()*100)/100));
+    // while zooming, resize icons smoothly along with the map
+    map.on("zoomanim",e=>{const k=Math.pow(2,e.zoom);elRef.current&&elRef.current.querySelectorAll(".sf-pin-icon[data-u]").forEach(el=>{const u=+el.dataset.u,a=+el.dataset.a;const w=Math.max(14,u*k),h=Math.max(10,u*a*k);const p=el.parentNode;if(p){p.style.width=w+"px";p.style.height=h+"px";p.style.marginLeft=(-w/2)+"px";p.style.marginTop=(-h/2)+"px";}el.style.width=w+"px";el.style.height=h+"px";});});
     map.on("click",e=>{
       if(cb.current.drawing){
         const p=[Math.round(Math.min(H,Math.max(0,e.latlng.lat))*10)/10,Math.round(Math.min(W,Math.max(0,e.latlng.lng))*10)/10];
@@ -1638,7 +1865,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
 
   // draw borders, icons, shields
   const shapesKey=JSON.stringify((shapes||[]).map(s=>[s.id,s.ring,s.label,s.state,s.shield?(s.shield.length>40?s.shield.length:s.shield):0,s.clickable]));
-  const pinsKey=JSON.stringify((pins||[]).map(p=>[p.id,p.lat,p.lng,p.img?p.img.length:0,p.hidden,p.selected,p.tip,p.draggable,p.glyph]));
+  const pinsKey=JSON.stringify((pins||[]).map(p=>[p.id,p.lat,p.lng,p.img?p.img.length:0,p.hidden,p.selected,p.tip,p.draggable,p.glyph,p.size,p.aspect]))+"z"+zoom;
   useEffect(()=>{
     const L=window.L,map=mapRef.current,layer=layerRef.current;if(!map||!layer)return;
     layer.clearLayers();
@@ -1684,10 +1911,12 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
     });
     (pins||[]).forEach(p=>{
       if(p.lat==null||p.lng==null)return;
-      const inner=p.img?`<img src="${p.img}" class="${p.blend?"sf-blend":""}"/>`:`<div class="sf-pin-dot">${p.glyph||"🏠"}</div>`;
-      const html=`<div class="sf-pin-icon${p.hidden?" sf-pin-hidden":""}${p.selected?" sf-pin-sel":""}" style="position:relative">${inner}</div>`;
-      const m=L.marker([p.lat,p.lng],{icon:L.divIcon({html,className:"",iconSize:[84,64],iconAnchor:[42,32]}),draggable:!!p.draggable&&!drawing,keyboard:false,interactive:!drawing,zIndexOffset:p.selected?1000:0}).addTo(layer);
-      if(p.tip)m.bindTooltip(p.tip,{direction:"top",offset:[0,-30],className:"sf-pin-tip"});
+      const k=Math.pow(2,map.getZoom());const u=p.size||90,a=p.aspect||0.75;
+      const w=p.img?Math.max(14,u*k):30,h=p.img?Math.max(10,u*a*k):30;
+      const inner=p.img?`<img src="${p.img}"/>`:`<div class="sf-pin-dot">${p.glyph||"🏠"}</div>`;
+      const html=`<div class="sf-pin-icon${p.hidden?" sf-pin-hidden":""}${p.selected?" sf-pin-sel":""}" ${p.img?`data-u="${u}" data-a="${a}"`:""} style="position:relative;width:${w}px;height:${h}px">${inner}</div>`;
+      const m=L.marker([p.lat,p.lng],{icon:L.divIcon({html,className:"",iconSize:[w,h],iconAnchor:[w/2,h/2]}),draggable:!!p.draggable&&!drawing,keyboard:false,interactive:!drawing,zIndexOffset:p.selected?1000:0}).addTo(layer);
+      if(p.tip)m.bindTooltip(p.tip,{direction:"top",offset:[0,-h/2+4],className:"sf-pin-tip"});
       m.on("click",e=>{L.DomEvent.stopPropagation(e);cb.current.onPinClick&&cb.current.onPinClick(p.id);});
       m.on("dragend",()=>{const ll=m.getLatLng();cb.current.onPinMove&&cb.current.onPinMove(p.id,[Math.round(Math.min(H,Math.max(0,ll.lat))),Math.round(Math.min(W,Math.max(0,ll.lng)))]);});
     });
@@ -1720,6 +1949,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
 /* ════ MAP EXPLORER (the Map tab) ════ */
 function MapExplorer({data,isDM,onOpenLore}){
   useCleanIcons();
+  const lctx=useContext(LinkCtx);
   const lore=data.lore||{};
   const places=getPlaces(lore);
   const sets=lore.settlements||[];
@@ -1774,8 +2004,8 @@ function MapExplorer({data,isDM,onOpenLore}){
     shield:!cur&&!focus?(imgSrc(p.heraldry)||PLACE_TYPES[placeType(p)].icon):(imgSrc(p.heraldry)||null)}));
 
   const pins=isBarony?sets.filter(s=>sameParent({parentId:s.placeId},cur.id)&&s.mapX!=null&&(isDM||entryVisible(s))).map(s=>{
-    const ic=settlementIcon(s);const hl=shownText(s,"hoverLore",isDM);
-    return{id:"s:"+s.id,lat:s.mapY,lng:s.mapX,img:ic.img,blend:ic.blend,hidden:!entryVisible(s),selected:sel&&sel.id==="s:"+s.id,
+    const ic=settlementIcon(s);const hl=plainLinks(shownText(s,"hoverLore",isDM));
+    return{id:"s:"+s.id,lat:s.mapY,lng:s.mapX,img:ic.img,size:s.iconSize||90,aspect:s.iconAspect||0.75,hidden:!entryVisible(s),selected:sel&&sel.id==="s:"+s.id,
       tip:`<b>${escHtml(s.name)}</b>${hl?`<br/>${escHtml(hl.length>180?hl.slice(0,180)+"…":hl)}`:""}`};
   }):[];
   const zones=isBarony&&cur.mapId==="barony"&&!imgSrc(cur.mapImage)?BARONY_TERRAIN.map(t=>({id:"t:"+t.id,lat:1050-t.iy,lng:t.ix,label:t.name})):[];
@@ -1799,7 +2029,7 @@ function MapExplorer({data,isDM,onOpenLore}){
           <div><div style={{fontFamily:"Cinzel",fontSize:15,color:"var(--gold3)",letterSpacing:".05em"}}>{p.name}</div>
           <div style={{fontFamily:"Cinzel",fontSize:9,color:"#b89a68",letterSpacing:".08em"}}>{PLACE_TYPES[t].label.toUpperCase()}{isDM&&!placeVisible(places,p,false)&&<span style={{color:"#ff8a7a"}}> · HIDDEN FROM PLAYERS</span>}</div></div>
         </div>
-        {desc&&<p style={{fontSize:13.5,lineHeight:1.55,marginBottom:10,whiteSpace:"pre-wrap",maxHeight:160,overflowY:"auto"}}>{desc}</p>}
+        {desc&&<p style={{fontSize:13.5,lineHeight:1.55,marginBottom:10,whiteSpace:"pre-wrap",maxHeight:160,overflowY:"auto"}}>{richNodes(desc,lctx)}</p>}
         {sel.noMap&&<p style={{fontSize:12,color:"#e0a070",fontStyle:"italic",marginBottom:8}}>{isDM?"No map uploaded for this yet — add one in DM → Map Control.":"This place hasn't been mapped yet."}</p>}
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           {canEnter&&<button className="btn act" onClick={()=>enter(p)} style={{fontSize:12,fontFamily:"Cinzel"}}>{t==="region"?"Explore":"Enter"} {p.name} ▶</button>}
@@ -1814,8 +2044,8 @@ function MapExplorer({data,isDM,onOpenLore}){
       popup=(<>
         <div style={{fontFamily:"Cinzel",fontSize:15,color:"var(--gold3)",letterSpacing:".05em",marginBottom:2}}>{s.name}</div>
         <div style={{fontFamily:"Cinzel",fontSize:9,color:"#b89a68",letterSpacing:".08em",marginBottom:8}}>SETTLEMENT{isDM&&!entryVisible(s)&&<span style={{color:"#ff8a7a"}}> · HIDDEN FROM PLAYERS</span>}</div>
-        {hl&&<p style={{fontSize:13.5,lineHeight:1.55,marginBottom:8,whiteSpace:"pre-wrap"}}>{hl}</p>}
-        {desc&&desc!==hl&&<p style={{fontSize:13,lineHeight:1.55,marginBottom:8,whiteSpace:"pre-wrap",color:"#d8c4a0",maxHeight:150,overflowY:"auto"}}>{desc}</p>}
+        {hl&&<p style={{fontSize:13.5,lineHeight:1.55,marginBottom:8,whiteSpace:"pre-wrap"}}>{richNodes(hl,lctx)}</p>}
+        {desc&&desc!==hl&&<p style={{fontSize:13,lineHeight:1.55,marginBottom:8,whiteSpace:"pre-wrap",color:"#d8c4a0",maxHeight:150,overflowY:"auto"}}>{richNodes(desc,lctx)}</p>}
         <button className="btn" onClick={()=>onOpenLore&&onOpenLore("settlements",s.id)} style={{fontSize:12,color:"#e8d2a8"}}>📜 Open in Lore</button>
       </>);}
   }else if(sel&&sel.kind==="terrain"){
@@ -1845,14 +2075,28 @@ function MapExplorer({data,isDM,onOpenLore}){
 
 /* ════ IMAGE CUT-OUT: removes the white background around icons/heraldry ════ */
 function loadImgFile(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=e.target.result;};r.onerror=rej;r.readAsDataURL(file);});}
-// Flood-fill the white that touches the edges. White *inside* an icon (walls, signs) is kept.
-function edgeBackground(d,w,h,thr){
+// Find the background colour (the most common colour around the edge — white, black, anything)
+function borderColour(d,w,h){
+  const counts={};const sums={};
+  const add=i=>{const o=i*4;if(d[o+3]<24)return;const k=(d[o]>>4)+","+(d[o+1]>>4)+","+(d[o+2]>>4);counts[k]=(counts[k]||0)+1;const sm=sums[k]||(sums[k]=[0,0,0]);sm[0]+=d[o];sm[1]+=d[o+1];sm[2]+=d[o+2];};
+  const step=Math.max(1,Math.floor((w+h)/800));
+  for(let x=0;x<w;x+=step){add(x);add((h-1)*w+x);}
+  for(let y=0;y<h;y+=step){add(y*w);add(y*w+w-1);}
+  let best=null,bc=0;Object.keys(counts).forEach(k=>{if(counts[k]>bc){bc=counts[k];best=k;}});
+  if(!best)return[255,255,255];
+  return sums[best].map(v=>Math.round(v/bc));
+}
+// Flood-fill the background colour that touches the edges. The same colour *inside* an icon is kept.
+function edgeBackground(d,w,h){
+  const col=borderColour(d,w,h);const[R,G,B]=col;const bright=(R+G+B)/3;
+  const tol=bright>200?30:bright<60?24:26;
   const bg=new Uint8Array(w*h);const st=new Int32Array(w*h);let sp=0;
-  const near=i=>{const o=i*4;return d[o+3]<24||(d[o]>=thr&&d[o+1]>=thr&&d[o+2]>=thr);};
+  const near=i=>{const o=i*4;return d[o+3]<24||(Math.abs(d[o]-R)<=tol&&Math.abs(d[o+1]-G)<=tol&&Math.abs(d[o+2]-B)<=tol);};
   const push=i=>{if(!bg[i]&&near(i)){bg[i]=1;st[sp++]=i;}};
   for(let x=0;x<w;x++){push(x);push((h-1)*w+x);}
   for(let y=0;y<h;y++){push(y*w);push(y*w+w-1);}
   while(sp){const i=st[--sp];const x=i%w;if(x>0)push(i-1);if(x<w-1)push(i+1);if(i>=w)push(i-w);if(i<w*(h-1))push(i+w);}
+  bg.colour=col;
   return bg;
 }
 // Copy part of the sheet to a transparent PNG
@@ -1864,7 +2108,7 @@ function cutBox(srcCtx,bg,W,box,maxOut){
     if(bg[gi]){d[o+3]=0;continue;}
     // soften the edge where the icon meets removed background
     const edge=(xx>0&&bg[gi-1])||(xx<w-1&&bg[gi+1])||(yy>0&&bg[gi-W])||(yy<h-1&&bg[gi+W]);
-    if(edge&&(d[o]+d[o+1]+d[o+2])/3>205)d[o+3]=110;
+    if(edge){const C=bg.colour||[255,255,255];const dist=Math.max(Math.abs(d[o]-C[0]),Math.abs(d[o+1]-C[1]),Math.abs(d[o+2]-C[2]));if(dist<70)d[o+3]=Math.round(40+dist*2);}
   }
   const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").putImageData(id,0,0);
   const sc=Math.min(1,maxOut/Math.max(w,h));
@@ -1876,13 +2120,13 @@ function sheetCanvas(img,maxSide){
   const sc=Math.min(1,maxSide/Math.max(img.width,img.height));
   const w=Math.max(1,Math.round(img.width*sc)),h=Math.max(1,Math.round(img.height*sc));
   const c=document.createElement("canvas");c.width=w;c.height=h;
-  const ctx=c.getContext("2d",{willReadFrequently:true});ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);
+  const ctx=c.getContext("2d",{willReadFrequently:true});ctx.drawImage(img,0,0,w,h);
   return{ctx,w,h};
 }
 // A single picture (heraldry, one icon): remove the white around it and crop tight
 async function cutoutFile(file,maxOut){
   const img=await loadImgFile(file);const{ctx,w,h}=sheetCanvas(img,1200);
-  const bg=edgeBackground(ctx.getImageData(0,0,w,h).data,w,h,228);
+  const bg=edgeBackground(ctx.getImageData(0,0,w,h).data,w,h);
   let minx=w,miny=h,maxx=-1,maxy=-1;
   for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(!bg[y*w+x]){if(x<minx)minx=x;if(x>maxx)maxx=x;if(y<miny)miny=y;if(y>maxy)maxy=y;}
   if(maxx<0)return null;
@@ -1891,7 +2135,7 @@ async function cutoutFile(file,maxOut){
 // A whole sheet: find every icon separated by white space
 async function extractIcons(file){
   const img=await loadImgFile(file);const{ctx,w,h}=sheetCanvas(img,2400);
-  const bg=edgeBackground(ctx.getImageData(0,0,w,h).data,w,h,228);
+  const bg=edgeBackground(ctx.getImageData(0,0,w,h).data,w,h);
   const C=4,gw=Math.ceil(w/C),gh=Math.ceil(h/C);
   const g=new Uint8Array(gw*gh);
   for(let y=0;y<h;y++){const r=((y/C)|0)*gw;for(let x=0;x<w;x++)if(!bg[y*w+x])g[r+((x/C)|0)]=1;}
@@ -1921,8 +2165,9 @@ async function extractIcons(file){
   const out=boxes.filter(b=>b.w>=minSide&&b.h>=minSide&&!looksLikeText(b)).map(trim)
     .sort((a,b)=>Math.abs(a.y-b.y)>Math.min(a.h,b.h)*0.5?a.y-b.y:a.x-b.x)
     .map(b=>{const p=3,x=Math.max(0,b.x-p),y=Math.max(0,b.y-p);return{box:{x,y,w:Math.min(w-x,b.w+2*p),h:Math.min(h-y,b.h+2*p)}};});
-  return out.slice(0,60).map(o=>({url:cutBox(ctx,bg,w,o.box,220)}));
+  return out.slice(0,60).map(o=>({url:cutBox(ctx,bg,w,o.box,520),aspect:o.box.h/o.box.w}));
 }
+function imgAspect(url){return new Promise(r=>{const i=new Image();i.onload=()=>r(i.naturalHeight/Math.max(1,i.naturalWidth));i.onerror=()=>r(0.75);i.src=url;});}
 async function loadMapImage(file){
   const url=await compressImage(file,2200,0.82);
   const dims=await new Promise(r=>{const i=new Image();i.onload=()=>r({w:i.naturalWidth,h:i.naturalHeight});i.onerror=()=>r({w:4,h:3});i.src=url;});
@@ -2003,6 +2248,7 @@ function MapControl({lore,setLore,onOpenOverview}){
   const P=placeById(places,selId);
   useEffect(()=>{if(selId!=null&&!P)setSelId(null);},[P,selId]);
   useEffect(()=>{setDraw(null);setPendingRing(null);setPlacing(null);setNote("");setAddingSet(false);},[selId]);
+  useEffect(()=>{if(P&&typeOf(P)!=="barony"&&tab==="sets")setTab("map");},[selId]);
   useEffect(()=>{if(!note)return;const t=setTimeout(()=>setNote(""),6000);return()=>clearTimeout(t);},[note]);
 
   const updEntry=(sec,id,fn)=>setLore(prev=>({...prev,[sec]:(prev[sec]||[]).map(e=>String(e.id)===String(id)?fn(e):e)}));
@@ -2011,18 +2257,29 @@ function MapControl({lore,setLore,onOpenOverview}){
   const childrenOf=pid=>places.filter(p=>sameParent(p,pid));
   const typeOf=placeType;
 
-  /* ── tree ── */
+  /* ── tree (folds open/closed; settlements sit under their barony) ── */
+  const [open,setOpen]=useState(()=>new Set());
+  const toggle=k=>setOpen(prev=>{const n=new Set(prev);n.has(k)?n.delete(k):n.add(k);return n;});
+  useEffect(()=>{if(!P)return;const keys=[String(P.id),...ancestorsOf(places,P).map(a=>String(a.id))];setOpen(prev=>new Set([...prev,...keys]));},[selId]);
   const renderNode=(p,depth)=>{
     const on=String(selId)===String(p.id);const hidden=!placeVisible(places,p,false);
+    const kids=childrenOf(p.id);const mySets=typeOf(p)==="barony"?sets.filter(x=>sameParent({parentId:x.placeId},p.id)):[];
+    const n=kids.length+mySets.length;const isOpen=open.has(String(p.id));
     return(<React.Fragment key={p.id}>
-      <div onClick={()=>setSelId(p.id)} style={{padding:`7px 8px 7px ${10+depth*16}px`,cursor:"pointer",display:"flex",alignItems:"center",gap:6,fontSize:12.5,fontFamily:"Crimson Pro",
+      <div onClick={()=>setSelId(p.id)} style={{padding:`7px 8px 7px ${4+depth*14}px`,cursor:"pointer",display:"flex",alignItems:"center",gap:5,fontSize:12.5,fontFamily:"Crimson Pro",
         background:on?"rgba(139,26,26,0.55)":"transparent",borderLeft:on?"3px solid #ff7a7a":"3px solid transparent",color:hidden?"#ff9a8a":"#ffd8d8"}}>
+        <span onClick={e=>{e.stopPropagation();if(n)toggle(String(p.id));}} style={{width:14,textAlign:"center",fontSize:11,color:"rgba(255,190,190,0.7)",cursor:n?"pointer":"default"}}>{n?(isOpen?"▾":"▸"):""}</span>
         <span>{PLACE_TYPES[typeOf(p)].icon}</span>
         <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"Unnamed"}</span>
         {!hasRing(p)&&<span title="No border drawn yet" style={{fontSize:10,opacity:.7}}>✏</span>}
-        <span title={hidden?"Hidden from players":"Visible to players"} style={{fontSize:10}}>{hidden?"🙈":"👁"}</span>
+        <span title={hidden?"Hidden from players":"Visible to players"} style={{color:hidden?"#ff8a7a":"#9fd89f"}}><Eye open={!hidden} size={12}/></span>
       </div>
-      {childrenOf(p.id).map(c=>renderNode(c,depth+1))}
+      {isOpen&&kids.map(c=>renderNode(c,depth+1))}
+      {isOpen&&mySets.map(x=>{const sv=entryVisible(x);const son=String(openSet)===String(x.id)&&on&&tab==="sets";return(
+        <div key={"s"+x.id} onClick={()=>{setSelId(p.id);setTab("sets");setOpenSet(x.id);}} style={{padding:`5px 8px 5px ${4+(depth+1)*14+19}px`,cursor:"pointer",display:"flex",alignItems:"center",gap:5,fontSize:12,fontFamily:"Crimson Pro",color:sv?"#f0d0d0":"#ff9a8a",background:son?"rgba(139,26,26,0.35)":"transparent"}}>
+          <span>🏠</span><span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{x.name||"Unnamed"}</span>
+          <span style={{color:sv?"#9fd89f":"#ff8a7a"}}><Eye open={sv} size={11}/></span>
+        </div>);})}
     </React.Fragment>);
   };
 
@@ -2075,7 +2332,7 @@ function MapControl({lore,setLore,onOpenOverview}){
     else{
       const mine=sets.filter(s=>sameParent({parentId:s.placeId},P.id));
       spec={canvas:canvasInfo(P),barony:true,
-        pins:mine.filter(s=>s.mapX!=null).map(s=>{const ic=settlementIcon(s);return{id:s.id,lat:s.mapY,lng:s.mapX,img:ic.img,blend:ic.blend,hidden:!entryVisible(s),selected:String(openSet)===String(s.id),draggable:true,tip:`<b>${escHtml(s.name)}</b>${s.hoverLore?"<br/>"+escHtml(s.hoverLore.slice(0,160)):""}`};}),
+        pins:mine.filter(s=>s.mapX!=null).map(s=>{const ic=settlementIcon(s);return{id:s.id,lat:s.mapY,lng:s.mapX,img:ic.img,size:s.iconSize||90,aspect:s.iconAspect||0.75,hidden:!entryVisible(s),selected:String(openSet)===String(s.id),draggable:true,tip:`<b>${escHtml(s.name)}</b>${s.hoverLore?"<br/>"+escHtml(s.hoverLore.slice(0,160)):""}`};}),
         zones:P.mapId==="barony"&&!imgSrc(P.mapImage)?BARONY_TERRAIN.map(z=>({id:"t:"+z.id,lat:1050-z.iy,lng:z.ix,label:z.name})):[]};
     }
   }
@@ -2094,15 +2351,15 @@ function MapControl({lore,setLore,onOpenOverview}){
   };
   const uploadSetIcon=async(e,id)=>{
     const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
-    setBusy("Removing background…");const url=await cutoutFile(f,220).catch(()=>null);setBusy("");if(url)updSet(id,{iconImg:url,iconKey:null});
+    setBusy("Removing background…");const url=await cutoutFile(f,520).catch(()=>null);setBusy("");if(url){const a=await imgAspect(url);updSet(id,{iconImg:url,iconKey:null,iconAspect:a});}
   };
   const saveSheet=items=>{
     setLore(prev=>{
       let list=[...(prev.settlements||[])];
       items.forEach((it,i)=>{
-        if(it.assign==="new"){list.push({...EMPTY_ENTRY(),id:"set_"+Date.now()+"_"+i,name:(it.name||"").trim()||"Unnamed settlement",placeId:P.id,iconImg:it.url,mapX:null,mapY:null,hoverLore:"",
+        if(it.assign==="new"){list.push({...EMPTY_ENTRY(),id:"set_"+Date.now()+"_"+i,name:(it.name||"").trim()||"Unnamed settlement",placeId:P.id,iconImg:it.url,iconAspect:it.aspect||0.75,mapX:null,mapY:null,hoverLore:"",
           reveal:{entry:false,fields:{hoverLore:true,portrait:true},spans:{}},_ts:Date.now()});}
-        else list=list.map(s=>String(s.id)===it.assign?{...s,iconImg:it.url,iconKey:null,_ts:Date.now()}:s);
+        else list=list.map(s=>String(s.id)===it.assign?{...s,iconImg:it.url,iconKey:null,iconAspect:it.aspect||0.75,_ts:Date.now()}:s);
       });
       return{...prev,settlements:list};
     });
@@ -2146,7 +2403,7 @@ function MapControl({lore,setLore,onOpenOverview}){
       <div style={{...lbl,padding:"10px 12px 4px"}}>THE REALM</div>
       <div onClick={()=>setSelId(null)} style={{padding:"8px 10px",cursor:"pointer",fontSize:13,display:"flex",gap:6,background:selId==null?"rgba(139,26,26,0.55)":"transparent",borderLeft:selId==null?"3px solid #ff7a7a":"3px solid transparent",color:"#ffd8d8",fontFamily:"Cinzel",letterSpacing:".03em"}}>🌍 World Map</div>
       {childrenOf(null).map(p=>renderNode(p,1))}
-      <div style={{fontSize:11,color:"rgba(255,170,170,0.45)",padding:"10px 12px",lineHeight:1.5}}>👁 visible · 🙈 hidden · ✏ no border yet</div>
+      <div style={{fontSize:11,color:"rgba(255,170,170,0.45)",padding:"10px 12px",lineHeight:1.5}}><Eye open size={11}/> visible · <Eye open={false} size={11}/> hidden · ✏ no border yet</div>
     </div>
 
     {/* panel */}
@@ -2157,7 +2414,7 @@ function MapControl({lore,setLore,onOpenOverview}){
           <span style={{fontSize:20}}>{PLACE_TYPES[t].icon}</span>
           <ShInput value={P.name} onCommit={v=>v.trim()&&updPlace(P.id,{name:v.trim()})} className="" style={{fontFamily:"Cinzel",fontSize:18,color:"#ffb4b4",background:"transparent",border:"none",borderBottom:"1px solid rgba(255,120,120,0.4)",outline:"none",minWidth:120,flex:"1 1 160px",padding:"2px 0"}}/>
           <span style={{fontFamily:"Cinzel",fontSize:10,color:"rgba(255,170,170,0.6)",letterSpacing:".08em"}}>{PLACE_TYPES[t].label.toUpperCase()}</span>
-          <button className={`sf-dm-btn${entryVisible(P)?" go":""}`} onClick={()=>updEntry("regions",P.id,toggleEntryVisible)}>{entryVisible(P)?"👁 Revealed to players":"🙈 Hidden — click to reveal"}</button>
+          <button className={`sf-dm-btn${entryVisible(P)?" go":""}`} onClick={()=>updEntry("regions",P.id,toggleEntryVisible)}><Eye open={entryVisible(P)} size={12}/> {entryVisible(P)?"Revealed to players":"Hidden — click to reveal"}</button>
           <button className="sf-dm-btn" onClick={delPlace} title="Delete">🗑</button>
         </>:<>
           <span style={{fontSize:20}}>🌍</span>
@@ -2196,10 +2453,23 @@ function MapControl({lore,setLore,onOpenOverview}){
         :P&&t==="region"&&!draw&&!spec.canvas?<div style={{padding:20,color:"#ffb4b4"}}>Upload a map for the kingdom this region is in first.</div>
         :<div style={{flex:"1 1 360px",minHeight:320,position:"relative"}}>
           <PlaceMap canvas={spec.canvas} shapes={spec.shapes} focusRing={spec.focus} pins={spec.pins} zones={spec.zones}
-            onShapeClick={onShapeClick} onPinClick={id=>{if(!String(id).startsWith("t:")){setOpenSet(id);setTab("sets");}}} onPinMove={(id,ll)=>updSet(id,{mapY:ll[0],mapX:ll[1]})}
+            onShapeClick={onShapeClick} onPinClick={id=>{if(!String(id).startsWith("t:"))setOpenSet(id);}} onPinMove={(id,ll)=>updSet(id,{mapY:ll[0],mapX:ll[1]})}
             onMapClick={onMapClick} cursor={placing!=null}
             draw={spec.draw} onDrawDone={onDrawDone} onDrawCancel={()=>{setDraw(null);setPendingRing(null);}}
             drawHint={draw?(draw.mode==="border"?"Click around the edge to redraw the border — it snaps inside its parent and against neighbours":"Click around the edge — it snaps inside its parent and against neighbours"):""}/>
+          {P&&t==="barony"&&!draw&&(()=>{const x=mine.find(m=>String(m.id)===String(openSet)&&m.mapX!=null);if(!x)return null;const vis=entryVisible(x);
+            return(<div style={{position:"absolute",left:12,bottom:12,zIndex:1100,background:"rgba(30,6,6,0.94)",border:"1px solid rgba(255,120,120,0.45)",borderRadius:6,padding:"10px 12px",width:270,maxWidth:"calc(100% - 24px)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                <span style={{fontFamily:"Cinzel",fontSize:13,color:"#ffd0d0",flex:1}}>{x.name}</span>
+                <button className="sf-dm-btn" style={{padding:"1px 7px"}} onClick={()=>setOpenSet(null)}>✕</button></div>
+              <div style={{...lbl,display:"flex",justifyContent:"space-between"}}><span>ICON SIZE</span><span>{x.iconSize||90}</span></div>
+              <input type="range" min="20" max="1400" step="5" value={x.iconSize||90} onChange={e=>updSet(x.id,{iconSize:+e.target.value})} style={{width:"100%",accentColor:"#ff7a7a"}}/>
+              <div style={{display:"flex",gap:5,marginTop:8,flexWrap:"wrap"}}>
+                <button className={`sf-dm-btn${vis?" go":""}`} onClick={()=>updEntry("settlements",x.id,toggleEntryVisible)}><Eye open={vis} size={12}/> {vis?"Revealed":"Hidden"}</button>
+                <button className="sf-dm-btn" onClick={()=>setTab("sets")}>▾ Lore</button>
+              </div>
+              <div style={{fontSize:11,color:"rgba(255,190,190,0.55)",marginTop:6}}>Drag the icon to move it.</div>
+            </div>);})()}
         </div>}
         {P&&t==="barony"&&canvasInfo(P)&&!draw&&mine.some(s=>s.mapX==null)&&<div style={{fontSize:12.5,color:"rgba(255,200,200,0.75)"}}>
           Not on the map yet: {mine.filter(s=>s.mapX==null).map(s=><button key={s.id} className="sf-dm-btn" style={{margin:"2px 4px",padding:"3px 8px"}} onClick={()=>setPlacing(s.id)}>📍 {s.name}</button>)}
@@ -2221,7 +2491,7 @@ function MapControl({lore,setLore,onOpenOverview}){
             <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",flexWrap:"wrap"}}>
               <div style={{...checker,width:48,height:36,borderRadius:3,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{ic.img?<img src={ic.img} alt="" style={{maxWidth:46,maxHeight:34,mixBlendMode:ic.blend?"multiply":"normal"}}/>:<span>🏠</span>}</div>
               <span style={{flex:"1 1 120px",fontFamily:"Cinzel",fontSize:12.5,color:vis?"#ffe0e0":"#ff9a8a",letterSpacing:".03em"}}>{s.name||"Unnamed"}</span>
-              <button className={`sf-dm-btn${vis?" go":""}`} onClick={()=>updEntry("settlements",s.id,toggleEntryVisible)}>{vis?"👁 Revealed":"🙈 Hidden"}</button>
+              <button className={`sf-dm-btn${vis?" go":""}`} onClick={()=>updEntry("settlements",s.id,toggleEntryVisible)}><Eye open={vis} size={12}/> {vis?"Revealed":"Hidden"}</button>
               <button className="sf-dm-btn" onClick={()=>{setPlacing(s.id);setTab("map");}}>📍 {s.mapX==null?"Place":"Move"}</button>
               <button className="sf-dm-btn" onClick={()=>setOpenSet(open?null:s.id)}>{open?"▴":"▾"} Lore</button>
             </div>
@@ -2229,9 +2499,11 @@ function MapControl({lore,setLore,onOpenOverview}){
               <div>
                 <div style={{...lbl,display:"flex",alignItems:"center",gap:6}}>SHOWN WHEN YOU HOVER OVER IT ON THE MAP
                   <button className="sf-dm-btn" style={{padding:"1px 6px",fontSize:10}} onClick={()=>updEntry("settlements",s.id,e=>({...e,reveal:{...(e.reveal||{entry:true,spans:{}}),fields:{...((e.reveal||{}).fields||{}),hoverLore:!fieldVisible(e,"hoverLore")}},_ts:Date.now()}))}>
-                    {fieldVisible(s,"hoverLore")?"👁 players can read it":"🙈 hidden from players"}</button></div>
-                <ShTextarea value={s.hoverLore||""} onCommit={v=>updEntry("settlements",s.id,e=>applyEntryField(e,"hoverLore",v))} className="sf-dm-input" style={{minHeight:70,resize:"vertical",lineHeight:1.5}} placeholder="A line or two players see when hovering the icon…"/>
+                    <Eye open={fieldVisible(s,"hoverLore")} size={11}/> {fieldVisible(s,"hoverLore")?"players can read it":"hidden from players"}</button></div>
+                <MentionTextarea value={s.hoverLore||""} onCommit={v=>updEntry("settlements",s.id,e=>applyEntryField(e,"hoverLore",v))} className="sf-dm-input" style={{minHeight:70,resize:"vertical",lineHeight:1.5}} placeholder="A line or two players see when hovering the icon…"/>
               </div>
+              <div><div style={{...lbl,display:"flex",justifyContent:"space-between",maxWidth:320}}><span>ICON SIZE ON THE MAP</span><span>{s.iconSize||90}</span></div>
+                <input type="range" min="20" max="1400" step="5" value={s.iconSize||90} onChange={e=>updSet(s.id,{iconSize:+e.target.value})} style={{width:"100%",maxWidth:320,accentColor:"#ff7a7a"}}/></div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 <label className="sf-dm-btn">🖼 Change icon<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadSetIcon(e,s.id)}/></label>
                 {s.mapX!=null&&<button className="sf-dm-btn" onClick={()=>updSet(s.id,{mapX:null,mapY:null})}>Take off map</button>}
@@ -2265,9 +2537,9 @@ function MapControl({lore,setLore,onOpenOverview}){
           </div>
         </div>
         <div><div style={lbl}>DESCRIPTION</div>
-          <ShTextarea value={P.description||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"description",v))} className="sf-dm-input" style={{minHeight:100,resize:"vertical",lineHeight:1.55}} placeholder="Shown in the map popup once revealed…"/></div>
+          <MentionTextarea value={P.description||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"description",v))} className="sf-dm-input" style={{minHeight:100,resize:"vertical",lineHeight:1.55}} placeholder="Shown in the map popup once revealed…"/></div>
         <div><div style={lbl}>FURTHER LORE</div>
-          <ShTextarea value={P.lore||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"lore",v))} className="sf-dm-input" style={{minHeight:140,resize:"vertical",lineHeight:1.55}} placeholder="History, rulers, rumours…"/></div>
+          <MentionTextarea value={P.lore||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"lore",v))} className="sf-dm-input" style={{minHeight:140,resize:"vertical",lineHeight:1.55}} placeholder="History, rulers, rumours…"/></div>
         <div style={{fontSize:12.5,color:"rgba(255,200,200,0.7)"}}>New text starts hidden from players. Reveal it piece by piece in Overview.
           <button className="sf-dm-btn" style={{marginLeft:8}} onClick={()=>onOpenOverview&&onOpenOverview("regions",P.id)}>📜 Open in Overview</button></div>
       </div>}
