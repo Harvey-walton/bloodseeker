@@ -303,7 +303,12 @@ const ShTextarea=memo(({value,onCommit,placeholder,className,style})=>{
 const PHYS_FIELDS=[["Race / Species","raceSp"],["Age","age"],["Eye Colour","eyeColour"],["Hair Colour","hairColour"],["Build","build"],["Clothing","clothing"],["Voice / Accent","voiceAccent"],["Personality","personality"],["Goal or Secret","goalSecret"]];
 const PUBLIC_TEXT_FIELDS=["description","lore","abilities","tactics","relationships","featsWithParty","keyEvents"];
 const REVEAL_TEXT_FIELDS_OLD=["description","lore","abilities","tactics","relationships","featsWithParty","keyEvents"];
-const REVEAL_TEXT_FIELDS=["dmDescription"]; // only Josh's DM Description is revealed piece by piece
+// Every public box has a DM version underneath (dm_description, dm_lore …) that Josh reveals piece by piece
+const DMV_FIELDS=[["Description","description"],["Background & Lore","lore"],["Abilities & Powers","abilities"],["Tactics & Weaknesses","tactics"],["Relationships & Connections","relationships"],["Feats with the Party","featsWithParty"],["Key Events & Decisions","keyEvents"]];
+const REVEAL_TEXT_FIELDS=DMV_FIELDS.map(([,f])=>"dm_"+f);
+const PAST_KEYS={"HarveysBalls":"Mathas","FranksBalls":"Karl","KayleesBalls":"Vafa"};
+const pastSecId=owner=>"past_"+String(owner).toLowerCase();
+const possessive=n=>/s$/i.test(n)?`${n}'`:`${n}'s`;
 const HIDDEN_RED="#a3241e";
 const isControlled=e=>!!(e&&e.reveal);
 const entryVisible=e=>!e||!e.reveal||!!e.reveal.entry;
@@ -516,11 +521,15 @@ const LoreIF=memo(({label,value,field,editMode,onCommit,eyeState,onEye})=>{
   </div>);
 });
 
-function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
+function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   const isDM=!!dmMode;
   // sections come from the data so new sub-tabs appear for everyone straight away
   const allSections=useMemo(()=>[...(readOnly?DEFAULT_SECTIONS.filter(x=>!x.group).map(x=>({...x,parent:undefined})):DEFAULT_SECTIONS),...(lore.__customSections||[])],[lore.__customSections,readOnly]);
   const secById=id=>allSections.find(x=>x.id===id);
+  // whose private "Past" a section belongs to (walks up through sub-tabs)
+  const secOwner=id=>{let x=secById(id),g=0;while(x&&g++<6){if(x.owner)return x.owner;x=x.parent?secById(x.parent):null;}return null;};
+  const ownsSec=id=>!!(myPast&&secOwner(id)===myPast);
+  const seeAll=id=>isDM||ownsSec(id);
   const KIND={allies:"ally",enemies:"enemy",factions:"faction",settlements:"settlement",history:"history",sessions:"session",regions:"region",terrain:"terrain"};
   const kindOf=id=>{let x=secById(id),g=0;while(x&&g++<5){if(KIND[x.id])return KIND[x.id];if(x.layout)return x.layout;x=x.parent?secById(x.parent):null;}return"generic";};
   const [subFor,setSubFor]=useState(null);const [subName,setSubName]=useState("");const [subLayout,setSubLayout]=useState("ally");
@@ -556,14 +565,18 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
   const dmView=!!isDM&&!readOnly&&!previewPlayer;
 
   const selItem=sel.s?lore[sel.s]&&lore[sel.s].find(i=>i.id===sel.id):null;
+  const ownedSec=!!(sel.s&&secOwner(sel.s));
+  const ownerSel=!!(sel.s&&ownsSec(sel.s))&&!readOnly;
+  const ownerView=ownerSel&&!previewPlayer;
+  const privView=dmView||ownerView; // can see everything & use reveal tools for this entry
   useEffect(()=>{setLocal(selItem?{...selItem}:null);},[sel.s,sel.id,selItem]);
   useEffect(()=>{if(openTarget&&openTarget.s)goEntry(openTarget.s,openTarget.id);},[openTarget&&openTarget.n]);
-  useEffect(()=>{if(!isDM&&selItem&&!entryVisible(selItem)){setSel({s:null,id:null});setLocal(null);}},[isDM,selItem]);
+  useEffect(()=>{if(!isDM&&selItem&&!entryVisible(selItem)&&!ownsSec(sel.s)){setSel({s:null,id:null});setLocal(null);}},[isDM,selItem,myPast]);
 
   // Apply a field edit; keeps revealed passages attached to the right words
   const applyField=(i,field,value)=>{
     const n={...i,[field]:value};
-    if(i.reveal&&REVEAL_TEXT_FIELDS.includes(field)&&(i[field]||"")!==(value||"")){
+    if(i.reveal&&(i.reveal.spans||{})[field]&&(i[field]||"")!==(value||"")){
       const spans=(i.reveal.spans||{});
       n.reveal={...i.reveal,spans:{...spans,[field]:remapSpans(spans[field],i[field],value)}};
     }
@@ -597,14 +610,14 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
     return Object.keys(out).length?out:null;
   };
   useEffect(()=>{
-    if(!dmView)return;
+    if(!privView)return;
     const h=()=>setHasSel(!!getSelSpans());
     document.addEventListener("selectionchange",h);
     return()=>document.removeEventListener("selectionchange",h);
-  },[dmView,sel.id]);
+  },[privView,sel.id]);
   const applySelection=reveal=>{
     const ss=getSelSpans();if(!ss)return;
-    updReveal(r=>{const spans={...(r.spans||{})};Object.entries(ss).forEach(([f,[a,b]])=>{const t=(local&&local[f])||"";const ra=dispToRaw(t,a,false),rb=dispToRaw(t,b,true);if(rb>ra)spans[f]=reveal?addSpan(spans[f],ra,rb):subSpan(spans[f],ra,rb);});return{...r,spans};});
+    updReveal(r=>{const spans={...(r.spans||{})};Object.entries(ss).forEach(([f,[a,b]])=>{if(f.indexOf("dm_")===0?!dmView:!(privView&&ownedSec))return;const t=(local&&local[f])||"";const ra=dispToRaw(t,a,false),rb=dispToRaw(t,b,true);if(rb>ra)spans[f]=reveal?addSpan(spans[f],ra,rb):subSpan(spans[f],ra,rb);});return{...r,spans};});
     window.getSelection().removeAllRanges();setHasSel(false);
   };
 
@@ -612,7 +625,8 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
     if(!newName.trim())return;
     const item={...EMPTY_ENTRY(),name:newName.trim()};
     if(s==="regions"){item.placeType="kingdom";item.parentId=null;}
-    if(isDM){item.reveal={entry:false,fields:{},spans:{}};item._ts=Date.now();}
+    if(secOwner(s)&&(isDM||ownsSec(s))){item.reveal={entry:false,fields:{},spans:{}};item._ts=Date.now();}
+    else if(isDM){item.reveal={entry:false,fields:{portrait:true},spans:{}};item._ts=Date.now();}
     setLore(prev=>({...prev,[s]:[...(prev[s]||[]),item]}));
     setSel({s,id:item.id});setLocal({...item});setCreating(null);setNewName("");if(!readOnly)setEditMode(true);
     if(s==="settlements")setOpenNodes(prev=>new Set([...prev,"none"]));
@@ -633,7 +647,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
   const addSubTab=parent=>{
     if(!subName.trim())return;
     const id="custom_"+Date.now();
-    const newSec={id,label:subName.trim(),icon:"📁",parent,...(parent==="people"?{layout:subLayout}:{})};
+    const newSec={id,label:subName.trim(),icon:"📜",parent,...(parent==="people"?{layout:subLayout}:{})};
     setLore(prev=>({...prev,[id]:[],__customSections:[...(prev.__customSections||[]),newSec]}));
     setOpenSection(id);setSubFor(null);setSubName("");
   };
@@ -653,10 +667,10 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
 
   const filteredItems=useMemo(()=>{
     const s=openSection;if(!s||!lore[s])return[];
-    const items=(lore[s]||[]).filter(i=>isDM||entryVisible(i));
+    const items=(lore[s]||[]).filter(i=>seeAll(s)||entryVisible(i));
     const sorted=[...items.filter(i=>i.pinned),...items.filter(i=>!i.pinned)];
     return search.trim()?sorted.filter(i=>(i.name||"").toLowerCase().includes(search.toLowerCase())):sorted;
-  },[lore,openSection,search,isDM]);
+  },[lore,openSection,search,isDM,myPast]);
 
   const hasPhys=s=>["ally","enemy"].includes(kindOf(s));
   const places0=getPlaces(lore);
@@ -685,31 +699,40 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
   const ctrl=isControlled(local);
   const ed=editMode&&!readOnly;
   // Attribute (eye icon)
-  const canSee=f=>!ctrl||dmView||fieldVisible(local,f);
-  const AF=(lbl,f)=>!canSee(f)&&ed?null:<LoreIF key={f} label={lbl} value={(!ctrl||dmView||fieldVisible(local,f))?local[f]:""} field={f} editMode={ed} onCommit={commitField} eyeState={ctrl&&dmView?fieldVisible(local,f):undefined} onEye={toggleField}/>;
+  const canSee=f=>!ctrl||privView||fieldVisible(local,f);
+  const AF=(lbl,f)=>!canSee(f)&&ed?null:<LoreIF key={f} label={lbl} value={canSee(f)?local[f]:""} field={f} editMode={ed} onCommit={commitField} eyeState={ctrl&&privView?fieldVisible(local,f):undefined} onEye={toggleField}/>;
   // Single-line field (eye icon)
-  const SF=(lbl,f)=>!canSee(f)&&ed?null:<LoreVF label={lbl} value={(!ctrl||dmView||fieldVisible(local,f))?local[f]:""} field={f} editMode={ed} onCommit={commitField} eyeState={ctrl&&dmView?fieldVisible(local,f):undefined} onEye={toggleField}/>;
-  // Public text: everyone who can see the entry can read it, and players can edit it
-  const TF=(lbl,f,h)=><LoreVF label={lbl} value={local[f]} field={f} multi height={h} editMode={ed} onCommit={commitField}/>;
-  // Josh's DM Description: hidden, revealed piece by piece; players see revealed bits under "Discovered"
-  const DMF=()=>{
-    if(readOnly)return null;
-    const sp=(((local.reveal||{}).spans||{}).dmDescription)||[];
-    if(ed&&isDM)return(<div style={{border:"1px solid rgba(179,38,30,0.35)",background:"rgba(179,38,30,0.04)",borderRadius:6,padding:"10px 12px 2px",marginBottom:12}}>
-      <LoreVF label="DM Description — only you can see this" value={local.dmDescription} field="dmDescription" multi height={140} editMode={true} onCommit={commitField}/></div>);
-    if(ed)return null;
-    if(dmView)return (local.dmDescription||"").trim()?<div style={{marginTop:6}}><RevealTextField label="DM Description" text={local.dmDescription} spans={sp} field="dmDescription"/></div>
-      :<div style={{fontSize:12,color:"var(--ink3)",fontStyle:"italic",marginBottom:12}}>No DM Description yet — press Edit to add secrets only you can see.</div>;
-    const v=visibleText(local.dmDescription,sp);if(!v)return null;
-    return(<div style={{borderLeft:"3px solid var(--gold2)",background:"rgba(196,154,48,0.1)",padding:"8px 12px 2px",borderRadius:"0 4px 4px 0",marginBottom:12}}>
-      <LoreVF label="Discovered" value={v} field="dmDescription" multi editMode={false} onCommit={commitField}/></div>);
+  const SF=(lbl,f)=>!canSee(f)&&ed?null:<LoreVF label={lbl} value={canSee(f)?local[f]:""} field={f} editMode={ed} onCommit={commitField} eyeState={ctrl&&privView?fieldVisible(local,f):undefined} onEye={toggleField}/>;
+  // A box: public text (in someone's Past it's revealed by its owner), then Josh's DM version underneath
+  const TF=(lbl,f,h)=>{
+    const sp=(((local.reveal||{}).spans||{})[f])||[];
+    let main;
+    if(ed)main=<LoreVF label={lbl} value={local[f]} field={f} multi height={h} editMode={true} onCommit={commitField}/>;
+    else if(ownedSec&&ctrl&&privView)main=<RevealTextField label={lbl} text={local[f]} spans={sp} field={f}/>;
+    else if(ownedSec&&ctrl)main=<LoreVF label={lbl} value={visibleText(local[f],sp)} field={f} multi editMode={false} onCommit={commitField}/>;
+    else main=<LoreVF label={lbl} value={local[f]} field={f} multi height={h} editMode={false} onCommit={commitField}/>;
+    return <React.Fragment key={f}>{main}{DV(lbl,f)}</React.Fragment>;
   };
+  const DV=(lbl,f)=>{
+    if(readOnly)return null;
+    const k="dm_"+f;const sp=(((local.reveal||{}).spans||{})[k])||[];
+    if(ed&&isDM)return(<div style={{border:"1px solid rgba(179,38,30,0.35)",background:"rgba(179,38,30,0.04)",borderRadius:6,padding:"8px 12px 0",margin:"-4px 0 14px"}}>
+      <LoreVF label={`${lbl} — DM version (only Josh sees this)`} value={local[k]} field={k} multi height={70} editMode={true} onCommit={commitField}/></div>);
+    if(ed)return null;
+    if(dmView)return (local[k]||"").trim()?<div style={{margin:"-4px 0 6px"}}><RevealTextField label={`${lbl} — DM version`} text={local[k]} spans={sp} field={k}/></div>:null;
+    const v=visibleText(local[k],sp);if(!v)return null;
+    return(<div style={{borderLeft:"3px solid var(--gold2)",background:"rgba(196,154,48,0.1)",padding:"8px 12px 2px",borderRadius:"0 4px 4px 0",margin:"-4px 0 14px"}}>
+      <LoreVF label={`${lbl} – Discovered`} value={v} field={k} multi editMode={false} onCommit={commitField}/></div>);
+  };
+  const canEdit=!readOnly&&(privView||(!(local&&local.lockedForPlayers)&&!ownedSec));
+  // portrait reveal buttons (clear, labelled)
+  const PicBtn=({f,label})=>{const on=fieldVisible(local,f);return(<button className="btn" onClick={()=>toggleField(f)} style={{fontSize:10.5,padding:"3px 8px",marginTop:5,width:"100%",color:on?"#2f7a2f":HIDDEN_RED,borderColor:on?"#2f7a2f":HIDDEN_RED,display:"flex",gap:5,alignItems:"center",justifyContent:"center"}}><Eye open={on} size={11}/>{label} {on?"visible":"hidden — click to reveal"}</button>);};
 
   const innerLinks={entries:linkEntries(lore),
     open:(sec,id)=>{if(!lore[sec])return;goEntry(sec,(lore[sec].find(x=>String(x.id)===String(id))||{}).id);},
-    can:(sec,id)=>{const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));return !!e&&(isDM||readOnly||entryVisible(e));}};
+    can:(sec,id)=>{const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));return !!e&&(isDM||readOnly||ownsSec(sec)||entryVisible(e));}};
   return(<LinkCtx.Provider value={innerLinks}><div style={{display:"flex",height:"100%",background:"var(--dark)"}}>
-    {promptOpen&&local&&<ImagePromptBox entry={local} person={hasPhys(sel.s)} canSee={f=>!isControlled(local)||dmView||fieldVisible(local,f)} onClose={()=>setPromptOpen(false)}/>}
+    {promptOpen&&local&&<ImagePromptBox entry={local} person={hasPhys(sel.s)} canSee={f=>!isControlled(local)||privView||fieldVisible(local,f)} onClose={()=>setPromptOpen(false)}/>}
     {delT&&!readOnly&&<DelModal name={delT.label} onOk={confirmDel} onNo={()=>setDelT(null)}/>}
 
     {/* LEFT sidebar */}
@@ -717,10 +740,11 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
       {readOnly&&<div className="tales-banner" style={{margin:"8px",fontSize:9}}>📖 BLOOD SEEKER — ARCHIVED (READ ONLY)</div>}
       <div style={{overflowY:"auto",flex:1}}>
         {(()=>{const base=allSections.filter(s=>!(realmTree&&s.id==="settlements"));const out=[];
-          const famOpen=pid=>openSection===pid||((secById(openSection)||{}).parent===pid);
-          base.filter(s=>!s.parent||!secById(s.parent)).forEach(s=>{out.push({s,depth:0});if(famOpen(s.id))base.filter(c=>c.parent===s.id).forEach(c=>out.push({s:c,depth:1}));});
+          const isAnc=(a,b)=>{let x=secById(b),g=0;while(x&&g++<6){if(x.id===a)return true;x=x.parent?secById(x.parent):null;}return false;};
+          const walk=(s,d)=>{out.push({s,depth:d});if(isAnc(s.id,openSection))base.filter(c=>c.parent===s.id).forEach(c=>walk(c,d+1));};
+          base.filter(s=>!s.parent||!secById(s.parent)).forEach(s=>walk(s,0));
           return out;})().map(({s,depth})=>{
-          const items=realmTree&&s.id==="regions"?[...(lore.regions||[]).filter(p=>isDM||placeVisible(places0,p,false)),...(lore.settlements||[]).filter(i=>isDM||entryVisible(i))]:(lore[s.id]||[]).filter(i=>isDM||entryVisible(i));const isO=openSection===s.id;
+          const items=realmTree&&s.id==="regions"?[...(lore.regions||[]).filter(p=>isDM||placeVisible(places0,p,false)),...(lore.settlements||[]).filter(i=>isDM||entryVisible(i))]:(lore[s.id]||[]).filter(i=>seeAll(s.id)||entryVisible(i));const isO=openSection===s.id;
           return(<div key={s.id} style={{borderBottom:"1px solid var(--border)"}}>
             <div style={{display:"flex",alignItems:"center",background:isO?"var(--parch3)":"var(--parch2)",borderLeft:isO?"3px solid var(--gold2)":"3px solid transparent"}}>
               <div onClick={()=>{setOpenSection(s.id);setSearch("");setListEditMode(false);}} style={{flex:1,padding:`${depth?8:10}px 8px ${depth?8:10}px ${11+depth*16}px`,cursor:"pointer",fontSize:12,fontFamily:"Cinzel",letterSpacing:"0.04em",color:isO?"var(--gold)":"var(--ink2)",display:"flex",alignItems:"center",gap:7,userSelect:"none"}}>
@@ -732,7 +756,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
                 {listEditMode?"✓":"⠿"}
               </button>}
             </div>
-            {isO&&s.group&&<div style={{background:"var(--parch)",padding:"6px 10px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>Pick a sub-tab below{allSections.some(c=>c.parent===s.id)?"":" — or add one"}.</div>}
+            {isO&&s.group&&<div style={{background:"var(--parch)",padding:"6px 10px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>Pick a sub-tab{allSections.some(c=>c.parent===s.id)?"":" — or add one"}.</div>}
             {isO&&!s.group&&<div style={{background:"var(--parch)"}}>
               {listEditMode&&<div style={{padding:"3px 10px",fontSize:9,color:"var(--ink3)",fontFamily:"Cinzel",letterSpacing:"0.05em",borderBottom:"1px solid var(--border)",background:"var(--parch2)"}}>DRAG TO REORDER · 📍 TO PIN</div>}
               {!listEditMode&&<div style={{padding:"5px 8px",borderBottom:"1px solid var(--border)"}}>
@@ -758,10 +782,10 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
                   {listEditMode&&!readOnly&&<button onClick={e=>{e.stopPropagation();togglePin(s.id,item.id);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"0 2px",color:item.pinned?"var(--gold2)":"var(--ink3)",flexShrink:0}}>{item.pinned?"📌":"📍"}</button>}
                   {!listEditMode&&item.pinned&&<span style={{fontSize:9,flexShrink:0}}>📌</span>}
                   {!row.sec&&imgSrc(item.portrait)&&<img src={imgSrc(item.portrait)} alt="" style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>}
-                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:isDM&&!entryVisible(item)?HIDDEN_RED:undefined}}>{isDM&&!entryVisible(item)&&<><Eye open={false} size={11} color={HIDDEN_RED}/> </>}{item.name||<em style={{opacity:.5,fontSize:10}}>Unnamed</em>}</span>
+                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:seeAll(rsec)&&!entryVisible(item)?HIDDEN_RED:undefined}}>{seeAll(rsec)&&!entryVisible(item)&&<><Eye open={false} size={11} color={HIDDEN_RED}/> </>}{item.name||<em style={{opacity:.5,fontSize:10}}>Unnamed</em>}</span>
                 </div>);
               })}
-              {!listEditMode&&!readOnly&&(creating===s.id||(realmTree&&s.id==="regions"&&creating==="settlements")
+              {!listEditMode&&!readOnly&&(!secOwner(s.id)||seeAll(s.id))&&(creating===s.id||(realmTree&&s.id==="regions"&&creating==="settlements")
                 ?<div style={{padding:"6px 8px",display:"flex",gap:4,borderTop:"1px solid var(--border)"}}>
                   <input autoFocus placeholder={creating==="settlements"?"Settlement name...":"Name..."} value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")createItem(creating);if(e.key==="Escape")setCreating(null);}} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",flex:1,fontSize:11,outline:"none"}}/>
                   <button className="btn" onClick={()=>createItem(creating)} style={{padding:"2px 6px",fontSize:11}}>✓</button>
@@ -769,13 +793,13 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
                 </div>
                 :<div style={{padding:"5px 8px",borderTop:"1px solid var(--border)"}}>
                   <div style={{display:"flex",gap:4}}>
-                  <button className="btn" onClick={()=>setCreating(s.id)} style={{flex:1,fontSize:10,border:"1px dashed var(--border2)",padding:"3px"}}>+ Add {s.label.replace(/ies$/,"y").replace(/s$/,"")}</button>
+                  <button className="btn" onClick={()=>setCreating(s.id)} style={{flex:1,fontSize:10,border:"1px dashed var(--border2)",padding:"3px"}}>+ Add {["allies","enemies","factions","settlements","history","sessions","terrain","regions"].includes(s.id)?s.label.replace(/ies$/,"y").replace(/s$/,""):(kindOf(s.id)==="ally"||kindOf(s.id)==="enemy")?"person":"entry"}</button>
                   {realmTree&&s.id==="regions"&&<button className="btn" onClick={()=>setCreating("settlements")} style={{flex:1,fontSize:10,border:"1px dashed var(--border2)",padding:"3px"}}>+ Add Settlement</button>}
                   </div>
                 </div>
               )}
             </div>}
-            {!readOnly&&!depth&&openSection===s.id&&!listEditMode&&s.id!=="regions"&&<div style={{padding:"5px 8px",background:"var(--parch)",borderTop:"1px solid var(--border)"}}>
+            {!readOnly&&depth<2&&openSection===s.id&&!listEditMode&&s.id!=="regions"&&(!secOwner(s.id)||seeAll(s.id))&&<div style={{padding:"5px 8px",background:"var(--parch)",borderTop:"1px solid var(--border)"}}>
               {subFor===s.id?<div style={{display:"flex",flexDirection:"column",gap:4}}>
                 <input autoFocus placeholder="Sub-tab name (e.g. Mathas Family)..." value={subName} onChange={e=>setSubName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addSubTab(s.id);if(e.key==="Escape")setSubFor(null);}} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",fontSize:11,outline:"none"}}/>
                 {s.id==="people"&&<select value={subLayout} onChange={e=>setSubLayout(e.target.value)} style={{fontFamily:"Crimson Pro,serif",fontSize:11,background:"var(--parch2)",border:"1px solid var(--border2)",borderRadius:3,padding:"2px 4px"}}><option value="ally">Use the Ally layout</option><option value="enemy">Use the Enemy layout</option></select>}
@@ -797,8 +821,8 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
 
     {/* RIGHT detail */}
     <div ref={detailRef} style={{flex:1,overflowY:"auto",background:"var(--parch)",display:"flex",flexDirection:"column"}}>
-      {isDM&&!readOnly&&<div style={{position:"sticky",top:0,zIndex:5,background:"rgba(80,10,10,0.92)",color:"#ffcccc",fontFamily:"Cinzel",fontSize:10,letterSpacing:"0.06em",padding:"6px 14px",display:"flex",alignItems:"center",gap:10}}>
-        <span>⚔ {previewPlayer?"PREVIEWING AS A PLAYER":"DM OVERVIEW — RED IS HIDDEN FROM PLAYERS · HIGHLIGHT TEXT, THEN REVEAL"}</span>
+      {(isDM||ownerSel)&&!readOnly&&<div style={{position:"sticky",top:0,zIndex:5,background:isDM?"rgba(80,10,10,0.92)":"rgba(60,40,10,0.92)",color:"#ffcccc",fontFamily:"Cinzel",fontSize:10,letterSpacing:"0.06em",padding:"6px 14px",display:"flex",alignItems:"center",gap:10}}>
+        <span>{isDM?"⚔ ":"📜 "}{previewPlayer?"PREVIEWING AS ANOTHER PLAYER":isDM?"DM OVERVIEW — RED IS HIDDEN FROM PLAYERS · HIGHLIGHT TEXT, THEN REVEAL":`${possessive(myPast).toUpperCase()} PAST — RED IS HIDDEN FROM THE OTHER PLAYERS · HIGHLIGHT TEXT, THEN REVEAL`}</span>
         <button onClick={()=>{setPreviewPlayer(p=>!p);setEditMode(false);}} style={{marginLeft:"auto",fontFamily:"Cinzel",fontSize:10,background:"transparent",border:"1px solid rgba(255,180,180,0.5)",color:"#ffcccc",borderRadius:3,padding:"2px 8px",cursor:"pointer"}}>{previewPlayer?"Back to DM view":<><Eye open={true} size={11}/> Preview as player</>}</button>
       </div>}
       <div style={{flex:1}}>
@@ -813,23 +837,24 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
           <div style={{flex:1,marginRight:14}}>
             {editMode&&!readOnly?<ShInput value={local.name||""} onCommit={v=>commitField("name",v)} style={{fontSize:24,fontFamily:"Cinzel",color:"var(--gold)",background:"transparent",border:"none",borderBottom:"2px solid var(--gold2)",padding:"2px 0",width:"100%",outline:"none"}} className=""/>
               :<h2 style={{fontSize:24,color:"var(--gold)",letterSpacing:"0.06em"}}>{local.name||"Unnamed"}</h2>}
-            {!editMode&&(()=>{const rs=(dmView||fieldVisible(local,"raceSp"))?local.raceSp:"";const ag=(dmView||fieldVisible(local,"age"))?local.age:"";
+            {!editMode&&(()=>{const rs=(privView||fieldVisible(local,"raceSp"))?local.raceSp:"";const ag=(privView||fieldVisible(local,"age"))?local.age:"";
               return rs?<p style={{fontSize:13,color:"var(--ink3)",marginTop:3,fontStyle:"italic",fontFamily:"Cinzel"}}>{rs}{ag?` · Age ${ag}`:""}</p>:null;})()}
           </div>
-          {!readOnly&&<div style={{display:"flex",gap:5,flexShrink:0}}>
+          {canEdit&&<div style={{display:"flex",gap:5,flexShrink:0}}>
             <button className={`btn${editMode?" act":""}`} onClick={()=>setEditMode(m=>!m)} style={{fontSize:12,padding:"4px 11px"}}>{editMode?"✓ Done":"✏️ Edit"}</button>
-            {editMode&&(dmView||!isControlled(local))&&<button className="btn red" onClick={reqDel} style={{fontSize:12,padding:"4px 9px"}}>🗑</button>}
+            {editMode&&(privView||!isControlled(local))&&<button className="btn red" onClick={reqDel} style={{fontSize:12,padding:"4px 9px"}}>🗑</button>}
           </div>}
+          {!canEdit&&!readOnly&&local.lockedForPlayers&&<span title="Josh has locked this entry" style={{fontSize:11,color:"var(--ink3)",fontFamily:"Cinzel"}}>🔒 Locked</span>}
         </div>
         <Ornament/>
         {/* Regions: special heraldry + map fields */}
         {sel.s==="regions"&&(()=>{
           const places=getPlaces(lore);const pt=placeType(local);const par=placeById(places,local.parentId);
-          const showHer=dmView||!isControlled(local)||fieldVisible(local,"heraldry");
+          const showHer=privView||!isControlled(local)||fieldVisible(local,"heraldry");
           const lab={fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:6};
           return(<div style={{display:"flex",gap:20,flexWrap:"wrap",marginBottom:16}}>
             {showHer&&<div style={{flexShrink:0}}>
-              <div style={lab}>HERALDRY{dmView&&!editMode&&isControlled(local)&&<EyeBtn on={fieldVisible(local,"heraldry")} onClick={()=>toggleField("heraldry")}/>}</div>
+              <div style={lab}>HERALDRY{privView&&!editMode&&isControlled(local)&&<EyeBtn on={fieldVisible(local,"heraldry")} onClick={()=>toggleField("heraldry")}/>}</div>
               <div style={{width:100,height:100,background:"var(--parch2)",border:`2px solid ${dmView&&isControlled(local)&&!fieldVisible(local,"heraldry")?HIDDEN_RED:"var(--border2)"}`,borderRadius:6,overflow:"hidden",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
                 {imgSrc(local.heraldry)?<img src={imgSrc(local.heraldry)} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}}/>:<div style={{color:"var(--ink3)",fontSize:28}}>{PLACE_TYPES[pt].icon}</div>}
                 {editMode&&!readOnly&&<label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.65)",color:"var(--gold3)",fontSize:9,textAlign:"center",padding:"3px",cursor:"pointer",fontFamily:"Cinzel"}}>
@@ -844,27 +869,40 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
             </div>
           </div>);
         })()}
-        {!hasPhys(sel.s)&&(dmView||!ctrl||fieldVisible(local,"portrait"))&&(imgSrc(local.portrait)||(editMode&&!readOnly))&&<div style={{marginBottom:16,position:"relative"}}>
-          {imgSrc(local.portrait)?<img src={imgSrc(local.portrait)} alt="" style={{width:"100%",height:"auto",display:"block",borderRadius:6,border:`2px solid ${dmView&&ctrl&&!fieldVisible(local,"portrait")?HIDDEN_RED:"var(--border2)"}`}}/>
+        {!hasPhys(sel.s)&&(privView||!ctrl||fieldVisible(local,"portrait"))&&(imgSrc(local.portrait)||(editMode&&!readOnly))&&<div style={{marginBottom:16,position:"relative"}}>
+          {imgSrc(local.portrait)?<img src={imgSrc(local.portrait)} alt="" style={{width:"100%",height:"auto",display:"block",borderRadius:6,border:`2px solid ${privView&&ctrl&&!fieldVisible(local,"portrait")?HIDDEN_RED:"var(--border2)"}`}}/>
             :<div style={{height:110,border:"2px dashed var(--border2)",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--ink3)",fontStyle:"italic",fontSize:13}}>No picture yet</div>}
           {editMode&&!readOnly&&<div style={{position:"absolute",bottom:8,left:8,display:"flex",gap:6}}>
             <label className="btn act" style={{cursor:"pointer",fontSize:11,background:"rgba(20,12,4,0.85)"}}>📷 {imgSrc(local.portrait)?"Change":"Upload"} picture<input type="file" accept="image/*" onChange={handleWidePic} style={{display:"none"}}/></label>
             <button className="btn act" onClick={()=>setPromptOpen(true)} style={{fontSize:11,background:"rgba(20,12,4,0.85)"}}>✨ Image prompt</button>
             {imgSrc(local.portrait)&&<button className="btn act" onClick={()=>commitField("portrait",null)} style={{fontSize:11,background:"rgba(20,12,4,0.85)"}}>Remove</button>}
           </div>}
-          {dmView&&!editMode&&ctrl&&local.portrait&&<div style={{position:"absolute",top:8,right:8}}><EyeBtn on={fieldVisible(local,"portrait")} onClick={()=>toggleField("portrait")} size={14}/></div>}
+          {privView&&!editMode&&ctrl&&local.portrait&&<div style={{position:"absolute",top:8,right:8,background:"var(--parch)",borderRadius:4}}><PicBtn f="portrait" label="Picture"/></div>}
         </div>}
         {sel.s!=="regions"&&hasPhys(sel.s)&&<div style={{display:"flex",gap:20,marginBottom:18,flexWrap:"wrap"}}>
-          {(dmView||!ctrl||fieldVisible(local,"portrait"))&&<div style={{flexShrink:0}}>
-            <div style={{width:140,height:180,background:"var(--parch2)",border:"2px solid var(--border2)",borderRadius:4,overflow:"hidden",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              {imgSrc(local.portrait)?<img src={imgSrc(local.portrait)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{color:"var(--ink3)",fontSize:11,fontStyle:"italic",textAlign:"center",padding:8}}>No portrait</div>}
-              {editMode&&!readOnly&&<label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.65)",color:"var(--gold3)",fontSize:10,textAlign:"center",padding:"4px",cursor:"pointer",fontFamily:"Cinzel"}}>📷 Upload<input type="file" accept="image/*" onChange={handlePortrait} style={{display:"none"}}/></label>}
-              {dmView&&!editMode&&isControlled(local)&&local.portrait&&<div style={{position:"absolute",top:4,right:4}}><EyeBtn on={fieldVisible(local,"portrait")} onClick={()=>toggleField("portrait")} size={13}/></div>}
-              {dmView&&!editMode&&isControlled(local)&&local.portrait&&!fieldVisible(local,"portrait")&&<div style={{position:"absolute",inset:0,border:`3px solid ${HIDDEN_RED}`,pointerEvents:"none"}}/>}
-            </div>
-            {editMode&&!readOnly&&<button className="btn" onClick={()=>setPromptOpen(true)} style={{width:140,marginTop:5,fontSize:11}}>✨ Image prompt</button>}
-          </div>}
-          {hasPhys(sel.s)&&(editMode||dmView||!isControlled(local)||PHYS_FIELDS.some(([,f])=>fieldVisible(local,f)&&(local[f]||"").trim()))&&<div style={{flex:1}}>
+          {(()=>{
+            const seeMask=privView||!ctrl||fieldVisible(local,"portrait");
+            const seeReal=local.hiddenFace&&(privView||!ctrl||fieldVisible(local,"realPortrait"));
+            const slot=(f,label,cap,see)=>{if(!see)return null;const img=imgSrc(local[f]);const hid=privView&&ctrl&&!fieldVisible(local,f);
+              return(<div key={f} style={{flexShrink:0,width:140}}>
+                <div style={{width:140,height:180,background:"var(--parch2)",border:`2px solid ${hid?HIDDEN_RED:"var(--border2)"}`,borderRadius:4,overflow:"hidden",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {img?<img src={img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{color:"var(--ink3)",fontSize:11,fontStyle:"italic",textAlign:"center",padding:8}}>No {label.toLowerCase()}</div>}
+                  {editMode&&canEdit&&<label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.65)",color:"var(--gold3)",fontSize:10,textAlign:"center",padding:"4px",cursor:"pointer",fontFamily:"Cinzel"}}>📷 Upload<input type="file" accept="image/*" onChange={async e=>{const fl=(e.target.files&&e.target.files[0]);e.target.value="";if(!fl)return;const c=await compressImage(fl,600,0.8);commitField(f,c);}} style={{display:"none"}}/></label>}
+                </div>
+                {cap&&<div style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".08em",color:"var(--ink3)",textAlign:"center",marginTop:4}}>{cap}</div>}
+                {privView&&!editMode&&ctrl&&local[f]&&<PicBtn f={f} label={label}/>}
+              </div>);};
+            if(!seeMask&&!seeReal&&!editMode)return null;
+            return(<div style={{display:"flex",flexDirection:"column",gap:5}}>
+              <div style={{display:"flex",gap:10}}>
+                {slot("portrait","Portrait",local.hiddenFace?(seeReal&&!privView?"MASKED":"SHOWN FACE"):"",seeMask||editMode)}
+                {local.hiddenFace&&slot("realPortrait","Real face","REAL FACE",seeReal||(editMode&&privView))}
+              </div>
+              {editMode&&canEdit&&<button className="btn" onClick={()=>setPromptOpen(true)} style={{width:140,fontSize:11}}>✨ Image prompt</button>}
+              {editMode&&privView&&<label style={{fontSize:11,display:"flex",gap:5,alignItems:"center",color:"var(--ink2)",cursor:"pointer"}}><input type="checkbox" checked={!!local.hiddenFace} onChange={e=>commitField("hiddenFace",e.target.checked)}/> Hidden face (mask)</label>}
+            </div>);
+          })()}
+          {hasPhys(sel.s)&&(editMode||privView||!isControlled(local)||PHYS_FIELDS.some(([,f])=>fieldVisible(local,f)&&(local[f]||"").trim()))&&<div style={{flex:1}}>
             <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:8}}>PHYSICAL ATTRIBUTES</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
               {PHYS_FIELDS.map(([lbl,f])=>AF(lbl,f))}
@@ -879,7 +917,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
         {!["session","history"].includes(kindOf(sel.s))&&TF("Relationships & Connections","relationships",90)}
         {["ally","enemy"].includes(kindOf(sel.s))&&TF("Feats with the Party","featsWithParty",90)}
         {kindOf(sel.s)==="session"&&TF("Key Events & Decisions","keyEvents",120)}
-        {DMF()}
+        
         {sel.s==="settlements"&&(()=>{
           const places=getPlaces(lore);const baronies=places.filter(p=>placeType(p)==="barony");const pl=placeById(places,local.placeId);
           return(<div style={{marginBottom:12}}>
@@ -889,15 +927,16 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
               :<div style={{fontSize:15,color:"var(--ink)",fontFamily:"Crimson Pro"}}>{pl&&(dmView||placeVisible(places,pl,false))?[...ancestorsOf(places,pl).filter(a=>dmView||entryVisible(a)).map(a=>a.name),pl.name].join(" › "):"Unknown"}</div>}
           </div>);
         })()}
-        {sel.s==="settlements"&&(()=>{const ctrl2=isControlled(local);const ok=(!ctrl2||dmView||fieldVisible(local,"hoverLore"));if(!ok&&editMode)return null;const v=ok?local.hoverLore:"";
-          return <LoreVF label="Map hover text" value={v} field="hoverLore" multi height={60} editMode={editMode&&!readOnly} onCommit={commitField} eyeState={ctrl2&&dmView?fieldVisible(local,"hoverLore"):undefined} onEye={toggleField}/>;})()}
+        {sel.s==="settlements"&&(()=>{const ctrl2=isControlled(local);const ok=(!ctrl2||privView||fieldVisible(local,"hoverLore"));if(!ok&&editMode)return null;const v=ok?local.hoverLore:"";
+          return <LoreVF label="Map hover text" value={v} field="hoverLore" multi height={60} editMode={editMode&&!readOnly} onCommit={commitField} eyeState={ctrl2&&privView?fieldVisible(local,"hoverLore"):undefined} onEye={toggleField}/>;})()}
         {SF("Tags","tags")}
-        {editMode&&!readOnly&&(()=>{const fam=(()=>{const top=(x=>{let c=secById(x),g=0;while(c&&c.parent&&g++<5)c=secById(c.parent);return c?c.id:x;})(sel.s);return allSections.filter(x=>!x.group&&(x.id===top||x.parent===top));})();
+        {editMode&&!readOnly&&(()=>{const topOf=x=>{let c=secById(x),g=0;while(c&&c.parent&&secById(c.parent)&&g++<5)c=secById(c.parent);return c?c.id:x;};const top=topOf(sel.s);
+          const fam=allSections.filter(x=>!x.group&&topOf(x.id)===top&&(secOwner(x.id)||null)===(secOwner(sel.s)||null));
           if(fam.length<2||sel.s==="regions"||sel.s==="settlements")return null;
           return(<div style={{marginBottom:12}}><div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>MOVE TO</div>
             <select value={sel.s} onChange={e=>moveEntry(e.target.value)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 8px",fontSize:14,outline:"none"}}>
               {fam.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></div>);})()}
-        {["ally","enemy"].includes(kindOf(sel.s))&&!readOnly&&(dmView||!isControlled(local))&&<>
+        {["ally","enemy"].includes(kindOf(sel.s))&&!readOnly&&(privView||!isControlled(local))&&!ownedSec&&<>
           <Ornament/>
           <div style={{marginBottom:12}}>
             <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:5}}>LINKED CHARACTER</div>
@@ -909,17 +948,18 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget}){
         </>}
       </div>}
       </div>
-      {dmView&&local&&!editMode&&<div style={{position:"sticky",bottom:0,zIndex:5,background:"var(--parch2)",borderTop:"2px solid var(--gold2)",padding:"10px 18px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+      {privView&&local&&!editMode&&<div style={{position:"sticky",bottom:0,zIndex:5,background:"var(--parch2)",borderTop:"2px solid var(--gold2)",padding:"10px 18px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        {dmView&&<button className="btn" title="Locked entries can be read but not edited by players" onClick={()=>commitField("lockedForPlayers",!local.lockedForPlayers)} style={{fontSize:11,padding:"5px 10px",color:local.lockedForPlayers?HIDDEN_RED:"var(--ink2)",borderColor:local.lockedForPlayers?HIDDEN_RED:"var(--border2)"}}>{local.lockedForPlayers?"🔒 Locked for players":"🔓 Players can edit"}</button>}
         {!isControlled(local)
           ?<><button className="btn" onClick={()=>updReveal(r=>({...r,entry:false}))} style={{fontSize:11,padding:"5px 12px",color:"#2f7a2f",borderColor:"#2f7a2f"}}><Eye open={true} size={12}/> {local.name||"Entry"} is known to players</button>
-            <div style={{flex:1,fontSize:11,color:"var(--ink3)",fontStyle:"italic",textAlign:"center"}}>{hasSel?"Highlighted text ready":"Highlight DM Description text to reveal or hide it"}</div>
+            <div style={{flex:1,fontSize:11,color:"var(--ink3)",fontStyle:"italic",textAlign:"center"}}>{hasSel?"Highlighted text ready":ownedSec?"Highlight red text to reveal or hide it":"Highlight DM version text to reveal or hide it"}</div>
             <button className="btn" disabled={!hasSel} onMouseDown={e=>e.preventDefault()} onClick={()=>applySelection(false)} style={{fontSize:11,padding:"5px 12px",opacity:hasSel?1:0.4}}><Eye open={false} size={12}/> Hide highlighted</button>
             <button className={`btn${hasSel?" act":""}`} disabled={!hasSel} onMouseDown={e=>e.preventDefault()} onClick={()=>applySelection(true)} style={{fontSize:11,padding:"5px 14px",opacity:hasSel?1:0.4}}><Eye open={true} size={12}/> Reveal highlighted</button></>
           :<>
             <button className="btn" onMouseDown={e=>e.preventDefault()} onClick={()=>updReveal(r=>({...r,entry:!r.entry}))}
               style={{fontSize:11,padding:"5px 12px",color:local.reveal.entry?"#3c8c3c":HIDDEN_RED,borderColor:local.reveal.entry?"#3c8c3c":HIDDEN_RED}}>
               <Eye open={local.reveal.entry} size={12}/> {local.reveal.entry?`${local.name||"Entry"} is known to players`:`${local.name||"Entry"} is hidden — click to reveal`}</button>
-            <div style={{flex:1,fontSize:11,color:"var(--ink3)",fontStyle:"italic",textAlign:"center"}}>{hasSel?"Highlighted text ready":"Highlight DM Description text to reveal or hide it"}</div>
+            <div style={{flex:1,fontSize:11,color:"var(--ink3)",fontStyle:"italic",textAlign:"center"}}>{hasSel?"Highlighted text ready":ownedSec?"Highlight red text to reveal or hide it":"Highlight DM version text to reveal or hide it"}</div>
             <button className="btn" disabled={!hasSel} onMouseDown={e=>e.preventDefault()} onClick={()=>applySelection(false)} style={{fontSize:11,padding:"5px 12px",opacity:hasSel?1:0.4}}><Eye open={false} size={12}/> Hide highlighted</button>
             <button className={`btn${hasSel?" act":""}`} disabled={!hasSel} onMouseDown={e=>e.preventDefault()} onClick={()=>applySelection(true)} style={{fontSize:11,padding:"5px 14px",opacity:hasSel?1:0.4}}><Eye open={true} size={12}/> Reveal highlighted</button>
           </>}
@@ -1032,14 +1072,19 @@ const defaultBoxes=L=>{
   ];
 };
 
-function CharSheet({char,onChange}){
+function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}){
   const [editMode,setEditMode]=useState(false);
   const [L,setL]=useState({...char});
   const flush=useRef(null);
   const pending=useRef(false);
   useEffect(()=>{if(!pending.current)setL({...char});},[char]);
   const commit=useCallback((f,v)=>{setL(prev=>{const u={...prev,[f]:v};pending.current=true;clearTimeout(flush.current);flush.current=setTimeout(()=>{pending.current=false;onChange(u);},150);return u;});},[onChange]);
-  const commitNum=useCallback((f,v)=>commit(f,parseInt(v)||0),[commit]);
+  const [lvlPop,setLvlPop]=useState(null);
+  const commitNum=useCallback((f,v)=>{
+    const n=parseInt(v)||0;
+    if(f==="level"){const old=parseInt(L.level)||0;if(n>old){const got=[];(L.boxes||[]).forEach(b=>(b.items||[]).forEach(x=>{const lv=parseInt(x.lvl)||0;if(lv>old&&lv<=n)got.push({name:x.name||"Unnamed",box:b.title,lvl:lv});}));if(got.length)setLvlPop({level:n,got});}}
+    commit(f,n);
+  },[commit,L.level,L.boxes]);
   const prof=parseInt(((L.statRows||[]).find(r=>r.label==="PROF BONUS")||{}).value)||parseInt(L.profBonus)||2;
   const calcMod=s=>Math.floor((s-10)/2);
   const fmtMod=m=>(m>=0?"+":"")+m;
@@ -1072,7 +1117,8 @@ function CharSheet({char,onChange}){
   // HP in play
   const [hpAmt,setHpAmt]=useState("");
   const damage=()=>{const n=parseInt(hpAmt)||0;if(!n)return;let t=L.hpTemp||0,c=L.hpCurrent||0;const fromT=Math.min(t,n);t-=fromT;c=Math.max(0,c-(n-fromT));commit("hpTemp",t);setTimeout(()=>commit("hpCurrent",c),0);setHpAmt("");};
-  const heal=()=>{const n=parseInt(hpAmt)||0;if(!n)return;const mx=L.hpMax||0;let c=(L.hpCurrent||0)+n;if(mx>0)c=Math.min(mx,c);commit("hpCurrent",c);setHpAmt("");};
+  const hpCap=()=>(L.hpMax||0)>0?(L.hpMax||0)+(L.hpTemp||0):Infinity; // our table: heal up to max + temp
+  const heal=()=>{const n=parseInt(hpAmt)||0;if(!n)return;commit("hpCurrent",Math.min(hpCap(),(L.hpCurrent||0)+n));setHpAmt("");};
   // customisable boxes
   const boxes=L.boxes||defaultBoxes(L);
   const setBoxes=b=>commit("boxes",b);
@@ -1140,7 +1186,7 @@ function CharSheet({char,onChange}){
         </div>
         {!editMode&&<div style={{display:"flex",gap:4,alignItems:"center",marginBottom:6}}>
           <button title="-1 HP" onClick={()=>commit("hpCurrent",Math.max(0,(L.hpCurrent||0)-1))} style={{width:22,height:22,borderRadius:3,border:"1px solid rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.08)",color:"white",cursor:"pointer",fontSize:14,lineHeight:1}}>−</button>
-          <button title="+1 HP" onClick={()=>{const mx=L.hpMax||0;commit("hpCurrent",mx>0?Math.min(mx,(L.hpCurrent||0)+1):(L.hpCurrent||0)+1);}} style={{width:22,height:22,borderRadius:3,border:"1px solid rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.08)",color:"white",cursor:"pointer",fontSize:14,lineHeight:1}}>+</button>
+          <button title="+1 HP" onClick={()=>commit("hpCurrent",Math.min(hpCap(),(L.hpCurrent||0)+1))} style={{width:22,height:22,borderRadius:3,border:"1px solid rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.08)",color:"white",cursor:"pointer",fontSize:14,lineHeight:1}}>+</button>
           <input type="number" value={hpAmt} onChange={e=>setHpAmt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")damage();}} placeholder="amt" style={{width:44,fontFamily:"Cinzel",fontSize:12,background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.3)",color:"white",borderRadius:3,padding:"2px 4px",outline:"none"}}/>
           <button onClick={damage} style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(255,120,120,0.6)",background:"rgba(160,30,30,0.5)",color:"#ffd0d0",cursor:"pointer"}}>DAMAGE</button>
           <button onClick={heal} style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(120,220,120,0.6)",background:"rgba(30,110,30,0.5)",color:"#d0ffd0",cursor:"pointer"}}>HEAL</button>
@@ -1265,8 +1311,9 @@ function CharSheet({char,onChange}){
             ?(editMode?<ShTextarea value={b.text||""} onCommit={v=>updBox(b.id,{text:v})} className="sh-input-box" style={{resize:"vertical",minHeight:70,fontSize:12,lineHeight:1.6}}/>
               :<p style={{fontSize:12,color:"#2a2a3a",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{b.text||<em style={{opacity:.4}}>—</em>}</p>)
             :<div>
-              {(b.items||[]).map(x=>{const o=!!boxOpen[b.id+":"+x.id];return(<div key={x.id} style={{marginBottom:5,border:"1px solid #b8a070",borderRadius:3,overflow:"hidden"}}>
-                <div style={{display:"flex",alignItems:"center",gap:5,padding:"5px 8px",background:"#e8d9b8",cursor:"pointer",userSelect:"none",flexWrap:"wrap"}} onClick={()=>setBoxOpen(m=>({...m,[b.id+":"+x.id]:!o}))}>
+              {(b.items||[]).filter(x=>editMode||!((parseInt(x.lvl)||0)>(parseInt(L.level)||0))).map(x=>{const o=!!boxOpen[b.id+":"+x.id];const locked=(parseInt(x.lvl)||0)>(parseInt(L.level)||0);return(<div key={x.id} style={{marginBottom:5,border:`1px solid ${locked?"#a3241e":"#b8a070"}`,borderRadius:3,overflow:"hidden"}}>
+                <div style={{display:"flex",alignItems:"center",gap:5,padding:"5px 8px",background:locked?"#e8bcb4":"#e8d9b8",cursor:"pointer",userSelect:"none",flexWrap:"wrap"}} onClick={()=>setBoxOpen(m=>({...m,[b.id+":"+x.id]:!o}))}>
+                  {editMode&&locked&&<span title={`Unlocks at level ${x.lvl}`} style={{fontSize:10,fontFamily:"Cinzel",color:"#a3241e",whiteSpace:"nowrap"}}>🔒 LVL {x.lvl}</span>}
                   {editMode?<span style={{flex:1,minWidth:100}} onClick={e=>e.stopPropagation()}><ShInput value={x.name||""} onCommit={v=>updItem(b.id,x.id,{name:v})} className="sh-input" style={{fontSize:12}} placeholder="Name..."/></span>
                     :<span style={{flex:1,fontSize:12,fontFamily:"Cinzel",color:"#2a2a3a"}}>{x.name||<em style={{opacity:.5}}>Unnamed</em>}</span>}
                   {!editMode&&x.dcOn&&<span title={x.dcLabel||"DC"} style={{fontSize:10,fontFamily:"Cinzel",color:"#5a3e1b",background:"rgba(255,255,255,0.55)",border:"1px solid #b8a070",borderRadius:3,padding:"0 5px",whiteSpace:"nowrap"}}>DC {x.dc||10}{x.dcLabel?` ${x.dcLabel}`:""}</span>}
@@ -1274,8 +1321,9 @@ function CharSheet({char,onChange}){
                   <span style={{fontSize:9,color:"#888"}}>{o?"▲":"▼"}</span>
                   {editMode&&<button onClick={e=>{e.stopPropagation();setBoxes(boxes.map(bb=>bb.id===b.id?{...bb,items:bb.items.filter(y=>y.id!==x.id)}:bb));}} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:12}}>✕</button>}
                 </div>
-                {(o||editMode&&(x.ctrOn||x.dcOn))&&<div style={{padding:"7px 9px",background:"#f0ebe0"}}>
+                {(o||editMode)&&<div style={{padding:"7px 9px",background:"#f0ebe0"}}>
                   {editMode&&<div style={{display:"flex",gap:10,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
+                    <span style={{display:"inline-flex",gap:3,alignItems:"center",fontSize:10,fontFamily:"Cinzel",color:"#555",letterSpacing:".04em"}} title="Hidden until your character reaches this level">LVL <ShNumInput value={x.lvl||""} onCommit={v=>updItem(b.id,x.id,{lvl:parseInt(v)||null})} placeholder="–" style={{width:34,fontSize:11}} className="sh-num"/></span>
                     <Switch on={!!x.ctrOn} onChange={v=>updItem(b.id,x.id,{ctrOn:v})} label="COUNTER"/>
                     {x.ctrOn&&<span style={{display:"inline-flex",gap:3,alignItems:"center",fontSize:9,fontFamily:"Cinzel",color:"#666"}}>USES <ShNumInput value={x.ctrMax||0} onCommit={v=>updItem(b.id,x.id,{ctrMax:parseInt(v)||0})} style={{width:38,fontSize:11}} className="sh-num"/></span>}
                     <Switch on={!!x.dcOn} onChange={v=>updItem(b.id,x.id,{dcOn:v})} label="DC"/>
@@ -1297,7 +1345,7 @@ function CharSheet({char,onChange}){
       {/* Armour + Currency + Inventory */}
       <div style={{display:"grid",gridTemplateColumns:"180px 1fr 1fr",gap:10}}>
         <div className="sh">
-          <div className="sh-section">EQUIPMENT</div>
+          <div className="sh-section">EQUIPMENT / PROFICIENCIES</div>
           <div className="sh-label">ARMOUR</div>
           {[["light","Light"],["medium","Medium"],["heavy","Heavy"],["shields","Shields"]].map(([k,l])=><div key={k} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
             <span className={`armor-check${(L.armorProf&&L.armorProf[k])?" on":""}`} onClick={()=>editMode&&togAP(k)} style={{cursor:editMode?"pointer":"default"}}>{(L.armorProf&&L.armorProf[k])?"✓":""}</span>
@@ -1305,6 +1353,10 @@ function CharSheet({char,onChange}){
           </div>)}
           <div className="sh-label" style={{marginTop:6}}>WEAPONS</div>
           {editMode?<ShTextarea value={L.weaponsProf||""} onCommit={v=>commit("weaponsProf",v)} className="sh-input-box" style={{resize:"vertical",minHeight:40,fontSize:11}}/>:<p style={{fontSize:11,color:"#2a2a3a",lineHeight:1.5,whiteSpace:"pre-wrap",minHeight:20}}>{L.weaponsProf||<em style={{opacity:.4}}>—</em>}</p>}
+          {[["toolsProf","TOOLS"],["languages","LANGUAGES"]].map(([f,lbl])=><React.Fragment key={f}>
+            <div className="sh-label" style={{marginTop:8}}>{lbl}</div>
+            {editMode?<ShTextarea value={L[f]||""} onCommit={v=>commit(f,v)} className="sh-input-box" style={{resize:"vertical",minHeight:40,fontSize:11}}/>:<p style={{fontSize:11,color:"#2a2a3a",lineHeight:1.5,whiteSpace:"pre-wrap",minHeight:20}}>{L[f]||<em style={{opacity:.4}}>—</em>}</p>}
+          </React.Fragment>)}
         </div>
         <div className="sh">
           <div className="sh-section">COINS</div>
@@ -1338,11 +1390,77 @@ function CharSheet({char,onChange}){
         {editMode?<ShTextarea value={L.historyPersonality||""} onCommit={v=>commit("historyPersonality",v)} className="sh-input-box" style={{resize:"vertical",minHeight:100,fontSize:12,lineHeight:1.6}} placeholder="Backstory..."/>:<p style={{fontSize:12,color:"#2a2a3a",lineHeight:1.6,whiteSpace:"pre-wrap",minHeight:40}}>{L.historyPersonality||<em style={{opacity:.4}}>—</em>}</p>}
         <div className="sh-label" style={{marginTop:6}}>ALIGNMENT</div>
         {editMode?<ShInput value={L.alignment||""} onCommit={v=>commit("alignment",v)} className="sh-input-box" style={{fontSize:12}}/>:<div style={{fontSize:12,color:"#2a2a3a"}}>{L.alignment||<em style={{opacity:.35}}>—</em>}</div>}
-        <div className="sh-label" style={{marginTop:6}}>LANGUAGES</div>
-        {editMode?<ShTextarea value={L.languages||""} onCommit={v=>commit("languages",v)} className="sh-input-box" style={{resize:"vertical",minHeight:40,fontSize:12}}/>:<p style={{fontSize:12,color:"#2a2a3a",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{L.languages||<em style={{opacity:.35}}>—</em>}</p>}
       </div>
     </div>
+    {/* Characters from your past */}
+    <div style={{padding:"0 14px"}}><PastSection char={L} commit={commit} lore={lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={onOpenLore} isDM={isDM}/></div>
+    {lvlPop&&<div style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setLvlPop(null)}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:10,padding:24,width:"min(420px,100%)",textAlign:"center",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
+        <div style={{fontSize:32}}>⚔</div>
+        <h3 style={{fontFamily:"Cinzel",color:"var(--gold)",fontSize:18,margin:"6px 0 4px"}}>Level {lvlPop.level}!</h3>
+        <p style={{fontSize:13,color:"var(--ink2)",marginBottom:10}}>New on your sheet:</p>
+        {lvlPop.got.map((g,i)=><div key={i} style={{fontFamily:"Cinzel",fontSize:13,color:"var(--ink)",padding:"5px 0",borderTop:i?"1px solid var(--border)":"none"}}>{g.name} <span style={{fontSize:10,color:"var(--ink3)"}}>· {g.box}</span></div>)}
+        <button className="btn act" onClick={()=>setLvlPop(null)} style={{marginTop:14}}>Brilliant</button>
+      </div>
+    </div>}
     <div style={{height:30}}/>
+  </div>);
+}
+
+/* ════ CHARACTERS FROM YOUR PAST (with "Unlock Past") ════ */
+function PastSection({char,commit,lore,setLore,myPast,setMyPast,onOpenLore,isDM}){
+  const [key,setKey]=useState("");const [err,setErr]=useState("");
+  const [adding,setAdding]=useState(false);const [nm,setNm]=useState("");const [into,setInto]=useState("");
+  const owner=char.pastOwner||null;
+  const unlocked=!!owner&&myPast===owner;
+  const secs=(lore&&lore.__customSections)||[];
+  const secOwnerOf=id=>{let x=secs.find(c=>c.id===id),g=0;while(x&&g++<6){if(x.owner)return x.owner;x=x.parent?secs.find(c=>c.id===x.parent):null;}return null;};
+  const mySecs=owner?secs.filter(c=>secOwnerOf(c.id)===owner):[];
+  const seeAll=unlocked||isDM;
+  const people=[];mySecs.forEach(c=>(lore[c.id]||[]).forEach(e=>{if(seeAll||entryVisible(e))people.push({e,sec:c});}));
+  const tryUnlock=()=>{
+    const who=PAST_KEYS[key.trim()];
+    if(!who){setErr("That key isn't right.");return;}
+    if(owner&&owner!==who){setErr(`That key belongs to ${who}, not this character.`);return;}
+    const sid=pastSecId(who);
+    setLore(prev=>(prev.__customSections||[]).some(c=>c.id===sid)?prev:{...prev,[sid]:prev[sid]||[],__customSections:[...(prev.__customSections||[]),{id:sid,label:`${possessive(who)} Past`,icon:"📜",parent:"people",layout:"ally",owner:who}]});
+    if(!owner)commit("pastOwner",who);
+    try{localStorage.setItem("sf_past",who);}catch(e){}
+    setMyPast(who);setKey("");setErr("");
+  };
+  const add=()=>{
+    if(!nm.trim())return;const sid=into||pastSecId(owner);
+    const e={...EMPTY_ENTRY(),name:nm.trim(),reveal:{entry:false,fields:{},spans:{}},_ts:Date.now()};
+    setLore(prev=>({...prev,[sid]:[...(prev[sid]||[]),e]}));
+    setNm("");setAdding(false);setTimeout(()=>onOpenLore&&onOpenLore(sid,e.id),50);
+  };
+  return(<div className="sh" style={{marginTop:2}}>
+    <div className="sh-section">CHARACTERS FROM YOUR PAST</div>
+    {owner&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8,marginBottom:10}}>
+      {people.map(({e,sec})=>{const pic=(seeAll||fieldVisible(e,"portrait"))?imgSrc(e.portrait):null;const hid=!entryVisible(e);
+        return(<div key={e.id} onClick={()=>onOpenLore&&onOpenLore(sec.id,e.id)} title={`Open in Lore · ${sec.label}`} style={{cursor:"pointer",border:`1px solid ${hid?"#a3241e":"#b8a070"}`,borderRadius:4,overflow:"hidden",background:"rgba(255,255,255,0.45)"}}>
+          <div style={{height:110,background:"#e8d9b8",display:"flex",alignItems:"center",justifyContent:"center"}}>{pic?<img src={pic} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{fontSize:30,opacity:.35}}>👤</span>}</div>
+          <div style={{padding:"5px 7px"}}><div style={{fontFamily:"Cinzel",fontSize:11.5,color:hid?"#a3241e":"#2a2a3a"}}>{hid&&"🔒 "}{e.name||"Unnamed"}</div><div style={{fontSize:9.5,color:"#777"}}>{sec.label}</div></div>
+        </div>);})}
+      {!people.length&&<div style={{fontSize:12,color:"#777",fontStyle:"italic",gridColumn:"1/-1"}}>{seeAll?"No one yet.":"Nothing revealed yet."}</div>}
+    </div>}
+    {unlocked?<div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+      {adding?<>
+        <input autoFocus value={nm} onChange={e=>setNm(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")add();if(e.key==="Escape")setAdding(false);}} placeholder="Name…" className="sh-input-box" style={{width:180,fontSize:12}}/>
+        {mySecs.length>1&&<select value={into} onChange={e=>setInto(e.target.value)} className="sh-input-box" style={{width:"auto",fontSize:12}}>{mySecs.map(c=><option key={c.id} value={c.id===pastSecId(owner)?"":c.id}>{c.label}</option>)}</select>}
+        <button className="btn" onClick={add} style={{fontSize:11,color:"#2a2a3a"}}>✓ Add</button><button className="btn" onClick={()=>setAdding(false)} style={{fontSize:11,color:"#2a2a3a"}}>✕</button>
+      </>:<button className="btn" onClick={()=>setAdding(true)} style={{fontSize:11,color:"#2a2a3a"}}>+ Add someone from my past</button>}
+      <span style={{flex:1}}/>
+      <span style={{fontSize:11,color:"#5a3e1b",fontFamily:"Cinzel"}}>📜 Unlocked as {owner}</span>
+      <button className="btn" onClick={()=>{try{localStorage.removeItem("sf_past");}catch(e){}setMyPast(null);}} style={{fontSize:11,color:"#2a2a3a"}}>🔒 Lock</button>
+    </div>
+    :<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+      <span style={{fontSize:10,fontFamily:"Cinzel",color:"#555",letterSpacing:".06em"}}>UNLOCK PAST</span>
+      <input type="password" value={key} onChange={e=>setKey(e.target.value)} onKeyDown={e=>e.key==="Enter"&&tryUnlock()} placeholder="Your key…" className="sh-input-box" style={{width:160,fontSize:12}}/>
+      <button className="btn" onClick={tryUnlock} style={{fontSize:11,color:"#2a2a3a"}}>Unlock</button>
+      {err&&<span style={{fontSize:11,color:"#a3241e"}}>{err}</span>}
+      {!owner&&<span style={{fontSize:11,color:"#777",fontStyle:"italic"}}>Unlock to start writing your backstory characters.</span>}
+    </div>}
   </div>);
 }
 
@@ -1353,6 +1471,20 @@ function hiddenPieces(t,sp){
   t=t||"";const norm=normSpans(sp,t.length);const out=[];let pos=0;
   norm.forEach(([x,y])=>{if(x>pos)out.push(t.slice(pos,x));pos=y;});if(pos<t.length)out.push(t.slice(pos));
   return out.map(x=>x.trim()).filter(Boolean);
+}
+function migrateDmVersions(d){
+  if(!d||!d.lore||d.dmVersionsV3)return null;
+  const lore={...d.lore};
+  Object.keys(lore).forEach(sec=>{
+    if(sec==="__customSections"||!Array.isArray(lore[sec]))return;
+    lore[sec]=lore[sec].map(e=>{
+      if(!e||!(e.dmDescription||"").trim())return e;
+      const n={...e,dm_description:[(e.dm_description||"").trim(),e.dmDescription.trim()].filter(Boolean).join("\n\n")};delete n.dmDescription;
+      if(e.reveal&&e.reveal.spans&&e.reveal.spans.dmDescription){const sp={...e.reveal.spans};const off=(e.dm_description||"").trim()?(e.dm_description.trim().length+2):0;sp.dm_description=sp.dmDescription.map(([a,b])=>[a+off,b+off]);delete sp.dmDescription;n.reveal={...e.reveal,spans:sp};}
+      n._ts=Date.now();return n;
+    });
+  });
+  return{...d,dmVersionsV3:true,lore};
 }
 function migrateDmDescriptions(d){
   if(!d||!d.lore||d.dmDescV2)return null;
@@ -1370,13 +1502,13 @@ function migrateDmDescriptions(d){
       });
       if(!n)return e;
       changed=true;
-      n.dmDescription=[(e.dmDescription||"").trim(),...secret].filter(Boolean).join("\n\n");
+      n.dm_description=[(e.dm_description||"").trim(),(e.dmDescription||"").trim(),...secret].filter(Boolean).join("\n\n");delete n.dmDescription;
       const ns={...spans};Object.keys(OLD_FIELD_LABELS).forEach(f=>delete ns[f]);
       n.reveal={...e.reveal,spans:ns};n._ts=Date.now();
       return n;
     });
   });
-  return{...d,dmDescV2:true,lore:changed?lore:d.lore};
+  return{...d,dmDescV2:true,dmVersionsV3:true,lore:changed?lore:d.lore};
 }
 
 /* ════ ONE-TIME UPGRADE: old Oghill settlements → wiki entries placed on the barony map ════ */
@@ -1413,11 +1545,12 @@ function App(){
   const [page,setPage]=useState("map");
   const [ready,setReady]=useState(false);
   const [visited,setVisited]=useState({map:true});
+  const [myPast,setMyPast]=useState(()=>{try{return localStorage.getItem("sf_past")||null;}catch(e){return null;}});
   const [loreTarget,setLoreTarget]=useState(null);
   const [charIdx,setCharIdx]=useState(0);
-  const [isDM,setIsDM]=useState(()=>sessionStorage.getItem("sf_dm")==="1");
+  const [isDM,setIsDM]=useState(()=>{try{return localStorage.getItem("sf_dm")==="1";}catch(e){return false;}});
   // Sync isDM from sessionStorage
-  useEffect(()=>{const check=()=>setIsDM(sessionStorage.getItem("sf_dm")==="1");window.addEventListener("storage",check);return()=>window.removeEventListener("storage",check);},[]);
+  useEffect(()=>{const check=()=>{try{setIsDM(localStorage.getItem("sf_dm")==="1");}catch(e){}};window.addEventListener("storage",check);return()=>window.removeEventListener("storage",check);},[]);
 
   // Themes
   const THEMES={
@@ -1562,7 +1695,7 @@ function App(){
   const updateChar=useCallback((idx,ch)=>setData(d=>{const cs=[...d.characters];cs[idx]=ch;return{...d,characters:cs};}),[]);
 
   // One-time upgrade to the kingdom/region/barony layout
-  useEffect(()=>{if(!ready||!data)return;const m=migratePlaces(data);if(m){setData(m);return;}const m2=migrateDmDescriptions(data);if(m2)setData(m2);},[ready,data&&data.placesV2,data&&data.dmDescV2]);
+  useEffect(()=>{if(!ready||!data)return;const m=migratePlaces(data);if(m){setData(m);return;}const m2=migrateDmDescriptions(data);if(m2){setData(m2);return;}const m3=migrateDmVersions(data);if(m3)setData(m3);},[ready,data&&data.placesV2,data&&data.dmDescV2,data&&data.dmVersionsV3]);
   const openLore=(sec,id)=>{setLoreTarget({s:sec,id,n:Date.now()});setPage("lore");};
   useEffect(()=>{setVisited(v=>v[page]?v:{...v,[page]:true});},[page]);
   const linkCtxVal=useMemo(()=>{
@@ -1610,8 +1743,8 @@ function App(){
     {/* Main */}
     <main style={{flex:1,minHeight:0,overflow:"hidden",padding:8,background:"var(--dark)"}}>
       {visited.map&&<div style={{height:"100%",display:page==="map"?"block":"none"}}><MapExplorer data={data} isDM={isDM} onOpenLore={openLore}/></div>}
-      {visited.lore&&<div style={{height:"100%",display:page==="lore"?"block":"none"}}><LorePanel lore={data.lore} setLore={setLore} characters={data.characters} readOnly={false} dmMode={false} openTarget={loreTarget}/></div>}
-      {visited.chars&&<div style={{height:"100%",display:page==="chars"?"block":"none"}}><CharSheet char={data.characters[charIdx]} onChange={c=>updateChar(charIdx,c)}/></div>}
+      {visited.lore&&<div style={{height:"100%",display:page==="lore"?"block":"none"}}><LorePanel lore={data.lore} setLore={setLore} characters={data.characters} readOnly={false} dmMode={false} openTarget={loreTarget} myPast={myPast}/></div>}
+      {visited.chars&&<div style={{height:"100%",display:page==="chars"?"block":"none"}}><CharSheet char={data.characters[charIdx]} onChange={c=>updateChar(charIdx,c)} lore={data.lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={openLore} isDM={isDM}/></div>}
       {visited.tales&&<div style={{height:"100%",display:page==="tales"?"block":"none"}}><TalesPanel/></div>}
       {visited.dm&&<div style={{height:"100%",display:page==="dm"?"block":"none"}}><DMTab data={data} setData={setData} lore={data.lore} setLore={setLore} onAuth={setIsDM} characters={data.characters}/></div>}
     </main>
@@ -1879,7 +2012,7 @@ function shownText(e,f,isDM){
 // Edit a field of an entry, keeping revealed passages attached to the right words
 function applyEntryField(i,field,value){
   const n={...i,[field]:value};
-  if(i.reveal&&REVEAL_TEXT_FIELDS.includes(field)&&(i[field]||"")!==(value||"")){
+  if(i.reveal&&(i.reveal.spans||{})[field]&&(i[field]||"")!==(value||"")){
     const spans=(i.reveal.spans||{});
     n.reveal={...i.reveal,spans:{...spans,[field]:remapSpans(spans[field],i[field],value)}};
   }
@@ -2683,9 +2816,11 @@ function MapControl({lore,setLore,onOpenOverview}){
           <MentionTextarea value={P.description||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"description",v))} className="sf-dm-input" style={{minHeight:100,resize:"vertical",lineHeight:1.55}} placeholder="What players know — shown in the map popup once revealed…"/></div>
         <div><div style={lbl}>FURTHER LORE</div>
           <MentionTextarea value={P.lore||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"lore",v))} className="sf-dm-input" style={{minHeight:140,resize:"vertical",lineHeight:1.55}} placeholder="History, rulers, rumours…"/></div>
-        <div><div style={lbl}>DM DESCRIPTION — ONLY YOU SEE THIS</div>
-          <MentionTextarea value={P.dmDescription||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"dmDescription",v))} className="sf-dm-input" style={{minHeight:120,resize:"vertical",lineHeight:1.55}} placeholder="Secrets about this place. Reveal them piece by piece in Overview…"/></div>
-        <div style={{fontSize:12.5,color:"rgba(255,200,200,0.7)"}}>Description and Further Lore are visible to players once this place is revealed. The DM Description stays hidden until you reveal parts of it in Overview.
+        <div><div style={lbl}>DESCRIPTION — DM VERSION (ONLY YOU SEE THIS)</div>
+          <MentionTextarea value={P.dm_description||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"dm_description",v))} className="sf-dm-input" style={{minHeight:90,resize:"vertical",lineHeight:1.55}} placeholder="Secrets about this place…"/></div>
+        <div><div style={lbl}>FURTHER LORE — DM VERSION (ONLY YOU SEE THIS)</div>
+          <MentionTextarea value={P.dm_lore||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"dm_lore",v))} className="sf-dm-input" style={{minHeight:90,resize:"vertical",lineHeight:1.55}} placeholder="Hidden history, true rulers…"/></div>
+        <div style={{fontSize:12.5,color:"rgba(255,200,200,0.7)"}}>Description and Further Lore are visible to players once this place is revealed. The DM versions stay hidden until you reveal parts of them in Overview.
           <button className="sf-dm-btn" style={{marginLeft:8}} onClick={()=>onOpenOverview&&onOpenOverview("regions",P.id)}>📜 Open in Overview</button></div>
       </div>}
     </div>
@@ -2731,12 +2866,12 @@ function DMPrivateLore({dmLore,setDmLore}){
 /* ════ DM TAB ════ */
 const DM_PASSWORD="HarveysBalls";
 function DMTab({data,setData,lore,setLore,onAuth,characters}){
-  const [authed,setAuthed]=useState(()=>sessionStorage.getItem("sf_dm")==="1");
+  const [authed,setAuthed]=useState(()=>{try{return localStorage.getItem("sf_dm")==="1";}catch(e){return false;}});
   const [pw,setPw]=useState("");const [pwErr,setPwErr]=useState(false);
   const [active,setActive]=useState("overview");
   const [target,setTarget]=useState(null);
   const tryLogin=()=>{
-    if(pw===DM_PASSWORD){sessionStorage.setItem("sf_dm","1");setAuthed(true);onAuth&&onAuth(true);}
+    if(pw===DM_PASSWORD){try{localStorage.setItem("sf_dm","1");}catch(e){}setAuthed(true);onAuth&&onAuth(true);}
     else{setPwErr(true);setTimeout(()=>setPwErr(false),1500);}
   };
   if(!authed)return(<div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--dark)",padding:16}}>
@@ -2761,7 +2896,7 @@ function DMTab({data,setData,lore,setLore,onAuth,characters}){
       </div>
       {SECS.map(s=><div key={s.id} onClick={()=>setActive(s.id)} style={{padding:"11px 14px",cursor:"pointer",fontSize:12,fontFamily:"Cinzel",letterSpacing:"0.04em",color:active===s.id?"#ffaaaa":"rgba(255,150,150,0.6)",background:active===s.id?"rgba(139,26,26,0.4)":"transparent",borderLeft:active===s.id?"3px solid #ff6666":"3px solid transparent",display:"flex",alignItems:"center",gap:8}}><span>{s.icon}</span><span>{s.label}</span></div>)}
       <div style={{flex:1}}/>
-      <button onClick={()=>{sessionStorage.removeItem("sf_dm");setAuthed(false);onAuth&&onAuth(false);}} style={{margin:10,fontFamily:"Cinzel",background:"transparent",border:"1px solid rgba(255,100,100,0.3)",color:"rgba(255,150,150,0.6)",borderRadius:4,padding:"6px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>🔒 Lock DM</button>
+      <button onClick={()=>{try{localStorage.removeItem("sf_dm");}catch(e){}setAuthed(false);onAuth&&onAuth(false);}} style={{margin:10,fontFamily:"Cinzel",background:"transparent",border:"1px solid rgba(255,100,100,0.3)",color:"rgba(255,150,150,0.6)",borderRadius:4,padding:"6px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>🔒 Lock DM</button>
     </div>
     <div style={{flex:1,minWidth:0,overflow:"hidden",background:"rgba(20,5,5,0.95)",padding:active==="overview"?0:14}}>
       {active==="overview"&&<LorePanel lore={lore} setLore={setLore} characters={characters} readOnly={false} dmMode={true} openTarget={target}/>}
