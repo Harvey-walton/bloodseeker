@@ -388,6 +388,18 @@ function richNodes(text,ctx){
     return <a key={i} className="sf-link" onClick={e=>{e.preventDefault();e.stopPropagation();ctx.open(k.link.sec,k.link.id);}}>{k.link.name}</a>;
   });
 }
+function creatableSections(lore,canUse){
+  const all=[...DEFAULT_SECTIONS,...((lore&&lore.__customSections)||[])];
+  const by=id=>all.find(x=>x.id===id);
+  const path=x=>{const out=[];let c=x,g=0;while(c&&g++<6){out.unshift(c.label);c=c.parent?by(c.parent):null;}return out.join(" › ");};
+  return all.filter(x=>!x.group&&x.id!=="regions"&&(!canUse||canUse(x.id))).map(x=>({id:x.id,icon:x.icon||"📜",label:x.id==="settlements"?"Places (not in a barony yet)":path(x)}));
+}
+function newLinkedEntry(sec,name,hidden){
+  const e={...EMPTY_ENTRY(),id:Date.now()+Math.random(),name};
+  if(sec==="settlements"){e.placeId=null;e.placeKind="settlement";}
+  if(hidden)e.reveal={entry:false,fields:{portrait:true,hoverLore:true},spans:{}};
+  e._ts=Date.now();return e;
+}
 function linkEntries(lore){
   const out=[];Object.keys(lore||{}).forEach(sec=>{if(sec==="__customSections"||!Array.isArray(lore[sec]))return;lore[sec].forEach(e=>{if(e&&(e.name||"").trim())out.push({name:e.name.replace(/[\[\]]/g,""),sec,id:e.id});});});
   return out;
@@ -400,6 +412,8 @@ function MentionTextarea({value,onCommit,style,className,placeholder}){
   useEffect(()=>{if(ref.current&&document.activeElement!==ref.current)ref.current.value=value||"";},[value]);
   const all=(ctx&&ctx.entries)||[];
   const matches=q?all.filter(e=>e.name.toLowerCase().includes(q.query.toLowerCase())).slice(0,8):[];
+  const [mkOpen,setMkOpen]=useState(false);
+  const canMake=!!(ctx&&ctx.create&&q&&q.query.trim().length>1&&!all.some(e=>e.name.toLowerCase()===q.query.trim().toLowerCase()));
   const check=()=>{
     const el=ref.current;if(!el)return;const pos=el.selectionStart;const before=el.value.slice(0,pos);
     const m=/(^|[\s(>"'])@([^@\n\[\]()]{0,40})$/.exec(before);
@@ -409,8 +423,9 @@ function MentionTextarea({value,onCommit,style,className,placeholder}){
     const el=ref.current;if(!el||!q)return;
     const ins=`[@${e.name}](lore:${e.sec}:${e.id})`;
     el.value=el.value.slice(0,q.start)+ins+el.value.slice(q.end);
-    const c=q.start+ins.length;el.focus();el.setSelectionRange(c,c);setQ(null);
+    const c=q.start+ins.length;el.focus();el.setSelectionRange(c,c);setQ(null);setMkOpen(false);
   };
+  const make=sec=>{const name=q.query.trim().replace(/[\[\]()]/g,"");const id=ctx.create(sec,name);if(id!=null)choose({name,sec,id});};
   const onKey=e=>{
     if(!q||!matches.length)return;
     if(e.key==="ArrowDown"){e.preventDefault();setHi(h=>(h+1)%matches.length);}
@@ -421,10 +436,16 @@ function MentionTextarea({value,onCommit,style,className,placeholder}){
   return(<div style={{position:"relative"}}>
     <textarea ref={ref} defaultValue={value||""} placeholder={placeholder||""} className={className||"sh-input-box"} style={style}
       onInput={check} onKeyUp={e=>{if(["ArrowLeft","ArrowRight","Home","End"].includes(e.key))check();}} onClick={check} onKeyDown={onKey}
-      onBlur={e=>{setQ(null);onCommit(e.target.value);}}/>
-    {q&&matches.length>0&&<div className="sf-mention-list">
-      <div style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".08em",color:"var(--ink3)",padding:"4px 8px"}}>LINK TO…</div>
+      onBlur={e=>{setQ(null);setMkOpen(false);onCommit(e.target.value);}}/>
+    {q&&(matches.length>0||canMake)&&<div className="sf-mention-list">
+      {matches.length>0&&<div style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".08em",color:"var(--ink3)",padding:"4px 8px"}}>LINK TO…</div>}
       {matches.map((e,i)=><div key={e.sec+e.id} onMouseDown={ev=>{ev.preventDefault();choose(e);}} onMouseEnter={()=>setHi(i)} className={`sf-mention-item${i===hi?" on":""}`}>{sectionIcon(e.sec)} {e.name}</div>)}
+      {canMake&&(!mkOpen
+        ?<div onMouseDown={ev=>{ev.preventDefault();setMkOpen(true);}} className="sf-mention-item" style={{borderTop:matches.length?"1px solid var(--border)":"none",color:"var(--gold)"}}>＋ Create new entry “{q.query.trim()}”…</div>
+        :<div style={{borderTop:matches.length?"1px solid var(--border)":"none"}}>
+          <div style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".08em",color:"var(--ink3)",padding:"4px 8px"}}>CREATE “{q.query.trim().toUpperCase()}” IN…</div>
+          <div style={{maxHeight:220,overflowY:"auto"}}>{(ctx.newSections||[]).map(x=><div key={x.id} onMouseDown={ev=>{ev.preventDefault();make(x.id);}} className="sf-mention-item">{x.icon} {x.label}</div>)}</div>
+        </div>)}
     </div>}
     <div style={{fontSize:10,color:"var(--ink3)",marginTop:2,fontStyle:"italic",opacity:.75}}>Type @ to link another entry</div>
   </div>);
@@ -539,6 +560,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   const [openSection,setOpenSection]=useState("allies");
   const [sel,setSel]=useState({s:null,id:null});
   const [creating,setCreating]=useState(null);
+  const [creatingUnder,setCreatingUnder]=useState(null);
   const [newName,setNewName]=useState("");
   const [editMode,setEditMode]=useState(false);
   const [delT,setDelT]=useState(null);
@@ -559,7 +581,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
     const places=getPlaces(lore);let start=null;
     if(sec==="settlements"){const e=(lore.settlements||[]).find(x=>String(x.id)===String(id));if(!e)return;start=e.placeId!=null?placeById(places,e.placeId):null;if(!start){setOpenNodes(prev=>new Set([...prev,"none"]));return;}}
     else if(sec==="regions"){const e=placeById(places,id);if(!e)return;start=e.parentId!=null?placeById(places,e.parentId):null;}
-    else return;
+    else{const list=lore[sec]||[];const ks=[];let c=list.find(x=>String(x.id)===String(id)),g=0;while(c&&c.underId!=null&&g++<12){ks.push("e:"+c.underId);c=list.find(x=>String(x.id)===String(c.underId));}if(ks.length)setOpenNodes(prev=>new Set([...prev,...ks]));return;}
     const keys=[];let cur=start,g=0;while(cur&&g++<10){keys.push("p:"+cur.id);cur=cur.parentId!=null?placeById(places,cur.parentId):null;}
     if(keys.length)setOpenNodes(prev=>new Set([...prev,...keys]));
   };
@@ -629,6 +651,9 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
     if(!newName.trim())return;
     const item={...EMPTY_ENTRY(),name:newName.trim()};
     if(s==="regions"){item.placeType="kingdom";item.parentId=null;}
+    if(creatingUnder!=null&&s!=="regions"&&s!=="settlements"){item.underId=creatingUnder;setOpenNodes(prev=>new Set([...prev,"e:"+creatingUnder]));}
+    if(s==="settlements")item.placeKind="settlement";
+    setCreatingUnder(null);
     if(secOwner(s)&&(isDM||ownsSec(s))){item.reveal={entry:false,fields:{},spans:{}};item._ts=Date.now();}
     else if(isDM){item.reveal={entry:false,fields:{portrait:true},spans:{}};item._ts=Date.now();}
     setLore(prev=>({...prev,[s]:[...(prev[s]||[]),item]}));
@@ -637,7 +662,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   };
   const reqDel=()=>{if(!selItem)return;setDelT({label:selItem.name||"this entry"});};
   const confirmDel=()=>{
-    setLore(prev=>({...prev,[sel.s]:prev[sel.s].filter(i=>i.id!==sel.id)}));
+    setLore(prev=>({...prev,[sel.s]:prev[sel.s].filter(i=>i.id!==sel.id).map(i=>String(i.underId)===String(sel.id)?{...i,underId:(selItem&&selItem.underId!=null)?selItem.underId:null,_ts:Date.now()}:i)}));
     setSel({s:null,id:null});setLocal(null);setDelT(null);setEditMode(false);
   };
   const togglePin=(section,id)=>{setLore(prev=>({...prev,[section]:prev[section].map(i=>i.id===id?{...i,pinned:!i.pinned}:i)}));};
@@ -658,7 +683,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   const moveEntry=to=>{
     if(!sel.s||!to||to===sel.s||!selItem)return;
     const from=sel.s,item=selItem;
-    setLore(prev=>({...prev,[from]:(prev[from]||[]).filter(i=>i.id!==item.id),[to]:[...(prev[to]||[]),item]}));
+    setLore(prev=>({...prev,[from]:(prev[from]||[]).filter(i=>i.id!==item.id).map(i=>String(i.underId)===String(item.id)?{...i,underId:item.underId==null?null:item.underId,_ts:Date.now()}:i),[to]:[...(prev[to]||[]),{...item,underId:null,_ts:Date.now()}]}));
     setSel({s:to,id:item.id});setOpenSection(to);
   };
   const addSection=()=>{
@@ -680,6 +705,14 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   const places0=getPlaces(lore);
   // Regions: one foldable tree — kingdoms › regions › baronies › settlements
   const groupRows=(sec,items)=>{
+    if(sec!=="regions"&&!listEditMode&&!search.trim()&&!readOnly&&items.some(i=>i.underId!=null)){
+      // entries nested under other entries (e.g. Lothar › his wives › their children)
+      const ids=new Set(items.map(i=>String(i.id)));
+      const kids=pid=>items.filter(i=>pid==null?(i.underId==null||!ids.has(String(i.underId))):String(i.underId)===String(pid));
+      const out=[];const seen=new Set();
+      const walk=(pid,d)=>kids(pid).forEach(i=>{if(seen.has(String(i.id)))return;seen.add(String(i.id));const k=kids(i.id).length;out.push({item:i,sec,depth:d,kids:k,nodeKey:"e:"+i.id});if(openNodes.has("e:"+i.id))walk(i.id,d+1);});
+      walk(null,0);return out;
+    }
     if(listEditMode||sec!=="regions"||!realmTree)return items.map(item=>({item}));
     const places=getPlaces(lore).filter(p=>isDM||placeVisible(places0,p,false));
     const sets=(lore.settlements||[]).filter(e=>isDM||entryVisible(e));
@@ -733,6 +766,8 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   const PicBtn=({f,label})=>{const on=fieldVisible(local,f);return(<button className="btn" onClick={()=>toggleField(f)} style={{fontSize:10.5,padding:"3px 8px",marginTop:5,width:"100%",color:on?"#2f7a2f":HIDDEN_RED,borderColor:on?"#2f7a2f":HIDDEN_RED,display:"flex",gap:5,alignItems:"center",justifyContent:"center"}}><Eye open={on} size={11}/>{label} {on?"visible":"hidden — click to reveal"}</button>);};
 
   const innerLinks={entries:linkEntries(lore),
+    newSections:readOnly?[]:creatableSections(lore,id=>!secOwner(id)||seeAll(id)),
+    create:readOnly?null:(sec,name)=>{const e=newLinkedEntry(sec,name,isDM||ownsSec(sec));if(secOwner(sec)&&(isDM||ownsSec(sec)))e.reveal={entry:false,fields:{},spans:{}};setLore(prev=>({...prev,[sec]:[...(prev[sec]||[]),e]}));return e.id;},
     open:(sec,id)=>{if(!lore[sec])return;goEntry(sec,(lore[sec].find(x=>String(x.id)===String(id))||{}).id);},
     can:(sec,id)=>{const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));return !!e&&(isDM||readOnly||ownsSec(sec)||entryVisible(e));}};
   return(<LinkCtx.Provider value={innerLinks}><div style={{display:"flex",height:"100%",background:"var(--dark)"}}>
@@ -786,23 +821,23 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
                   style={{padding:`${row.sec?6:7}px 8px ${row.sec?6:7}px ${row.sec?2:10+(row.depth||0)*14}px`,cursor:listEditMode?"grab":"pointer",fontSize:12,fontFamily:"Crimson Pro",background:isDO?"var(--parch3)":isSel&&!listEditMode?"var(--parch4)":"transparent",color:isSel&&!listEditMode?"var(--gold)":"var(--ink)",borderLeft:isSel&&!listEditMode?"3px solid var(--gold2)":"3px solid transparent",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:6,borderTop:isDO?"2px solid var(--gold2)":"2px solid transparent",userSelect:"none"}}>
                   {listEditMode&&<span style={{fontSize:12,color:"var(--ink3)",flexShrink:0}}>⠿</span>}
                   {row.sec&&!listEditMode&&<span title={row.kids?(openNodes.has(row.nodeKey)?"Fold up":"Open"):""} onClick={e=>{if(!row.kids)return;e.stopPropagation();toggleNode(row.nodeKey);}} style={{width:26+(row.depth||0)*16,alignSelf:"stretch",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"flex-end",color:"var(--ink3)",fontSize:16,lineHeight:1,cursor:row.kids?"pointer":"inherit",margin:"-6px 0",padding:"6px 0"}}>{row.kids?(openNodes.has(row.nodeKey)?"▾":"▸"):""}</span>}
-                  {row.sec&&!listEditMode&&(()=>{const im=row.sec==="settlements"?(settlementIcon(item).img||imgSrc(item.portrait)):imgSrc(item.heraldry);return im?<img src={im} alt="" style={{width:20,height:20,objectFit:"contain",flexShrink:0}}/>:null;})()}
+                  {row.sec&&!listEditMode&&(()=>{const person=row.sec!=="settlements"&&row.sec!=="regions";const im=row.sec==="settlements"?(settlementIcon(item).img||imgSrc(item.portrait)):row.sec==="regions"?imgSrc(item.heraldry):(seeAll(row.sec)||fieldVisible(item,"portrait")?imgSrc(item.portrait):null);return im?<img src={im} alt="" style={person?{width:18,height:18,borderRadius:"50%",objectFit:"cover",flexShrink:0}:{width:20,height:20,objectFit:"contain",flexShrink:0}}/>:null;})()}
                   {listEditMode&&!readOnly&&<button onClick={e=>{e.stopPropagation();togglePin(s.id,item.id);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"0 2px",color:item.pinned?"var(--gold2)":"var(--ink3)",flexShrink:0}}>{item.pinned?"📌":"📍"}</button>}
                   {!listEditMode&&item.pinned&&<span style={{fontSize:9,flexShrink:0}}>📌</span>}
-                  {!row.sec&&imgSrc(item.portrait)&&<img src={imgSrc(item.portrait)} alt="" style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>}
+                  {!row.sec&&(seeAll(s.id)||fieldVisible(item,"portrait"))&&imgSrc(item.portrait)&&<img src={imgSrc(item.portrait)} alt="" style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>}
                   <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:seeAll(rsec)&&!entryVisible(item)?HIDDEN_RED:undefined}}>{seeAll(rsec)&&!entryVisible(item)&&<><Eye open={false} size={11} color={HIDDEN_RED}/> </>}{item.name||<em style={{opacity:.5,fontSize:10}}>Unnamed</em>}</span>
                 </div>);
               })}
-              {!listEditMode&&!readOnly&&(!secOwner(s.id)||seeAll(s.id))&&(creating===s.id||(realmTree&&s.id==="regions"&&creating==="settlements")
+              {!listEditMode&&!readOnly&&(!secOwner(s.id)||seeAll(s.id))&&((creating===s.id&&creatingUnder==null)||(realmTree&&s.id==="regions"&&creating==="settlements")
                 ?<div style={{padding:"6px 8px",display:"flex",gap:4,borderTop:"1px solid var(--border)"}}>
-                  <input autoFocus placeholder={creating==="settlements"?"Settlement name...":"Name..."} value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")createItem(creating);if(e.key==="Escape")setCreating(null);}} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",flex:1,fontSize:11,outline:"none"}}/>
+                  <input autoFocus placeholder={creating==="settlements"?"Place name (town, forest, ruins…)":"Name..."} value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")createItem(creating);if(e.key==="Escape")setCreating(null);}} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",flex:1,fontSize:11,outline:"none"}}/>
                   <button className="btn" onClick={()=>createItem(creating)} style={{padding:"2px 6px",fontSize:11}}>✓</button>
                   <button className="btn" onClick={()=>setCreating(null)} style={{padding:"2px 6px",fontSize:11}}>✕</button>
                 </div>
                 :<div style={{padding:"5px 8px",borderTop:"1px solid var(--border)"}}>
                   <div style={{display:"flex",gap:4}}>
                   <button className="btn" onClick={()=>setCreating(s.id)} style={{flex:1,fontSize:10,border:"1px dashed var(--border2)",padding:"3px"}}>+ Add {["allies","enemies","factions","settlements","history","sessions","terrain","regions"].includes(s.id)?s.label.replace(/ies$/,"y").replace(/s$/,""):(kindOf(s.id)==="ally"||kindOf(s.id)==="enemy")?"person":"entry"}</button>
-                  {realmTree&&s.id==="regions"&&<button className="btn" onClick={()=>setCreating("settlements")} style={{flex:1,fontSize:10,border:"1px dashed var(--border2)",padding:"3px"}}>+ Add Settlement</button>}
+                  {realmTree&&s.id==="regions"&&<button className="btn" onClick={()=>setCreating("settlements")} style={{flex:1,fontSize:10,border:"1px dashed var(--border2)",padding:"3px"}}>+ Add Place</button>}
                   </div>
                 </div>
               )}
@@ -929,6 +964,9 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
         {sel.s==="settlements"&&(()=>{
           const places=getPlaces(lore);const baronies=places.filter(p=>placeType(p)==="barony");const pl=placeById(places,local.placeId);
           return(<div style={{marginBottom:12}}>
+            <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>TYPE OF PLACE</div>
+            {editMode&&canEdit?<select value={local.placeKind||"settlement"} onChange={e=>commitField("placeKind",e.target.value)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 8px",fontSize:14,outline:"none",marginBottom:10}}>{PLACE_KINDS.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select>
+              :<div style={{fontSize:15,color:"var(--ink)",fontFamily:"Crimson Pro",marginBottom:10}}>{kindLabel(local.placeKind)}</div>}
             <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>LOCATION</div>
             {editMode&&!readOnly&&dmView?<select value={local.placeId==null?"":String(local.placeId)} onChange={e=>commitField("placeId",e.target.value===""?null:(placeById(places,e.target.value)||{}).id)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 8px",fontSize:14,outline:"none"}}>
                 <option value="">— Not in a barony —</option>{baronies.map(b=><option key={b.id} value={String(b.id)}>{b.name}</option>)}</select>
@@ -938,6 +976,18 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
         {sel.s==="settlements"&&(()=>{const ctrl2=isControlled(local);const ok=(!ctrl2||privView||fieldVisible(local,"hoverLore"));if(!ok&&editMode)return null;const v=ok?local.hoverLore:"";
           return <LoreVF label="Map hover text" value={v} field="hoverLore" multi height={60} editMode={editMode&&!readOnly} onCommit={commitField} eyeState={ctrl2&&privView?fieldVisible(local,"hoverLore"):undefined} onEye={toggleField}/>;})()}
         {SF("Tags","tags")}
+        {editMode&&!readOnly&&sel.s!=="regions"&&sel.s!=="settlements"&&(()=>{
+          const list=(lore[sel.s]||[]);const desc=new Set([String(local.id)]);let grew=true;while(grew){grew=false;list.forEach(i=>{if(i.underId!=null&&desc.has(String(i.underId))&&!desc.has(String(i.id))){desc.add(String(i.id));grew=true;}});}
+          const opts=list.filter(i=>!desc.has(String(i.id))&&(seeAll(sel.s)||entryVisible(i)));if(!opts.length)return null;
+          return(<div style={{marginBottom:12}}><div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>SITS UNDER (IN THE LIST)</div>
+            <select value={local.underId==null?"":String(local.underId)} onChange={e=>{const v=e.target.value;commitField("underId",v===""?null:(list.find(i=>String(i.id)===v)||{}).id);if(v)setOpenNodes(prev=>new Set([...prev,"e:"+v]));}} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 8px",fontSize:14,outline:"none"}}>
+              <option value="">— Top level —</option>{opts.map(i=><option key={i.id} value={String(i.id)}>{i.name||"Unnamed"}</option>)}</select></div>);})()}
+        {!editMode&&canEdit&&sel.s!=="regions"&&sel.s!=="settlements"&&(!secOwner(sel.s)||seeAll(sel.s))&&<div style={{marginTop:6,marginBottom:10}}>
+          {creating===sel.s&&creatingUnder!=null&&String(creatingUnder)===String(local.id)
+            ?<div style={{display:"flex",gap:5,maxWidth:420}}><input autoFocus placeholder={`Name of someone under ${local.name}…`} value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")createItem(sel.s);if(e.key==="Escape"){setCreating(null);setCreatingUnder(null);}}} style={{flex:1,fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",borderRadius:3,padding:"4px 8px",fontSize:13,outline:"none"}}/>
+              <button className="btn" onClick={()=>createItem(sel.s)} style={{fontSize:11}}>✓</button><button className="btn" onClick={()=>{setCreating(null);setCreatingUnder(null);}} style={{fontSize:11}}>✕</button></div>
+            :<button className="btn" onClick={()=>{setCreating(sel.s);setCreatingUnder(local.id);setNewName("");}} style={{fontSize:11}}>＋ Add under {local.name||"this entry"}</button>}
+        </div>}
         {editMode&&!readOnly&&(()=>{const topOf=x=>{let c=secById(x),g=0;while(c&&c.parent&&secById(c.parent)&&g++<5)c=secById(c.parent);return c?c.id:x;};const top=topOf(sel.s);
           const fam=allSections.filter(x=>!x.group&&topOf(x.id)===top&&(secOwner(x.id)||null)===(secOwner(sel.s)||null));
           if(fam.length<2||sel.s==="regions"||sel.s==="settlements")return null;
@@ -1715,8 +1765,10 @@ function App(){
   const linkCtxVal=useMemo(()=>{
     const lore=(data&&data.lore)||{};const places=getPlaces(lore);
     return{entries:linkEntries(lore),open:openLore,
+      newSections:creatableSections(lore,id=>{const o=sectionOwner([...DEFAULT_SECTIONS,...(lore.__customSections||[])],id);return !o||isDM||o===myPast;}),
+      create:(sec,name)=>{const e=newLinkedEntry(sec,name,isDM);setLore(prev=>({...prev,[sec]:[...(prev[sec]||[]),e]}));return e.id;},
       can:(sec,id)=>{const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));if(!e)return false;if(isDM)return true;return sec==="regions"?placeVisible(places,e,false):entryVisible(e);}};
-  },[data&&data.lore,isDM]);
+  },[data&&data.lore,isDM,myPast]);
 
   if(!sbCfg)return <SetupScreen onSave={cfg=>{initSB(cfg.url,cfg.key);setSbCfg(cfg);}}/>;
   if(!data)return(
@@ -1939,6 +1991,8 @@ html,body,#root{height:100%;}
 .sf-pin-hidden{opacity:0.62}
 .sf-pin-hidden:after{content:"HIDDEN";position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);font:600 8px Cinzel,serif;letter-spacing:.08em;color:#fff;background:#a3241e;padding:1px 4px;border-radius:2px}
 .sf-pin-sel{filter:drop-shadow(0 0 10px rgba(255,255,255,0.95))}
+.sf-pin-label{position:absolute;transform:translate(-50%,-50%);white-space:nowrap;font-family:Cinzel,serif;font-weight:600;letter-spacing:.06em;color:#fff6e0;text-shadow:0 0 4px #000,0 1px 3px #000,0 0 10px rgba(0,0,0,0.7);cursor:pointer;padding:2px 6px}
+.sf-pin-label:hover{color:#ffe08a}
 .sf-pin-dot{width:30px;height:30px;border-radius:50%;background:rgba(20,12,4,0.9);border:2px solid var(--gold2);display:flex;align-items:center;justify-content:center;font-size:15px}
 .sf-shield{width:56px;height:56px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .2s;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.8))}
 .sf-shield:hover{transform:scale(1.15);filter:drop-shadow(0 0 12px rgba(232,200,96,0.95))}
@@ -2049,6 +2103,8 @@ function startCleanIcons(){
   });
 }
 function useCleanIcons(){const [,set]=useState(0);useEffect(()=>{const f=()=>set(x=>x+1);cleanIconListeners.add(f);startCleanIcons();return()=>cleanIconListeners.delete(f);},[]);}
+const PLACE_KINDS=[["settlement","Settlement"],["castle","Castle / Keep"],["forest","Forest / Woods"],["hills","Hills / Mountains"],["water","Lake / River / Coast"],["ruins","Ruins"],["landmark","Landmark"],["other","Other"]];
+const kindLabel=k=>(PLACE_KINDS.find(x=>x[0]===(k||"settlement"))||PLACE_KINDS[0])[1];
 const settlementIcon=s=>{const own=imgSrc(s.iconImg);if(own)return{img:own,blend:false};if(s.iconKey&&BARONY_ICONS[s.iconKey])return{img:CLEAN_ICONS[s.iconKey]||BARONY_ICONS[s.iconKey],blend:false};return{img:null,blend:false};};
 
 /* Border snapping: keep a new border inside its parent and off its neighbours */
@@ -2155,7 +2211,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
 
   // draw borders, icons, shields
   const shapesKey=JSON.stringify((shapes||[]).map(s=>[s.id,s.ring,s.label,s.state,s.shield?(s.shield.length>40?s.shield.length:s.shield):0,s.clickable]));
-  const pinsKey=JSON.stringify((pins||[]).map(p=>[p.id,p.lat,p.lng,p.img?p.img.length:0,p.hidden,p.selected,p.tip,p.draggable,p.glyph,p.size,p.aspect]))+"z"+zoom;
+  const pinsKey=JSON.stringify((pins||[]).map(p=>[p.id,p.lat,p.lng,p.img?p.img.length:0,p.hidden,p.selected,p.tip,p.draggable,p.glyph,p.size,p.aspect,p.label]))+"z"+zoom;
   useEffect(()=>{
     const L=window.L,map=mapRef.current,layer=layerRef.current;if(!map||!layer)return;
     layer.clearLayers();
@@ -2201,6 +2257,15 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
     });
     (pins||[]).forEach(p=>{
       if(p.lat==null||p.lng==null)return;
+      if(p.label&&!p.img){
+        const fs=Math.max(11,Math.min(60,(p.size||90)/3.5*Math.pow(2,map.getZoom())));
+        const html=`<div class="sf-pin-label${p.hidden?" sf-pin-hidden":""}${p.selected?" sf-pin-sel":""}" style="font-size:${fs}px">${escHtml(p.label)}</div>`;
+        const m=L.marker([p.lat,p.lng],{icon:L.divIcon({html,className:"",iconSize:[0,0],iconAnchor:[0,0]}),draggable:!!p.draggable&&!drawing,keyboard:false,interactive:!drawing,zIndexOffset:p.selected?1000:0}).addTo(layer);
+        if(p.tip)m.bindTooltip(p.tip,{direction:"top",offset:[0,-fs],className:"sf-pin-tip"});
+        m.on("click",e=>{L.DomEvent.stopPropagation(e);cb.current.onPinClick&&cb.current.onPinClick(p.id);});
+        m.on("dragend",()=>{const ll=m.getLatLng();cb.current.onPinMove&&cb.current.onPinMove(p.id,[Math.round(Math.min(H,Math.max(0,ll.lat))),Math.round(Math.min(W,Math.max(0,ll.lng)))]);});
+        return;
+      }
       const k=Math.pow(2,map.getZoom());const u=p.size||90,a=p.aspect||0.75;
       const w=p.img?Math.max(14,u*k):30,h=p.img?Math.max(10,u*a*k):30;
       const inner=p.img?`<img src="${p.img}"/>`:`<div class="sf-pin-dot">${p.glyph||"🏠"}</div>`;
@@ -2296,7 +2361,7 @@ function MapExplorer({data,isDM,onOpenLore}){
 
   const pins=isBarony?sets.filter(s=>sameParent({parentId:s.placeId},cur.id)&&s.mapX!=null&&(isDM||entryVisible(s))).map(s=>{
     const ic=settlementIcon(s);const hl=plainLinks(shownText(s,"hoverLore",isDM));
-    return{id:"s:"+s.id,lat:s.mapY,lng:s.mapX,img:ic.img,size:s.iconSize||90,aspect:s.iconAspect||0.75,hidden:!entryVisible(s),selected:sel&&sel.id==="s:"+s.id,
+    return{id:"s:"+s.id,lat:s.mapY,lng:s.mapX,img:ic.img,size:s.iconSize||90,aspect:s.iconAspect||0.75,label:!ic.img&&(s.placeKind||"settlement")!=="settlement"?s.name:null,hidden:!entryVisible(s),selected:sel&&sel.id==="s:"+s.id,
       tip:`<b>${escHtml(s.name)}</b>${hl?`<br/>${escHtml(hl.length>180?hl.slice(0,180)+"…":hl)}`:""}`};
   }):[];
   const zones=isBarony&&cur.mapId==="barony"&&!imgSrc(cur.mapImage)?BARONY_TERRAIN.map(t=>({id:"t:"+t.id,lat:1050-t.iy,lng:t.ix,label:t.name})):[];
@@ -2334,7 +2399,7 @@ function MapExplorer({data,isDM,onOpenLore}){
     if(s){const hl=shownText(s,"hoverLore",isDM);const desc=shownText(s,"description",isDM);
       popup=(<>
         <div style={{fontFamily:"Cinzel",fontSize:15,color:"var(--gold3)",letterSpacing:".05em",marginBottom:2}}>{s.name}</div>
-        <div style={{fontFamily:"Cinzel",fontSize:9,color:"#b89a68",letterSpacing:".08em",marginBottom:8}}>SETTLEMENT{isDM&&!entryVisible(s)&&<span style={{color:"#ff8a7a"}}> · HIDDEN FROM PLAYERS</span>}</div>
+        <div style={{fontFamily:"Cinzel",fontSize:9,color:"#b89a68",letterSpacing:".08em",marginBottom:8}}>{kindLabel(s.placeKind).toUpperCase()}{isDM&&!entryVisible(s)&&<span style={{color:"#ff8a7a"}}> · HIDDEN FROM PLAYERS</span>}</div>
         {hl&&<p style={{fontSize:13.5,lineHeight:1.55,marginBottom:8,whiteSpace:"pre-wrap"}}>{richNodes(hl,lctx)}</p>}
         {desc&&desc!==hl&&<p style={{fontSize:13,lineHeight:1.55,marginBottom:8,whiteSpace:"pre-wrap",color:"#d8c4a0",maxHeight:150,overflowY:"auto"}}>{richNodes(desc,lctx)}</p>}
         <button className="btn" onClick={()=>onOpenLore&&onOpenLore("settlements",s.id)} style={{fontSize:12,color:"#e8d2a8"}}>📜 Open in Lore</button>
@@ -2533,7 +2598,7 @@ function MapControl({lore,setLore,onOpenOverview}){
   const [placing,setPlacing]=useState(null);
   const [openSet,setOpenSet]=useState(null);
   const [sheet,setSheet]=useState(false);
-  const [addingSet,setAddingSet]=useState(false);const [newSetName,setNewSetName]=useState("");
+  const [addingSet,setAddingSet]=useState(false);const [newSetName,setNewSetName]=useState("");const [newSetKind,setNewSetKind]=useState("settlement");
   const [busy,setBusy]=useState("");
   const P=placeById(places,selId);
   useEffect(()=>{if(selId!=null&&!P)setSelId(null);},[P,selId]);
@@ -2622,7 +2687,7 @@ function MapControl({lore,setLore,onOpenOverview}){
     else{
       const mine=sets.filter(s=>sameParent({parentId:s.placeId},P.id));
       spec={canvas:canvasInfo(P),barony:true,
-        pins:mine.filter(s=>s.mapX!=null).map(s=>{const ic=settlementIcon(s);return{id:s.id,lat:s.mapY,lng:s.mapX,img:ic.img,size:s.iconSize||90,aspect:s.iconAspect||0.75,hidden:!entryVisible(s),selected:String(openSet)===String(s.id),draggable:true,tip:`<b>${escHtml(s.name)}</b>${s.hoverLore?"<br/>"+escHtml(s.hoverLore.slice(0,160)):""}`};}),
+        pins:mine.filter(s=>s.mapX!=null).map(s=>{const ic=settlementIcon(s);return{id:s.id,lat:s.mapY,lng:s.mapX,img:ic.img,size:s.iconSize||90,aspect:s.iconAspect||0.75,label:!ic.img&&(s.placeKind||"settlement")!=="settlement"?s.name:null,hidden:!entryVisible(s),selected:String(openSet)===String(s.id),draggable:true,tip:`<b>${escHtml(s.name)}</b>${s.hoverLore?"<br/>"+escHtml(s.hoverLore.slice(0,160)):""}`};}),
         zones:P.mapId==="barony"&&!imgSrc(P.mapImage)?BARONY_TERRAIN.map(z=>({id:"t:"+z.id,lat:1050-z.iy,lng:z.ix,label:z.name})):[]};
     }
   }
@@ -2657,7 +2722,7 @@ function MapControl({lore,setLore,onOpenOverview}){
   };
   const addSettlement=()=>{
     if(!newSetName.trim())return;
-    const e={...EMPTY_ENTRY(),id:"set_"+Date.now(),name:newSetName.trim(),placeId:P.id,mapX:null,mapY:null,hoverLore:"",reveal:{entry:false,fields:{hoverLore:true,portrait:true},spans:{}},_ts:Date.now()};
+    const e={...EMPTY_ENTRY(),id:"set_"+Date.now(),name:newSetName.trim(),placeKind:newSetKind,placeId:P.id,mapX:null,mapY:null,hoverLore:"",reveal:{entry:false,fields:{hoverLore:true,portrait:true},spans:{}},_ts:Date.now()};
     setLore(prev=>({...prev,settlements:[...(prev.settlements||[]),e]}));
     setNewSetName("");setAddingSet(false);setOpenSet(e.id);
   };
@@ -2701,7 +2766,8 @@ function MapControl({lore,setLore,onOpenOverview}){
       {childrenOf(null).map(p=>renderNode(p,1))}
       {loose.length>0&&<>
         <div onClick={()=>setLooseOpen(o=>!o)} style={{padding:"7px 8px 7px 0",cursor:"pointer",display:"flex",alignItems:"center",gap:5,fontSize:12,fontStyle:"italic",color:"rgba(255,190,190,0.6)",userSelect:"none"}}>
-          <span style={{width:38,textAlign:"right",fontSize:16,fontStyle:"normal"}}>{looseOpen?"▾":"▸"}</span>Not in a barony ({loose.length})</div>
+          <span style={{width:38,textAlign:"right",fontSize:16,fontStyle:"normal"}}>{looseOpen?"▾":"▸"}</span><span style={{flex:1}}>Not in a barony ({loose.length})</span>
+          {looseOpen&&<button className="sf-dm-btn" title="Delete every place that isn't in a barony" onClick={e=>{e.stopPropagation();const ids=new Set(loose.map(x=>String(x.id)));setAsk({name:`all ${loose.length} places that aren't in a barony`,run:()=>{setLore(prev=>({...prev,settlements:(prev.settlements||[]).filter(x=>!ids.has(String(x.id)))}));setLooseSel(null);}});}} style={{padding:"1px 7px",fontSize:10,fontStyle:"normal"}}>🗑 Delete all</button>}</div>
         {looseOpen&&loose.map(x=>{const sv=entryVisible(x);const on=String(looseSel)===String(x.id);return(
           <div key={"l"+x.id} onClick={()=>{setLooseSel(x.id);setSelId(null);}} style={{padding:"5px 8px 5px 43px",cursor:"pointer",display:"flex",alignItems:"center",gap:5,fontSize:12,fontFamily:"Crimson Pro",color:sv?"#f0d0d0":"#ff9a8a",background:on?"rgba(139,26,26,0.45)":"transparent"}}>
             {(()=>{const im=settlementIcon(x).img;return im?<img src={im} alt="" style={{width:20,height:20,objectFit:"contain",flexShrink:0}}/>:null;})()}
@@ -2718,7 +2784,7 @@ function MapControl({lore,setLore,onOpenOverview}){
       return(<div style={{flex:"1 1 420px",minWidth:0,display:"flex",flexDirection:"column",gap:12}}>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           <span style={{fontFamily:"Cinzel",fontSize:18,color:"#ffb4b4",flex:1}}>{x.name||"Unnamed"}</span>
-          <span style={{fontFamily:"Cinzel",fontSize:10,color:"rgba(255,170,170,0.6)",letterSpacing:".08em"}}>SETTLEMENT · NOT IN A BARONY</span>
+          <span style={{fontFamily:"Cinzel",fontSize:10,color:"rgba(255,170,170,0.6)",letterSpacing:".08em"}}>{kindLabel(x.placeKind).toUpperCase()} · NOT IN A BARONY</span>
           <button className="sf-dm-btn" onClick={()=>setLooseSel(null)}>✕</button>
         </div>
         <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"flex-start"}}>
@@ -2731,7 +2797,7 @@ function MapControl({lore,setLore,onOpenOverview}){
               <button className={`sf-dm-btn${vis?" go":""}`} onClick={()=>updEntry("settlements",x.id,toggleEntryVisible)}><Eye open={vis} size={12}/> {vis?"Revealed":"Hidden"}</button>
               {(x.iconImg||x.iconKey)&&<button className="sf-dm-btn" onClick={()=>updSet(x.id,{iconImg:null,iconKey:null})}>Remove icon</button>}
               <button className="sf-dm-btn" onClick={()=>onOpenOverview&&onOpenOverview("settlements",x.id)}>📜 Open in Overview</button>
-              <button className="sf-dm-btn" onClick={()=>delSet(x)}>🗑 Delete settlement</button>
+              <button className="sf-dm-btn" onClick={()=>delSet(x)}>🗑 Delete</button>
             </div>
           </div>
         </div>
@@ -2754,7 +2820,7 @@ function MapControl({lore,setLore,onOpenOverview}){
       {/* tabs */}
       {P&&<div style={{display:"flex",borderBottom:"1px solid rgba(200,50,50,0.3)",flexWrap:"wrap"}}>
         <button className={`sf-tab${tab==="map"?" on":""}`} onClick={()=>setTab("map")}>Map</button>
-        {t==="barony"&&<button className={`sf-tab${tab==="sets"?" on":""}`} onClick={()=>setTab("sets")}>Settlements ({mine.length})</button>}
+        {t==="barony"&&<button className={`sf-tab${tab==="sets"?" on":""}`} onClick={()=>setTab("sets")}>Places ({mine.length})</button>}
         <button className={`sf-tab${tab==="lore"?" on":""}`} onClick={()=>setTab("lore")}>Lore</button>
       </div>}
       {(note||busy)&&<div style={{fontSize:12.5,color:busy?"#ffe0a0":"#b8f0b8",background:"rgba(0,0,0,0.3)",padding:"5px 10px",borderRadius:4}}>{busy||note}</div>}
@@ -2809,17 +2875,19 @@ function MapControl({lore,setLore,onOpenOverview}){
       {/* SETTLEMENTS TAB */}
       {P&&t==="barony"&&tab==="sets"&&<div style={{overflowY:"auto",display:"flex",flexDirection:"column",gap:6,paddingBottom:20}}>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {addingSet?<><input autoFocus value={newSetName} onChange={e=>setNewSetName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addSettlement();if(e.key==="Escape")setAddingSet(false);}} className="sf-dm-input" style={{width:220}} placeholder="Settlement name…"/>
+          {addingSet?<><input autoFocus value={newSetName} onChange={e=>setNewSetName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addSettlement();if(e.key==="Escape")setAddingSet(false);}} className="sf-dm-input" style={{width:220}} placeholder="Name (town, forest, ruins…)"/>
+            <select className="sf-dm-input" value={newSetKind} onChange={e=>setNewSetKind(e.target.value)} style={{width:"auto"}}>{PLACE_KINDS.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select>
             <button className="sf-dm-btn go" onClick={addSettlement}>✓ Add</button><button className="sf-dm-btn" onClick={()=>setAddingSet(false)}>✕</button></>
-          :<button className="sf-dm-btn" onClick={()=>setAddingSet(true)}>+ Add settlement</button>}
+          :<button className="sf-dm-btn" onClick={()=>setAddingSet(true)}>+ Add place</button>}
           <button className="sf-dm-btn" onClick={()=>setSheet(true)}>⬆ Upload icon sheet</button>
         </div>
-        {mine.length===0&&<div style={{color:"rgba(255,180,180,0.5)",fontStyle:"italic",padding:10}}>No settlements yet.</div>}
+        {mine.length===0&&<div style={{color:"rgba(255,180,180,0.5)",fontStyle:"italic",padding:10}}>No places yet — towns, castles, forests, ruins…</div>}
         {mine.map(s=>{const ic=settlementIcon(s);const open=String(openSet)===String(s.id);const vis=entryVisible(s);
           return(<div key={s.id} style={{background:"rgba(60,0,0,0.3)",border:`1px solid ${open?"rgba(255,120,120,0.5)":"rgba(200,50,50,0.2)"}`,borderRadius:6}}>
             <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",flexWrap:"wrap"}}>
               <div style={{...checker,width:48,height:36,borderRadius:3,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{ic.img?<img src={ic.img} alt="" style={{maxWidth:46,maxHeight:34,mixBlendMode:ic.blend?"multiply":"normal"}}/>:<span>🏠</span>}</div>
-              <span style={{flex:"1 1 120px",fontFamily:"Cinzel",fontSize:12.5,color:vis?"#ffe0e0":"#ff9a8a",letterSpacing:".03em"}}>{s.name||"Unnamed"}</span>
+              <span style={{flex:"1 1 120px",fontFamily:"Cinzel",fontSize:12.5,color:vis?"#ffe0e0":"#ff9a8a",letterSpacing:".03em"}}>{s.name||"Unnamed"} <span style={{fontFamily:"Crimson Pro",fontSize:11,opacity:.6}}>· {kindLabel(s.placeKind)}</span></span>
+              <select className="sf-dm-input" title="Type of place" value={s.placeKind||"settlement"} onChange={e=>updSet(s.id,{placeKind:e.target.value})} style={{width:"auto",fontSize:11,padding:"3px 5px"}}>{PLACE_KINDS.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select>
               <button className={`sf-dm-btn${vis?" go":""}`} onClick={()=>updEntry("settlements",s.id,toggleEntryVisible)}><Eye open={vis} size={12}/> {vis?"Revealed":"Hidden"}</button>
               <button className="sf-dm-btn" onClick={()=>{setPlacing(s.id);setTab("map");}}>📍 {s.mapX==null?"Place":"Move"}</button>
               <button className="sf-dm-btn" onClick={()=>setOpenSet(open?null:s.id)}>{open?"▴":"▾"} Lore</button>
