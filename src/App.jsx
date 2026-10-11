@@ -309,6 +309,9 @@ const REVEAL_TEXT_FIELDS=DMV_FIELDS.map(([,f])=>"dm_"+f);
 const PAST_KEYS={"HarveysBalls":"Mathas","FranksBalls":"Karl","KayleesBalls":"Vafa"};
 const pastSecId=owner=>"past_"+String(owner).toLowerCase();
 const possessive=n=>/s$/i.test(n)?`${n}'`:`${n}'s`;
+const PAST_OWNERS=Object.values(PAST_KEYS);
+const ownerByLabel=label=>{const m=/^\s*(.+?)\s+past\s*$/i.exec(label||"");if(!m)return null;const n=m[1].trim().toLowerCase().replace(/['’]s$|['’]$/,"");return PAST_OWNERS.find(o=>o.toLowerCase()===n)||null;};
+const sectionOwner=(secs,id)=>{let x=secs.find(c=>c.id===id),g=0;while(x&&g++<6){const o=x.owner||(x.parent==="people"&&ownerByLabel(x.label));if(o)return o;x=x.parent?secs.find(c=>c.id===x.parent):null;}return null;};
 const HIDDEN_RED="#a3241e";
 const isControlled=e=>!!(e&&e.reveal);
 const entryVisible=e=>!e||!e.reveal||!!e.reveal.entry;
@@ -527,7 +530,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   const allSections=useMemo(()=>[...(readOnly?DEFAULT_SECTIONS.filter(x=>!x.group).map(x=>({...x,parent:undefined})):DEFAULT_SECTIONS),...(lore.__customSections||[])],[lore.__customSections,readOnly]);
   const secById=id=>allSections.find(x=>x.id===id);
   // whose private "Past" a section belongs to (walks up through sub-tabs)
-  const secOwner=id=>{let x=secById(id),g=0;while(x&&g++<6){if(x.owner)return x.owner;x=x.parent?secById(x.parent):null;}return null;};
+  const secOwner=id=>sectionOwner(allSections,id);
   const ownsSec=id=>!!(myPast&&secOwner(id)===myPast);
   const seeAll=id=>isDM||ownsSec(id);
   const KIND={allies:"ally",enemies:"enemy",factions:"faction",settlements:"settlement",history:"history",sessions:"session",regions:"region",terrain:"terrain"};
@@ -539,6 +542,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   const [newName,setNewName]=useState("");
   const [editMode,setEditMode]=useState(false);
   const [delT,setDelT]=useState(null);
+  const [delSec,setDelSec]=useState(null);
   const [search,setSearch]=useState("");
   const [local,setLocal]=useState(null);
   const [listEditMode,setListEditMode]=useState(false);
@@ -734,6 +738,9 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   return(<LinkCtx.Provider value={innerLinks}><div style={{display:"flex",height:"100%",background:"var(--dark)"}}>
     {promptOpen&&local&&<ImagePromptBox entry={local} person={hasPhys(sel.s)} canSee={f=>!isControlled(local)||privView||fieldVisible(local,f)} onClose={()=>setPromptOpen(false)}/>}
     {delT&&!readOnly&&<DelModal name={delT.label} onOk={confirmDel} onNo={()=>setDelT(null)}/>}
+    {delSec&&!readOnly&&<DelModal name={(lore[delSec.id]||[]).length?`the "${delSec.label}" tab and the ${(lore[delSec.id]||[]).length} entr${(lore[delSec.id]||[]).length===1?"y":"ies"} in it`:""} onOk={()=>{const id=delSec.id;const par=delSec.parent;
+      setLore(prev=>{const n={...prev,__customSections:(prev.__customSections||[]).filter(c=>c.id!==id)};delete n[id];return n;});
+      if(openSection===id)setOpenSection(par&&secById(par)&&!secById(par).group?par:"allies");if(sel.s===id){setSel({s:null,id:null});setLocal(null);}setDelSec(null);}} onNo={()=>setDelSec(null)}/>}
 
     {/* LEFT sidebar */}
     <div className="sf-lore-side" style={{width:220,display:"flex",flexDirection:"column",background:"var(--parch2)",borderRight:"2px solid var(--gold2)",flexShrink:0,overflow:"hidden"}}>
@@ -752,6 +759,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
                 {items.length>0&&<span style={{fontSize:9,background:"var(--gold2)",color:"var(--dark)",borderRadius:10,padding:"0 5px",fontFamily:"Cinzel"}}>{items.length}</span>}
                 <span style={{fontSize:9,color:"var(--ink3)",transform:isO?"rotate(180deg)":"none",display:"inline-block",transition:"transform .2s"}}>▼</span>
               </div>
+              {isO&&!readOnly&&String(s.id).indexOf("custom_")===0||isO&&!readOnly&&String(s.id).indexOf("past_")===0?((!secOwner(s.id)||seeAll(s.id))&&<button title="Delete this tab" onClick={e=>{e.stopPropagation();if(allSections.some(c=>c.parent===s.id)){alert(`Delete the sub-tabs inside "${s.label}" first.`);return;}setDelSec(s);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,padding:"4px 7px",color:"var(--ink3)",borderLeft:"1px solid var(--border)",flexShrink:0}}>🗑</button>):null}
               {isO&&!readOnly&&<button onClick={e=>{e.stopPropagation();setListEditMode(m=>!m);}} title="Reorder/pin" style={{background:listEditMode?"rgba(154,112,32,0.25)":"none",border:"none",cursor:"pointer",fontSize:12,padding:"4px 8px",color:listEditMode?"var(--gold2)":"var(--ink3)",borderLeft:"1px solid var(--border)",flexShrink:0,fontFamily:"Cinzel"}}>
                 {listEditMode?"✓":"⠿"}
               </button>}
@@ -1414,7 +1422,7 @@ function PastSection({char,commit,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
   const owner=char.pastOwner||null;
   const unlocked=!!owner&&myPast===owner;
   const secs=(lore&&lore.__customSections)||[];
-  const secOwnerOf=id=>{let x=secs.find(c=>c.id===id),g=0;while(x&&g++<6){if(x.owner)return x.owner;x=x.parent?secs.find(c=>c.id===x.parent):null;}return null;};
+  const secOwnerOf=id=>sectionOwner(secs,id);
   const mySecs=owner?secs.filter(c=>secOwnerOf(c.id)===owner):[];
   const seeAll=unlocked||isDM;
   const people=[];mySecs.forEach(c=>(lore[c.id]||[]).forEach(e=>{if(seeAll||entryVisible(e))people.push({e,sec:c});}));
@@ -1423,7 +1431,12 @@ function PastSection({char,commit,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
     if(!who){setErr("That key isn't right.");return;}
     if(owner&&owner!==who){setErr(`That key belongs to ${who}, not this character.`);return;}
     const sid=pastSecId(who);
-    setLore(prev=>(prev.__customSections||[]).some(c=>c.id===sid)?prev:{...prev,[sid]:prev[sid]||[],__customSections:[...(prev.__customSections||[]),{id:sid,label:`${possessive(who)} Past`,icon:"📜",parent:"people",layout:"ally",owner:who}]});
+    setLore(prev=>{
+      const cs=prev.__customSections||[];
+      const mine=cs.find(c=>c.owner===who||c.id===sid||(c.parent==="people"&&ownerByLabel(c.label)===who));
+      if(mine)return mine.owner===who?prev:{...prev,__customSections:cs.map(c=>c.id===mine.id?{...c,owner:who}:c)};
+      return{...prev,[sid]:prev[sid]||[],__customSections:[...cs,{id:sid,label:`${possessive(who)} Past`,icon:"📜",parent:"people",layout:"ally",owner:who}]};
+    });
     if(!owner)commit("pastOwner",who);
     try{localStorage.setItem("sf_past",who);}catch(e){}
     setMyPast(who);setKey("");setErr("");
@@ -1431,8 +1444,9 @@ function PastSection({char,commit,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
   const add=()=>{
     if(!nm.trim())return;const sid=into||pastSecId(owner);
     const e={...EMPTY_ENTRY(),name:nm.trim(),reveal:{entry:false,fields:{},spans:{}},_ts:Date.now()};
-    setLore(prev=>({...prev,[sid]:[...(prev[sid]||[]),e]}));
-    setNm("");setAdding(false);setTimeout(()=>onOpenLore&&onOpenLore(sid,e.id),50);
+    const sid2=into||(mySecs.find(c=>c.parent==="people")||{}).id||sid;
+    setLore(prev=>({...prev,[sid2]:[...(prev[sid2]||[]),e]}));
+    setNm("");setAdding(false);setTimeout(()=>onOpenLore&&onOpenLore(sid2,e.id),50);
   };
   return(<div className="sh" style={{marginTop:2}}>
     <div className="sh-section">CHARACTERS FROM YOUR PAST</div>
@@ -1447,7 +1461,7 @@ function PastSection({char,commit,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
     {unlocked?<div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
       {adding?<>
         <input autoFocus value={nm} onChange={e=>setNm(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")add();if(e.key==="Escape")setAdding(false);}} placeholder="Name…" className="sh-input-box" style={{width:180,fontSize:12}}/>
-        {mySecs.length>1&&<select value={into} onChange={e=>setInto(e.target.value)} className="sh-input-box" style={{width:"auto",fontSize:12}}>{mySecs.map(c=><option key={c.id} value={c.id===pastSecId(owner)?"":c.id}>{c.label}</option>)}</select>}
+        {mySecs.length>1&&<select value={into} onChange={e=>setInto(e.target.value)} className="sh-input-box" style={{width:"auto",fontSize:12}}>{mySecs.map(c=><option key={c.id} value={c.parent==="people"?"":c.id}>{c.label}</option>)}</select>}
         <button className="btn" onClick={add} style={{fontSize:11,color:"#2a2a3a"}}>✓ Add</button><button className="btn" onClick={()=>setAdding(false)} style={{fontSize:11,color:"#2a2a3a"}}>✕</button>
       </>:<button className="btn" onClick={()=>setAdding(true)} style={{fontSize:11,color:"#2a2a3a"}}>+ Add someone from my past</button>}
       <span style={{flex:1}}/>
