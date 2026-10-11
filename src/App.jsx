@@ -635,7 +635,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
     setSel({s,id:item.id});setLocal({...item});setCreating(null);setNewName("");if(!readOnly)setEditMode(true);
     if(s==="settlements")setOpenNodes(prev=>new Set([...prev,"none"]));
   };
-  const reqDel=()=>{if(!selItem)return;setDelT({label:(selItem.description||"").trim()||(selItem.lore||"").trim()?selItem.name:""});};
+  const reqDel=()=>{if(!selItem)return;setDelT({label:selItem.name||"this entry"});};
   const confirmDel=()=>{
     setLore(prev=>({...prev,[sel.s]:prev[sel.s].filter(i=>i.id!==sel.id)}));
     setSel({s:null,id:null});setLocal(null);setDelT(null);setEditMode(false);
@@ -738,7 +738,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   return(<LinkCtx.Provider value={innerLinks}><div style={{display:"flex",height:"100%",background:"var(--dark)"}}>
     {promptOpen&&local&&<ImagePromptBox entry={local} person={hasPhys(sel.s)} canSee={f=>!isControlled(local)||privView||fieldVisible(local,f)} onClose={()=>setPromptOpen(false)}/>}
     {delT&&!readOnly&&<DelModal name={delT.label} onOk={confirmDel} onNo={()=>setDelT(null)}/>}
-    {delSec&&!readOnly&&<DelModal name={(lore[delSec.id]||[]).length?`the "${delSec.label}" tab and the ${(lore[delSec.id]||[]).length} entr${(lore[delSec.id]||[]).length===1?"y":"ies"} in it`:""} onOk={()=>{const id=delSec.id;const par=delSec.parent;
+    {delSec&&!readOnly&&<DelModal name={(lore[delSec.id]||[]).length?`the "${delSec.label}" tab and the ${(lore[delSec.id]||[]).length} entr${(lore[delSec.id]||[]).length===1?"y":"ies"} in it`:`the "${delSec.label}" tab`} onOk={()=>{const id=delSec.id;const par=delSec.parent;
       setLore(prev=>{const n={...prev,__customSections:(prev.__customSections||[]).filter(c=>c.id!==id)};delete n[id];return n;});
       if(openSection===id)setOpenSection(par&&secById(par)&&!secById(par).group?par:"allies");if(sel.s===id){setSel({s:null,id:null});setLocal(null);}setDelSec(null);}} onNo={()=>setDelSec(null)}/>}
 
@@ -850,7 +850,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
           </div>
           {canEdit&&<div style={{display:"flex",gap:5,flexShrink:0}}>
             <button className={`btn${editMode?" act":""}`} onClick={()=>setEditMode(m=>!m)} style={{fontSize:12,padding:"4px 11px"}}>{editMode?"✓ Done":"✏️ Edit"}</button>
-            {editMode&&(privView||!isControlled(local))&&<button className="btn red" onClick={reqDel} style={{fontSize:12,padding:"4px 9px"}}>🗑</button>}
+            {editMode&&(privView||!isControlled(local)||(sel.s==="settlements"&&canEdit&&entryVisible(local)))&&<button className="btn red" onClick={reqDel} style={{fontSize:12,padding:"4px 9px"}}>🗑</button>}
           </div>}
           {!canEdit&&!readOnly&&local.lockedForPlayers&&<span title="Josh has locked this entry" style={{fontSize:11,color:"var(--ink3)",fontFamily:"Cinzel"}}>🔒 Locked</span>}
         </div>
@@ -1351,8 +1351,8 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
         </div>}
       </div>
       {/* Armour + Currency + Inventory */}
-      <div style={{display:"grid",gridTemplateColumns:"180px 1fr 1fr",gap:10}}>
-        <div className="sh">
+      <div style={{display:"grid",gridTemplateColumns:"180px 1fr 1fr",gap:10,alignItems:"stretch"}}>
+        <div className="sh" style={{gridColumn:1,gridRow:1}}>
           <div className="sh-section">EQUIPMENT / PROFICIENCIES</div>
           <div className="sh-label">ARMOUR</div>
           {[["light","Light"],["medium","Medium"],["heavy","Heavy"],["shields","Shields"]].map(([k,l])=><div key={k} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
@@ -1366,7 +1366,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
             {editMode?<ShTextarea value={L[f]||""} onCommit={v=>commit(f,v)} className="sh-input-box" style={{resize:"vertical",minHeight:40,fontSize:11}}/>:<p style={{fontSize:11,color:"#2a2a3a",lineHeight:1.5,whiteSpace:"pre-wrap",minHeight:20}}>{L[f]||<em style={{opacity:.4}}>—</em>}</p>}
           </React.Fragment>)}
         </div>
-        <div className="sh">
+        <div className="sh" style={{gridColumn:2,gridRow:1}}>
           <div className="sh-section">COINS</div>
           {[["pp","Platinum"],["gp","Gold"],["sp","Silver"],["cp","Copper"]].map(([k,l])=><div key={k} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
             <span style={{fontSize:10,fontFamily:"Cinzel",color:"#777",width:48}}>{l}</span>
@@ -1380,13 +1380,12 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
           <div className="sh-label" style={{marginTop:5}}>VALUABLES</div>
           <ShTextarea value={L.valuables||""} onCommit={v=>commit("valuables",v)} className="sh-input-box" style={{resize:"vertical",minHeight:40,fontSize:11}} placeholder="Gems, deeds, trinkets…"/>
         </div>
-        <div className="sh">
+        <div className="sh" style={{gridColumn:3,gridRow:"1 / span 2",display:"flex",flexDirection:"column"}}>
           <div className="sh-section">INVENTORY</div>
-          <ShTextarea value={L.inventory||""} onCommit={v=>commit("inventory",v)} className="sh-input-box" style={{resize:"vertical",minHeight:180,fontSize:12,lineHeight:1.7}} placeholder="Click to add items…"/>
+          <ShTextarea value={L.inventory||""} onCommit={v=>commit("inventory",v)} className="sh-input-box" style={{resize:"vertical",minHeight:420,flex:1,fontSize:12,lineHeight:1.7}} placeholder="Click to add items…"/>
         </div>
-      </div>
-      {/* Appearance */}
-      <div className="sh">
+      {/* Appearance (sits under Equipment + Coins) */}
+      <div className="sh" style={{gridColumn:"1 / span 2",gridRow:2}}>
         <div className="sh-section">APPEARANCE & PERSONALITY</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
           {[["charAge","AGE"],["charHair","HAIR"],["charEyes","EYES"],["charBuild","BUILD"],["charClothing","CLOTHING"],["charVoice","VOICE/ACCENT"],["charPersonality","PERSONALITY"],["charGoal","GOAL OR SECRET"]].map(([f,l])=><div key={f}>
@@ -1398,6 +1397,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
         {editMode?<ShTextarea value={L.historyPersonality||""} onCommit={v=>commit("historyPersonality",v)} className="sh-input-box" style={{resize:"vertical",minHeight:100,fontSize:12,lineHeight:1.6}} placeholder="Backstory..."/>:<p style={{fontSize:12,color:"#2a2a3a",lineHeight:1.6,whiteSpace:"pre-wrap",minHeight:40}}>{L.historyPersonality||<em style={{opacity:.4}}>—</em>}</p>}
         <div className="sh-label" style={{marginTop:6}}>ALIGNMENT</div>
         {editMode?<ShInput value={L.alignment||""} onCommit={v=>commit("alignment",v)} className="sh-input-box" style={{fontSize:12}}/>:<div style={{fontSize:12,color:"#2a2a3a"}}>{L.alignment||<em style={{opacity:.35}}>—</em>}</div>}
+      </div>
       </div>
     </div>
     {/* Characters from your past */}
@@ -1996,7 +1996,7 @@ const escHtml=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&
    polyCoords: the border, drawn on the map that contains it
      (kingdoms on the world map; regions and baronies on their kingdom's map). */
 const PLACE_TYPES={
-  kingdom:{label:"Kingdom",icon:"👑",child:"region"},
+  kingdom:{label:"Duchy",icon:"👑",child:"region"},
   region:{label:"Region",icon:"🗺",child:"barony"},
   barony:{label:"Barony",icon:"🏰",child:null},
 };
@@ -2661,13 +2661,19 @@ function MapControl({lore,setLore,onOpenOverview}){
     setLore(prev=>({...prev,settlements:[...(prev.settlements||[]),e]}));
     setNewSetName("");setAddingSet(false);setOpenSet(e.id);
   };
+  const [ask,setAsk]=useState(null);
   const delPlace=()=>{
     if(childrenOf(P.id).length){alert("Move or delete what's inside this first.");return;}
-    if(!confirm(`Delete ${P.name}? Its border, map and wiki page will be removed.`))return;
+    setAsk({name:P.name,run:()=>doDelPlace(P)});
+  };
+  const doDelPlace=P=>{
     setLore(prev=>({...prev,regions:(prev.regions||[]).filter(p=>String(p.id)!==String(P.id)),settlements:(prev.settlements||[]).map(s=>String(s.placeId)===String(P.id)?{...s,placeId:null}:s)}));
     setSelId(P.parentId!=null?P.parentId:null);
   };
-  const delSet=s=>{if(!confirm(`Delete ${s.name}? Its wiki entry is removed too.`))return;setLore(prev=>({...prev,settlements:(prev.settlements||[]).filter(x=>String(x.id)!==String(s.id))}));};
+  const delSet=s=>setAsk({name:s.name||"this settlement",run:()=>{setLore(prev=>({...prev,settlements:(prev.settlements||[]).filter(x=>String(x.id)!==String(s.id))}));if(String(openSet)===String(s.id))setOpenSet(null);if(String(looseSel)===String(s.id))setLooseSel(null);}});
+  const [looseOpen,setLooseOpen]=useState(false);const [looseSel,setLooseSel]=useState(null);
+  const baronies=places.filter(p=>placeType(p)==="barony");
+  const loose=sets.filter(x=>x.placeId==null||!places.some(p=>String(p.id)===String(x.placeId)));
 
   /* ── panel bits ── */
   const lbl={fontFamily:"Cinzel",fontSize:10,color:"rgba(255,170,170,0.65)",letterSpacing:".07em",marginBottom:4};
@@ -2691,13 +2697,46 @@ function MapControl({lore,setLore,onOpenOverview}){
     {/* tree */}
     <div style={{width:230,flex:"0 0 230px",background:"rgba(60,0,0,0.3)",border:"1px solid rgba(200,50,50,0.25)",borderRadius:6,overflowY:"auto",maxHeight:"100%"}}>
       <div style={{...lbl,padding:"10px 12px 4px"}}>THE REALM</div>
-      <div onClick={()=>setSelId(null)} style={{padding:"8px 10px",cursor:"pointer",fontSize:13,display:"flex",gap:6,background:selId==null?"rgba(139,26,26,0.55)":"transparent",borderLeft:selId==null?"3px solid #ff7a7a":"3px solid transparent",color:"#ffd8d8",fontFamily:"Cinzel",letterSpacing:".03em"}}>🌍 World Map</div>
+      <div onClick={()=>{setSelId(null);setLooseSel(null);}} style={{padding:"8px 10px",cursor:"pointer",fontSize:13,display:"flex",gap:6,background:selId==null&&looseSel==null?"rgba(139,26,26,0.55)":"transparent",borderLeft:selId==null?"3px solid #ff7a7a":"3px solid transparent",color:"#ffd8d8",fontFamily:"Cinzel",letterSpacing:".03em"}}>🌍 World Map</div>
       {childrenOf(null).map(p=>renderNode(p,1))}
+      {loose.length>0&&<>
+        <div onClick={()=>setLooseOpen(o=>!o)} style={{padding:"7px 8px 7px 0",cursor:"pointer",display:"flex",alignItems:"center",gap:5,fontSize:12,fontStyle:"italic",color:"rgba(255,190,190,0.6)",userSelect:"none"}}>
+          <span style={{width:38,textAlign:"right",fontSize:16,fontStyle:"normal"}}>{looseOpen?"▾":"▸"}</span>Not in a barony ({loose.length})</div>
+        {looseOpen&&loose.map(x=>{const sv=entryVisible(x);const on=String(looseSel)===String(x.id);return(
+          <div key={"l"+x.id} onClick={()=>{setLooseSel(x.id);setSelId(null);}} style={{padding:"5px 8px 5px 43px",cursor:"pointer",display:"flex",alignItems:"center",gap:5,fontSize:12,fontFamily:"Crimson Pro",color:sv?"#f0d0d0":"#ff9a8a",background:on?"rgba(139,26,26,0.45)":"transparent"}}>
+            {(()=>{const im=settlementIcon(x).img;return im?<img src={im} alt="" style={{width:20,height:20,objectFit:"contain",flexShrink:0}}/>:null;})()}
+            <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{x.name||"Unnamed"}</span>
+            <span style={{color:sv?"#9fd89f":"#ff8a7a"}}><Eye open={sv} size={11}/></span>
+          </div>);})}
+      </>}
       <div style={{fontSize:11,color:"rgba(255,170,170,0.45)",padding:"10px 12px",lineHeight:1.5}}><Eye open size={11}/> visible · <Eye open={false} size={11}/> hidden · ✏ no border yet</div>
     </div>
 
+    {ask&&<DelModal name={ask.name} onOk={()=>{ask.run();setAsk(null);}} onNo={()=>setAsk(null)}/>}
     {/* panel */}
-    <div style={{flex:"1 1 420px",minWidth:0,display:"flex",flexDirection:"column",gap:10,minHeight:0}}>
+    {!P&&looseSel!=null&&(()=>{const x=loose.find(y=>String(y.id)===String(looseSel));if(!x)return null;const vis=entryVisible(x);const ic=settlementIcon(x);
+      return(<div style={{flex:"1 1 420px",minWidth:0,display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{fontFamily:"Cinzel",fontSize:18,color:"#ffb4b4",flex:1}}>{x.name||"Unnamed"}</span>
+          <span style={{fontFamily:"Cinzel",fontSize:10,color:"rgba(255,170,170,0.6)",letterSpacing:".08em"}}>SETTLEMENT · NOT IN A BARONY</span>
+          <button className="sf-dm-btn" onClick={()=>setLooseSel(null)}>✕</button>
+        </div>
+        <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"flex-start"}}>
+          <div style={{...checker,width:120,height:90,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center"}}>{ic.img?<img src={ic.img} alt="" style={{maxWidth:116,maxHeight:86}}/>:<span style={{fontSize:28}}>🏠</span>}</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8,flex:"1 1 240px"}}>
+            <div><div style={lbl}>PUT IT IN A BARONY</div>
+              <select className="sf-dm-input" value="" onChange={e=>{if(!e.target.value)return;updSet(x.id,{placeId:(baronies.find(b=>String(b.id)===e.target.value)||{}).id,mapX:null,mapY:null});setLooseSel(null);setSelId((baronies.find(b=>String(b.id)===e.target.value)||{}).id);setTab("sets");}}>
+                <option value="">— Choose a barony —</option>{baronies.map(b=><option key={b.id} value={String(b.id)}>{b.name}</option>)}</select></div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              <button className={`sf-dm-btn${vis?" go":""}`} onClick={()=>updEntry("settlements",x.id,toggleEntryVisible)}><Eye open={vis} size={12}/> {vis?"Revealed":"Hidden"}</button>
+              {(x.iconImg||x.iconKey)&&<button className="sf-dm-btn" onClick={()=>updSet(x.id,{iconImg:null,iconKey:null})}>Remove icon</button>}
+              <button className="sf-dm-btn" onClick={()=>onOpenOverview&&onOpenOverview("settlements",x.id)}>📜 Open in Overview</button>
+              <button className="sf-dm-btn" onClick={()=>delSet(x)}>🗑 Delete settlement</button>
+            </div>
+          </div>
+        </div>
+      </div>);})()}
+    {!(!P&&looseSel!=null&&loose.some(y=>String(y.id)===String(looseSel)))&&<div style={{flex:"1 1 420px",minWidth:0,display:"flex",flexDirection:"column",gap:10,minHeight:0}}>
       {/* header */}
       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         {P?<>
@@ -2724,7 +2763,7 @@ function MapControl({lore,setLore,onOpenOverview}){
       {(!P||tab==="map")&&<>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
           {drawButtons}
-          {P&&(t==="kingdom"||t==="barony")&&canvasInfo(P)&&!draw&&<label className="sf-dm-btn">🖼 Replace {t} map<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadMap(e,P.id)}/></label>}
+          {P&&(t==="kingdom"||t==="barony")&&canvasInfo(P)&&!draw&&<label className="sf-dm-btn">🖼 Replace {PLACE_TYPES[t].label.toLowerCase()} map<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadMap(e,P.id)}/></label>}
           {P&&t==="barony"&&canvasInfo(P)&&!draw&&<button className="sf-dm-btn" onClick={()=>setSheet(true)}>⬆ Upload icon sheet</button>}
           {placing!=null&&<span style={{fontSize:12.5,color:"#bfe9ff"}}>Click the map where {(sets.find(s=>String(s.id)===String(placing))||{}).name} goes… <button className="sf-dm-btn" onClick={()=>setPlacing(null)}>Cancel</button></span>}
         </div>
@@ -2736,11 +2775,11 @@ function MapControl({lore,setLore,onOpenOverview}){
           <button className="sf-dm-btn" onClick={()=>{setPendingRing(null);setDraw(null);}}>✕ Cancel</button>
         </div>}
         {mapNeedsUpload&&!draw?<div style={{flex:1,minHeight:280,border:"2px dashed rgba(220,90,90,0.4)",borderRadius:8,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,padding:20,textAlign:"center"}}>
-          <div style={{fontFamily:"Cinzel",color:"#ffb4b4",fontSize:14}}>Upload the {t} map for {P.name}</div>
-          <div style={{fontSize:13,color:"rgba(255,200,200,0.6)",maxWidth:420}}>{t==="kingdom"?"After uploading you can draw this kingdom's regions on it.":"After uploading you can place this barony's settlement icons on it."}</div>
+          <div style={{fontFamily:"Cinzel",color:"#ffb4b4",fontSize:14}}>Upload the {PLACE_TYPES[t].label.toLowerCase()} map for {P.name}</div>
+          <div style={{fontSize:13,color:"rgba(255,200,200,0.6)",maxWidth:420}}>{t==="kingdom"?"After uploading you can draw this duchy's regions on it.":"After uploading you can place this barony's settlement icons on it."}</div>
           <label className="sf-dm-btn go" style={{fontSize:13,padding:"9px 18px"}}>📥 Upload map<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadMap(e,P.id)}/></label>
         </div>
-        :P&&t==="region"&&!draw&&!spec.canvas?<div style={{padding:20,color:"#ffb4b4"}}>Upload a map for the kingdom this region is in first.</div>
+        :P&&t==="region"&&!draw&&!spec.canvas?<div style={{padding:20,color:"#ffb4b4"}}>Upload a map for the duchy this region is in first.</div>
         :<div style={{flex:"1 1 360px",minHeight:320,position:"relative"}}>
           <PlaceMap canvas={spec.canvas} shapes={spec.shapes} focusRing={spec.focus} pins={spec.pins} zones={spec.zones}
             onShapeClick={onShapeClick} onPinClick={id=>{if(!String(id).startsWith("t:"))setOpenSet(id);}} onPinMove={(id,ll)=>updSet(id,{mapY:ll[0],mapX:ll[1]})}
@@ -2764,7 +2803,7 @@ function MapControl({lore,setLore,onOpenOverview}){
         {P&&t==="barony"&&canvasInfo(P)&&!draw&&mine.some(s=>s.mapX==null)&&<div style={{fontSize:12.5,color:"rgba(255,200,200,0.75)"}}>
           Not on the map yet: {mine.filter(s=>s.mapX==null).map(s=><button key={s.id} className="sf-dm-btn" style={{margin:"2px 4px",padding:"3px 8px"}} onClick={()=>setPlacing(s.id)}>📍 {s.name}</button>)}
         </div>}
-        {!P&&<div style={{fontSize:12.5,color:"rgba(255,200,200,0.6)"}}>Draw each kingdom's border on the world map, then pick it in the list to upload its map and draw its regions.</div>}
+        {!P&&<div style={{fontSize:12.5,color:"rgba(255,200,200,0.6)"}}>Draw each duchy's border on the world map, then pick it in the list to upload its map and draw its regions.</div>}
       </>}
 
       {/* SETTLEMENTS TAB */}
@@ -2784,6 +2823,7 @@ function MapControl({lore,setLore,onOpenOverview}){
               <button className={`sf-dm-btn${vis?" go":""}`} onClick={()=>updEntry("settlements",s.id,toggleEntryVisible)}><Eye open={vis} size={12}/> {vis?"Revealed":"Hidden"}</button>
               <button className="sf-dm-btn" onClick={()=>{setPlacing(s.id);setTab("map");}}>📍 {s.mapX==null?"Place":"Move"}</button>
               <button className="sf-dm-btn" onClick={()=>setOpenSet(open?null:s.id)}>{open?"▴":"▾"} Lore</button>
+              <button className="sf-dm-btn" title="Delete settlement" onClick={()=>delSet(s)}>🗑</button>
             </div>
             {open&&<div style={{padding:"4px 12px 12px",display:"flex",flexDirection:"column",gap:8}}>
               <div>
@@ -2796,6 +2836,7 @@ function MapControl({lore,setLore,onOpenOverview}){
                 <input type="range" min="20" max="1400" step="5" value={s.iconSize||90} onChange={e=>updSet(s.id,{iconSize:+e.target.value})} style={{width:"100%",maxWidth:320,accentColor:"#ff7a7a"}}/></div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 <label className="sf-dm-btn">🖼 Change icon<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadSetIcon(e,s.id)}/></label>
+                {(s.iconImg||s.iconKey)&&<button className="sf-dm-btn" onClick={()=>updSet(s.id,{iconImg:null,iconKey:null})}>Remove icon</button>}
                 {s.mapX!=null&&<button className="sf-dm-btn" onClick={()=>updSet(s.id,{mapX:null,mapY:null})}>Take off map</button>}
                 <button className="sf-dm-btn" onClick={()=>onOpenOverview&&onOpenOverview("settlements",s.id)}>📜 Full lore & reveals in Overview</button>
                 <button className="sf-dm-btn" onClick={()=>delSet(s)}>🗑 Delete</button>
@@ -2837,7 +2878,7 @@ function MapControl({lore,setLore,onOpenOverview}){
         <div style={{fontSize:12.5,color:"rgba(255,200,200,0.7)"}}>Description and Further Lore are visible to players once this place is revealed. The DM versions stay hidden until you reveal parts of them in Overview.
           <button className="sf-dm-btn" style={{marginLeft:8}} onClick={()=>onOpenOverview&&onOpenOverview("regions",P.id)}>📜 Open in Overview</button></div>
       </div>}
-    </div>
+    </div>}
   </div>);
 }
 
