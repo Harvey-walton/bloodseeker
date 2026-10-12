@@ -1095,6 +1095,17 @@ function TalesPanel(){
 /* ════ CHARACTER SHEET (carried over, uncontrolled) ════ */
 // [Abbreviated for space — full sheet with all features]
 /* ════ CHARACTER SHEET HELPERS ════ */
+// Long text that folds up to a few lines with "Show more"
+function FoldText({text,lines,style}){
+  const [open,setOpen]=useState(false);const ref=useRef(null);const [long,setLong]=useState(false);
+  const max=(lines||6)*1.6;
+  useEffect(()=>{const el=ref.current;if(el)setLong(el.scrollHeight>el.clientHeight+4||open&&el.scrollHeight>max*12*1.2);},[text,open]);
+  return(<div>
+    <div ref={ref} style={{...style,maxHeight:open?"none":`${max}em`,overflow:"hidden",position:"relative",WebkitMaskImage:!open&&long?"linear-gradient(to bottom,#000 65%,transparent)":"none",maskImage:!open&&long?"linear-gradient(to bottom,#000 65%,transparent)":"none"}}>{text}</div>
+    {(long||open)&&<button onClick={()=>setOpen(o=>!o)} style={{marginTop:4,fontFamily:"Cinzel",fontSize:10,letterSpacing:".06em",background:"rgba(255,255,255,0.5)",border:"1px solid #b8a070",borderRadius:3,padding:"2px 9px",cursor:"pointer",color:"#5a3e1b"}}>{open?"▴ Fold up":"▾ Show all"}</button>}
+  </div>);
+}
+
 // A number you can tap to type a new value, without going into Edit mode
 function QuickNum({value,onCommit,style,title}){
   const [ed,setEd]=useState(false);
@@ -1444,7 +1455,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
           </div>)}
         </div>
         <div className="sh-label">HISTORY & BACKSTORY</div>
-        {editMode?<ShTextarea value={L.historyPersonality||""} onCommit={v=>commit("historyPersonality",v)} className="sh-input-box" style={{resize:"vertical",minHeight:100,fontSize:12,lineHeight:1.6}} placeholder="Backstory..."/>:<p style={{fontSize:12,color:"#2a2a3a",lineHeight:1.6,whiteSpace:"pre-wrap",minHeight:40}}>{L.historyPersonality||<em style={{opacity:.4}}>—</em>}</p>}
+        {editMode?<ShTextarea value={L.historyPersonality||""} onCommit={v=>commit("historyPersonality",v)} className="sh-input-box" style={{resize:"vertical",minHeight:100,fontSize:12,lineHeight:1.6}} placeholder="Backstory..."/>:(L.historyPersonality||"").trim()?<FoldText text={L.historyPersonality} lines={8} style={{fontSize:12,color:"#2a2a3a",lineHeight:1.6,whiteSpace:"pre-wrap"}}/>:<p style={{fontSize:12,color:"#2a2a3a"}}><em style={{opacity:.4}}>—</em></p>}
         <div className="sh-label" style={{marginTop:6}}>ALIGNMENT</div>
         {editMode?<ShInput value={L.alignment||""} onCommit={v=>commit("alignment",v)} className="sh-input-box" style={{fontSize:12}}/>:<div style={{fontSize:12,color:"#2a2a3a"}}>{L.alignment||<em style={{opacity:.35}}>—</em>}</div>}
       </div>
@@ -1468,7 +1479,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
 /* ════ CHARACTERS FROM YOUR PAST (with "Unlock Past") ════ */
 function PastSection({char,commit,lore,setLore,myPast,setMyPast,onOpenLore,isDM}){
   const [key,setKey]=useState("");const [err,setErr]=useState("");
-  const [adding,setAdding]=useState(false);const [nm,setNm]=useState("");const [into,setInto]=useState("");
+  const [adding,setAdding]=useState(false);const [nm,setNm]=useState("");const [into,setInto]=useState("");const [underPicked,setUnderPicked]=useState(false);
   const owner=char.pastOwner||null;
   const unlocked=!!owner&&myPast===owner;
   const secs=(lore&&lore.__customSections)||[];
@@ -1476,6 +1487,8 @@ function PastSection({char,commit,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
   const mySecs=owner?secs.filter(c=>secOwnerOf(c.id)===owner):[];
   const seeAll=unlocked||isDM;
   const people=[];mySecs.forEach(c=>(lore[c.id]||[]).forEach(e=>{if(seeAll||entryVisible(e))people.push({e,sec:c});}));
+  const [trail,setTrail]=useState([]);
+  const picked=trail.length?people.find(p=>String(p.e.id)===String(trail[trail.length-1])):null;
   const tryUnlock=()=>{
     const who=PAST_KEYS[key.trim()];
     if(!who){setErr("That key isn't right.");return;}
@@ -1494,26 +1507,46 @@ function PastSection({char,commit,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
   const add=()=>{
     if(!nm.trim())return;const sid=into||pastSecId(owner);
     const e={...EMPTY_ENTRY(),name:nm.trim(),reveal:{entry:false,fields:{},spans:{}},_ts:Date.now()};
-    const sid2=into||(mySecs.find(c=>c.parent==="people")||{}).id||sid;
+    let sid2=into||(mySecs.find(c=>c.parent==="people")||{}).id||sid;
+    if(underPicked&&picked){sid2=picked.sec.id;e.underId=picked.e.id;}
     setLore(prev=>({...prev,[sid2]:[...(prev[sid2]||[]),e]}));
-    setNm("");setAdding(false);setTimeout(()=>onOpenLore&&onOpenLore(sid2,e.id),50);
+    setNm("");setAdding(false);setUnderPicked(false);if(!e.underId)setTimeout(()=>onOpenLore&&onOpenLore(sid2,e.id),50);
   };
   return(<div className="sh" style={{marginTop:2}}>
     <div className="sh-section">CHARACTERS FROM YOUR PAST</div>
-    {owner&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8,marginBottom:10}}>
-      {people.map(({e,sec})=>{const pic=(seeAll||fieldVisible(e,"portrait"))?imgSrc(e.portrait):null;const hid=!entryVisible(e);
-        return(<div key={e.id} onClick={()=>onOpenLore&&onOpenLore(sec.id,e.id)} title={`Open in Lore · ${sec.label}`} style={{cursor:"pointer",border:`1px solid ${hid?"#a3241e":"#b8a070"}`,borderRadius:4,overflow:"hidden",background:"rgba(255,255,255,0.45)"}}>
-          <div style={{height:110,background:"#e8d9b8",display:"flex",alignItems:"center",justifyContent:"center"}}>{pic?<img src={pic} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{fontSize:30,opacity:.35}}>👤</span>}</div>
-          <div style={{padding:"5px 7px"}}><div style={{fontFamily:"Cinzel",fontSize:11.5,color:hid?"#a3241e":"#2a2a3a"}}>{hid&&"🔒 "}{e.name||"Unnamed"}</div><div style={{fontSize:9.5,color:"#777"}}>{sec.label}</div></div>
-        </div>);})}
-      {!people.length&&<div style={{fontSize:12,color:"#777",fontStyle:"italic",gridColumn:"1/-1"}}>{seeAll?"No one yet.":"Nothing revealed yet."}</div>}
-    </div>}
+    {owner&&(()=>{
+      // columns: everyone at the top on the left; pick someone and the people under them open to the right
+      const shown=new Set(people.map(p=>String(p.e.id)));
+      const kidsOf=pid=>people.filter(p=>pid==null?(p.e.underId==null||!shown.has(String(p.e.underId))):String(p.e.underId)===String(pid));
+      const path=trail.filter((id,i)=>{const prev=i?trail[i-1]:null;return kidsOf(prev).some(p=>String(p.e.id)===String(id));});
+      const cols=[kidsOf(null)];path.forEach(id=>{const k=kidsOf(id);if(k.length)cols.push(k);});
+      if(!people.length)return <div style={{fontSize:12,color:"#777",fontStyle:"italic",marginBottom:10}}>{seeAll?"No one yet.":"Nothing revealed yet."}</div>;
+      return(<div style={{display:"flex",gap:0,overflowX:"auto",paddingBottom:8,marginBottom:8,alignItems:"flex-start"}}>
+        {cols.map((col,ci)=><div key={ci} style={{display:"flex",flexDirection:"column",gap:7,minWidth:150,width:150,flexShrink:0,paddingRight:ci<cols.length-1?18:0,position:"relative",borderRight:ci<cols.length-1?"1px dashed #c9b48a":"none",marginRight:ci<cols.length-1?18:0}}>
+          {col.map(({e,sec})=>{const pic=(seeAll||fieldVisible(e,"portrait"))?imgSrc(e.portrait):null;const hid=!entryVisible(e);const on=String(path[ci])===String(e.id);const n=kidsOf(e.id).length;
+            return(<div key={e.id} onClick={()=>setTrail([...path.slice(0,ci),e.id])} title={n?`Show the ${n} under ${e.name}`:e.name}
+              style={{cursor:"pointer",border:`${on?2:1}px solid ${on?"#9a7020":hid?"#a3241e":"#b8a070"}`,borderRadius:5,overflow:"hidden",background:on?"#fff7e2":"rgba(255,255,255,0.5)",boxShadow:on?"0 2px 10px rgba(154,112,32,0.35)":"none",transition:"box-shadow .15s"}}>
+              {pic?<img src={pic} alt="" style={{width:"100%",height:"auto",display:"block"}}/>
+                :<div style={{height:90,background:"#e8d9b8",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:30,opacity:.35}}>👤</span></div>}
+              <div style={{padding:"5px 7px"}}>
+                <div style={{fontFamily:"Cinzel",fontSize:11,color:hid?"#a3241e":"#2a2a3a",lineHeight:1.3}}>{hid&&"🔒 "}{e.name||"Unnamed"}</div>
+                <div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}}>
+                  {n>0&&<span style={{fontSize:10,color:"#7a5a14",fontFamily:"Cinzel"}}>{n} ▸</span>}
+                  <span style={{flex:1}}/>
+                  <button onClick={ev=>{ev.stopPropagation();onOpenLore&&onOpenLore(sec.id,e.id);}} style={{fontSize:9.5,fontFamily:"Cinzel",border:"1px solid #b8a070",background:"rgba(255,255,255,0.6)",borderRadius:3,padding:"1px 6px",cursor:"pointer",color:"#5a3e1b"}}>Open</button>
+                </div>
+              </div>
+            </div>);})}
+        </div>)}
+      </div>);
+    })()}
     {unlocked?<div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
       {adding?<>
-        <input autoFocus value={nm} onChange={e=>setNm(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")add();if(e.key==="Escape")setAdding(false);}} placeholder="Name…" className="sh-input-box" style={{width:180,fontSize:12}}/>
-        {mySecs.length>1&&<select value={into} onChange={e=>setInto(e.target.value)} className="sh-input-box" style={{width:"auto",fontSize:12}}>{mySecs.map(c=><option key={c.id} value={c.parent==="people"?"":c.id}>{c.label}</option>)}</select>}
+        <input autoFocus value={nm} onChange={e=>setNm(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")add();if(e.key==="Escape")setAdding(false);}} placeholder={underPicked&&picked?`Under ${picked.e.name}…`:"Name…"} className="sh-input-box" style={{width:200,fontSize:12}}/>
+        {!underPicked&&mySecs.length>1&&<select value={into} onChange={e=>setInto(e.target.value)} className="sh-input-box" style={{width:"auto",fontSize:12}}>{mySecs.map(c=><option key={c.id} value={c.parent==="people"?"":c.id}>{c.label}</option>)}</select>}
         <button className="btn" onClick={add} style={{fontSize:11,color:"#2a2a3a"}}>✓ Add</button><button className="btn" onClick={()=>setAdding(false)} style={{fontSize:11,color:"#2a2a3a"}}>✕</button>
-      </>:<button className="btn" onClick={()=>setAdding(true)} style={{fontSize:11,color:"#2a2a3a"}}>+ Add someone from my past</button>}
+      </>:<><button className="btn" onClick={()=>{setUnderPicked(false);setAdding(true);}} style={{fontSize:11,color:"#2a2a3a"}}>+ Add someone from my past</button>
+        {picked&&<button className="btn" onClick={()=>{setUnderPicked(true);setAdding(true);}} style={{fontSize:11,color:"#2a2a3a"}}>+ Add under {picked.e.name}</button>}</>}
       <span style={{flex:1}}/>
       <span style={{fontSize:11,color:"#5a3e1b",fontFamily:"Cinzel"}}>📜 Unlocked as {owner}</span>
       <button className="btn" onClick={()=>{try{localStorage.removeItem("sf_past");}catch(e){}setMyPast(null);}} style={{fontSize:11,color:"#2a2a3a"}}>🔒 Lock</button>
