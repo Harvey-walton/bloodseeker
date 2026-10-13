@@ -410,7 +410,8 @@ function MentionTextarea({value,onCommit,style,className,placeholder}){
   const ctx=useContext(LinkCtx);const ref=useRef(null);
   const [q,setQ]=useState(null);const [hi,setHi]=useState(0);
   useEffect(()=>{if(ref.current&&document.activeElement!==ref.current)ref.current.value=value||"";},[value]);
-  const all=(ctx&&ctx.entries)||[];
+  // only suggest what this person is allowed to see
+  const all=((ctx&&ctx.entries)||[]).filter(e=>!ctx.can||ctx.can(e.sec,e.id));
   const matches=q?all.filter(e=>e.name.toLowerCase().includes(q.query.toLowerCase())).slice(0,8):[];
   const [mkOpen,setMkOpen]=useState(false);
   const canMake=!!(ctx&&ctx.create&&q&&q.query.trim().length>1&&!all.some(e=>e.name.toLowerCase()===q.query.trim().toLowerCase()));
@@ -772,7 +773,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
     newSections:readOnly?[]:creatableSections(lore,id=>!secOwner(id)||seeAll(id)),
     create:readOnly?null:(sec,name)=>{const e=newLinkedEntry(sec,name,isDM||ownsSec(sec));if(secOwner(sec)&&(isDM||ownsSec(sec)))e.reveal={entry:false,fields:{},spans:{}};setLore(prev=>({...prev,[sec]:[...(prev[sec]||[]),e]}));return e.id;},
     open:(sec,id)=>{if(!lore[sec])return;goEntry(sec,(lore[sec].find(x=>String(x.id)===String(id))||{}).id);},
-    can:(sec,id)=>{const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));return !!e&&(isDM||readOnly||ownsSec(sec)||entryVisible(e));}};
+    can:(sec,id)=>{const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));if(!e)return false;if(readOnly||seeAll(sec))return true;return sec==="regions"?placeVisible(getPlaces(lore),e,false):entryVisible(e);}};
   return(<LinkCtx.Provider value={innerLinks}><div style={{display:"flex",height:"100%",background:"var(--dark)"}}>
     {promptOpen&&local&&<ImagePromptBox entry={local} person={hasPhys(sel.s)} canSee={f=>!isControlled(local)||privView||fieldVisible(local,f)} onClose={()=>setPromptOpen(false)}/>}
     {delT&&!readOnly&&<DelModal name={delT.label} onOk={confirmDel} onNo={()=>setDelT(null)}/>}
@@ -1736,10 +1737,11 @@ function App(){
   // Start up: show local copy instantly, then load the live campaign
   useEffect(()=>{
     const localData=localLoad()||DEFAULT_DATA;
-    setData(localData);dataRef.current=localData;
-    hideLoader();
-    if(!sbCfg)return;
+    // With live sync on, wait for the live campaign instead of flashing an old copy from this device
+    const showLocal=()=>{if(!dataRef.current){setData(localData);dataRef.current=localData;}hideLoader();};
+    if(!sbCfg){showLocal();return;}
     const sb=getSB();let cancelled=false,stopRT=null,pollT=null,initT=null;
+    const fallbackT=setTimeout(()=>{if(!cancelled&&!S.ready)showLocal();},12000);
     loadAssets(sb).catch(()=>{});
 
     const poll=async()=>{
@@ -1772,7 +1774,7 @@ function App(){
         // Keep anything that only existed on this device (e.g. DM notes the old save never uploaded)
         Object.keys(localData).forEach(k=>{if(!(k in d))d[k]=localData[k];});
         if(!d.lore)d.lore={};if(!d.characters)d.characters=[];
-        dataRef.current=d;setData(d);
+        dataRef.current=d;setData(d);hideLoader();clearTimeout(fallbackT);
         S.ready=true;setReady(true);setSyncStatus("poll");
         stopRT=connectRealtime(sb,async(id,type,wrapped,ts)=>{
           if(!id||String(id).indexOf("sf2_")!==0)return;
@@ -1787,14 +1789,14 @@ function App(){
         pushNow();
       }catch(e){
         console.warn("Campaign load failed, retrying:",e);
-        setSyncStatus("offline");
+        setSyncStatus("offline");if(!cancelled)showLocal();
         if(!cancelled)initT=setTimeout(init,8000);
       }
     };
     init();
     const onHide=()=>{clearTimeout(S.timer);pushNow(true);};
     window.addEventListener("pagehide",onHide);
-    return()=>{cancelled=true;stopRT&&stopRT();clearTimeout(pollT);clearTimeout(initT);window.removeEventListener("pagehide",onHide);};
+    return()=>{cancelled=true;stopRT&&stopRT();clearTimeout(pollT);clearTimeout(initT);clearTimeout(fallbackT);window.removeEventListener("pagehide",onHide);};
   },[sbCfg]);
 
   // Save locally + push to everyone shortly after any change
@@ -1818,13 +1820,14 @@ function App(){
     return{entries:linkEntries(lore),open:openLore,
       newSections:creatableSections(lore,id=>{const o=sectionOwner([...DEFAULT_SECTIONS,...(lore.__customSections||[])],id);return !o||isDM||o===myPast;}),
       create:(sec,name)=>{const e=newLinkedEntry(sec,name,isDM);setLore(prev=>({...prev,[sec]:[...(prev[sec]||[]),e]}));return e.id;},
-      can:(sec,id)=>{const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));if(!e)return false;if(isDM)return true;return sec==="regions"?placeVisible(places,e,false):entryVisible(e);}};
+      can:(sec,id)=>{const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));if(!e)return false;if(isDM)return true;const o=sectionOwner([...DEFAULT_SECTIONS,...(lore.__customSections||[])],sec);if(o&&myPast&&o===myPast)return true;return sec==="regions"?placeVisible(places,e,false):entryVisible(e);}};
   },[data&&data.lore,isDM,myPast]);
 
   if(!sbCfg)return <SetupScreen onSave={cfg=>{initSB(cfg.url,cfg.key);setSbCfg(cfg);}}/>;
   if(!data)return(
     <div style={{height:"100vh",background:"var(--dark)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{color:"var(--gold3)",fontFamily:"Cinzel",fontSize:18,letterSpacing:"0.1em"}}>⚔ STEEL & FIRE</div>
+      <div style={{textAlign:"center"}}><div style={{color:"var(--gold3)",fontFamily:"Cinzel",fontSize:18,letterSpacing:"0.1em"}}>⚔ STEEL & FIRE</div>
+        <div style={{color:"var(--gold3)",opacity:.6,fontFamily:"Cinzel",fontSize:11,letterSpacing:"0.12em",marginTop:10}}>LOADING THE CAMPAIGN…</div></div>
     </div>
   );
 
@@ -2312,7 +2315,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
         const fs=Math.max(11,Math.min(60,(p.size||90)/3.5*Math.pow(2,map.getZoom())));
         const html=`<div class="sf-pin-label${p.hidden?" sf-pin-hidden":""}${p.selected?" sf-pin-sel":""}" style="font-size:${fs}px">${escHtml(p.label)}</div>`;
         const m=L.marker([p.lat,p.lng],{icon:L.divIcon({html,className:"",iconSize:[0,0],iconAnchor:[0,0]}),draggable:!!p.draggable&&!drawing,keyboard:false,interactive:!drawing,zIndexOffset:p.selected?1000:0}).addTo(layer);
-        if(p.tip)m.bindTooltip(p.tip,{direction:"top",offset:[0,-fs],className:"sf-pin-tip"});
+        if(p.tip&&!p.selected)m.bindTooltip(p.tip,{direction:"top",offset:[0,-fs],className:"sf-pin-tip"});
         m.on("click",e=>{L.DomEvent.stopPropagation(e);cb.current.onPinClick&&cb.current.onPinClick(p.id);});
         m.on("dragend",()=>{const ll=m.getLatLng();cb.current.onPinMove&&cb.current.onPinMove(p.id,[Math.round(Math.min(H,Math.max(0,ll.lat))),Math.round(Math.min(W,Math.max(0,ll.lng)))]);});
         return;
@@ -2322,7 +2325,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
       const inner=p.img?`<img src="${p.img}"/>`:`<div class="sf-pin-dot">${p.glyph||"🏠"}</div>`;
       const html=`<div class="sf-pin-icon${p.hidden?" sf-pin-hidden":""}${p.selected?" sf-pin-sel":""}" ${p.img?`data-u="${u}" data-a="${a}"`:""} style="position:relative;width:${w}px;height:${h}px">${inner}</div>`;
       const m=L.marker([p.lat,p.lng],{icon:L.divIcon({html,className:"",iconSize:[w,h],iconAnchor:[w/2,h/2]}),draggable:!!p.draggable&&!drawing,keyboard:false,interactive:!drawing,zIndexOffset:p.selected?1000:0}).addTo(layer);
-      if(p.tip)m.bindTooltip(p.tip,{direction:"top",offset:[0,-h/2+4],className:"sf-pin-tip"});
+      if(p.tip&&!p.selected)m.bindTooltip(p.tip,{direction:"top",offset:[0,-h/2+4],className:"sf-pin-tip"});
       m.on("click",e=>{L.DomEvent.stopPropagation(e);cb.current.onPinClick&&cb.current.onPinClick(p.id);});
       m.on("dragend",()=>{const ll=m.getLatLng();cb.current.onPinMove&&cb.current.onPinMove(p.id,[Math.round(Math.min(H,Math.max(0,ll.lat))),Math.round(Math.min(W,Math.max(0,ll.lng)))]);});
     });
