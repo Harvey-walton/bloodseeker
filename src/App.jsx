@@ -963,6 +963,10 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
           </div>}
         </div>}
         <Ornament/>
+        {sel.s==="settlements"&&(()=>{const ctrl2=isControlled(local);const ok=(!ctrl2||privView||fieldVisible(local,"hoverLore"));if(!ok&&editMode)return null;const v=ok?local.hoverLore:"";const ed2=editMode&&!readOnly;
+          const descShown=!!(local.description||"").trim();
+          return(<>{<LoreVF label={ed2?"Map text — shown when the place is clicked on the map":""} value={v} field="hoverLore" multi height={60} editMode={ed2} onCommit={commitField} eyeState={ctrl2&&privView?fieldVisible(local,"hoverLore"):undefined} onEye={toggleField}/>}
+            {!ed2&&(v||"").trim()&&descShown&&<Ornament/>}</>);})()}
         {TF("Description","description",100)}
         {TF("Background & Lore","lore",120)}
         {["ally","enemy","faction"].includes(kindOf(sel.s))&&TF("Abilities & Powers","abilities",90)}
@@ -971,7 +975,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
         {["ally","enemy"].includes(kindOf(sel.s))&&TF("Feats with the Party","featsWithParty",90)}
         {kindOf(sel.s)==="session"&&TF("Key Events & Decisions","keyEvents",120)}
         
-        {sel.s==="settlements"&&(()=>{
+        {sel.s==="settlements"&&editMode&&canEdit&&(()=>{
           const places=getPlaces(lore);const baronies=places.filter(p=>placeType(p)==="barony");const pl=placeById(places,local.placeId);
           return(<div style={{marginBottom:12}}>
             <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>TYPE OF PLACE</div>
@@ -983,9 +987,11 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
               :<div style={{fontSize:15,color:"var(--ink)",fontFamily:"Crimson Pro"}}>{pl&&(dmView||placeVisible(places,pl,false))?[...ancestorsOf(places,pl).filter(a=>dmView||entryVisible(a)).map(a=>a.name),pl.name].join(" › "):"Unknown"}</div>}
           </div>);
         })()}
-        {sel.s==="settlements"&&(()=>{const ctrl2=isControlled(local);const ok=(!ctrl2||privView||fieldVisible(local,"hoverLore"));if(!ok&&editMode)return null;const v=ok?local.hoverLore:"";
-          return <LoreVF label="Map hover text" value={v} field="hoverLore" multi height={60} editMode={editMode&&!readOnly} onCommit={commitField} eyeState={ctrl2&&privView?fieldVisible(local,"hoverLore"):undefined} onEye={toggleField}/>;})()}
         {SF("Tags","tags")}
+        {sel.s==="settlements"&&!(editMode&&canEdit)&&(()=>{
+          const places=getPlaces(lore);const pl=placeById(places,local.placeId);
+          const chain=pl&&(dmView||placeVisible(places,pl,false))?[...ancestorsOf(places,pl).filter(a=>dmView||entryVisible(a)),pl]:[];
+          return(<><Ornament/><p style={{fontSize:15,color:"var(--ink2)",fontStyle:"italic",fontFamily:"Crimson Pro",lineHeight:1.7,textAlign:"center",margin:"4px 20px 14px"}}>{placeSentence(local.name,local.placeKind,chain)}</p></>);})()}
         {editMode&&!readOnly&&sel.s!=="regions"&&sel.s!=="settlements"&&(()=>{
           const list=(lore[sel.s]||[]);const desc=new Set([String(local.id)]);let grew=true;while(grew){grew=false;list.forEach(i=>{if(i.underId!=null&&desc.has(String(i.underId))&&!desc.has(String(i.id))){desc.add(String(i.id));grew=true;}});}
           const opts=list.filter(i=>!desc.has(String(i.id))&&(seeAll(sel.s)||entryVisible(i)));if(!opts.length)return null;
@@ -2158,6 +2164,18 @@ function startCleanIcons(){
 }
 function useCleanIcons(){const [,set]=useState(0);useEffect(()=>{const f=()=>set(x=>x+1);cleanIconListeners.add(f);startCleanIcons();return()=>cleanIconListeners.delete(f);},[]);}
 const PLACE_KINDS=[["settlement","Settlement"],["castle","Castle / Keep"],["forest","Forest / Woods"],["hills","Hills / Mountains"],["water","Lake / River / Coast"],["ruins","Ruins"],["landmark","Landmark"],["other","Other"]];
+// "Within the Duchy of Illia, in the region of the Windswept Coast, lies the Barony of Tollenhiem — and at its heart, the settlement of Tollenhiem."
+const placeSentence=(name,kind,chain)=>{
+  const nm=n=>{n=(n||"").trim()||"an unnamed place";return /^the\s/i.test(n)?"the "+n.slice(4):n;};
+  const of=p=>{const t=PLACE_TYPES[placeType(p)]||PLACE_TYPES.barony;return `the ${t.label==="Region"?"region":t.label} of ${nm(p.name)}`;};
+  const me=(kind||"settlement")==="settlement"?`the settlement of ${nm(name)}`:nm(name);
+  if(!chain.length)return `Where ${me} lies is not yet known.`;
+  const last=chain[chain.length-1],anc=chain.slice(0,-1);
+  const same=(last.name||"").trim().toLowerCase()===(name||"").trim().toLowerCase();
+  const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
+  if(!anc.length)return `Within ${of(last)} ${same?"stands":"lies"} ${me}.`;
+  return `Within ${anc.map((a,i)=>(i?"in ":"")+of(a)).join(", ")}, lies ${of(last)} — and ${same?"at its heart":"within it"}, ${me}.`;
+};
 const kindLabel=k=>(PLACE_KINDS.find(x=>x[0]===(k||"settlement"))||PLACE_KINDS[0])[1];
 const settlementIcon=s=>{const own=imgSrc(s.iconImg);if(own)return{img:own,blend:false};if(s.iconKey&&BARONY_ICONS[s.iconKey])return{img:CLEAN_ICONS[s.iconKey]||BARONY_ICONS[s.iconKey],blend:false};return{img:null,blend:false};};
 
@@ -2416,7 +2434,7 @@ function MapExplorer({data,isDM,onOpenLore}){
   const pins=isBarony?sets.filter(s=>sameParent({parentId:s.placeId},cur.id)&&s.mapX!=null&&(isDM||entryVisible(s))).map(s=>{
     const ic=settlementIcon(s);const hl=plainLinks(shownText(s,"hoverLore",isDM));
     return{id:"s:"+s.id,lat:s.mapY,lng:s.mapX,img:ic.img,size:s.iconSize||90,aspect:s.iconAspect||0.75,label:!ic.img&&(s.placeKind||"settlement")!=="settlement"?s.name:null,hidden:!entryVisible(s),selected:sel&&sel.id==="s:"+s.id,
-      tip:`<b>${escHtml(s.name)}</b>${hl?`<br/>${escHtml(hl.length>180?hl.slice(0,180)+"…":hl)}`:""}`};
+      tip:null};
   }):[];
   const zones=isBarony&&cur.mapId==="barony"&&!imgSrc(cur.mapImage)?BARONY_TERRAIN.map(t=>({id:"t:"+t.id,lat:1050-t.iy,lng:t.ix,label:t.name})):[];
 
