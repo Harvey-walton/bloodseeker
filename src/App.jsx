@@ -268,7 +268,9 @@ const DEFAULT_SECTIONS=[
   {id:"people",label:"People",icon:"👥",group:true},
   {id:"allies",label:"Allies",icon:"🤝",parent:"people"},
   {id:"enemies",label:"Enemies",icon:"💀",parent:"people"},
+  {id:"people_general",label:"General",icon:"👤",parent:"people"},
   {id:"factions",label:"Factions",icon:"⚔️"},
+  {id:"items",label:"Items",icon:"💎"},
   {id:"settlements",label:"Settlements",icon:"🏰"},
   {id:"history",label:"History",icon:"📖"},
   {id:"sessions",label:"Session Details",icon:"📋"},
@@ -398,18 +400,35 @@ function newLinkedEntry(sec,name,hidden){
   const e={...EMPTY_ENTRY(),id:Date.now()+Math.random(),name};
   if(sec==="settlements"){e.placeId=null;e.placeKind="settlement";}
   if(hidden)e.reveal={entry:false,fields:{portrait:true,hoverLore:true},spans:{}};
+  e.quick=true;e.tidy=true;e._ed=Date.now();
   e._ts=Date.now();return e;
 }
 function linkEntries(lore){
-  const out=[];Object.keys(lore||{}).forEach(sec=>{if(sec==="__customSections"||!Array.isArray(lore[sec]))return;lore[sec].forEach(e=>{if(e&&(e.name||"").trim())out.push({name:e.name.replace(/[\[\]]/g,""),sec,id:e.id});});});
+  const out=[];Object.keys(lore||{}).forEach(sec=>{if(sec==="__customSections"||!Array.isArray(lore[sec]))return;if(sec==="sessionNotes")return;lore[sec].forEach(e=>{if(e&&(e.name||"").trim())out.push({name:e.name.replace(/[\[\]]/g,""),sec,id:e.id});});});
   return out;
 }
-const sectionIcon=sec=>({regions:"🌍",allies:"🤝",enemies:"💀",factions:"⚔️",settlements:"🏰",history:"📖",sessions:"📋",terrain:"🗺"}[sec]||"📌");
+const sectionIcon=sec=>({regions:"🌍",allies:"🤝",enemies:"💀",people_general:"👤",factions:"⚔️",items:"💎",settlements:"🏰",history:"📖",sessions:"📋",terrain:"🗺"}[sec]||"📌");
+// the four quick choices when you @ a new name
+const QUICK_TYPES=[["people_general","👤","Person"],["factions","⚔️","Faction"],["items","💎","Item"],["settlements","📍","Place"]];
+// where the typing cursor sits inside a textarea (px from its top), so the @ menu can open right under it
+function caretY(el){
+  try{const cs=getComputedStyle(el);const d=document.createElement("div");
+    ["fontFamily","fontSize","fontWeight","lineHeight","letterSpacing","paddingTop","paddingLeft","paddingRight","paddingBottom","borderTopWidth","borderLeftWidth","boxSizing"].forEach(k=>{d.style[k]=cs[k];});
+    d.style.position="absolute";d.style.visibility="hidden";d.style.whiteSpace="pre-wrap";d.style.wordWrap="break-word";d.style.width=el.offsetWidth+"px";d.style.top="0";d.style.left="-9999px";
+    d.textContent=el.value.slice(0,el.selectionStart);const sp=document.createElement("span");sp.textContent="\u200b";d.appendChild(sp);document.body.appendChild(d);
+    const lh=parseFloat(cs.lineHeight)||20;const y=sp.offsetTop+lh-el.scrollTop;document.body.removeChild(d);return y;}catch(e){return null;}
+}
 // Text box where typing @ suggests wiki entries to link
-function MentionTextarea({value,onCommit,style,className,placeholder}){
+function MentionTextarea({value,onCommit,style,className,placeholder,autoFocus,grow,live,onDone,noHint}){
   const ctx=useContext(LinkCtx);const ref=useRef(null);
   const [q,setQ]=useState(null);const [hi,setHi]=useState(0);
-  useEffect(()=>{if(ref.current&&document.activeElement!==ref.current)ref.current.value=value||"";},[value]);
+  const liveT=useRef(null);
+  const fit=()=>{const el=ref.current;if(grow&&el){el.style.height="auto";el.style.height=(el.scrollHeight+4)+"px";}};
+  useEffect(()=>{if(ref.current&&document.activeElement!==ref.current)ref.current.value=value||"";fit();},[value]);
+  useEffect(()=>{if(autoFocus&&ref.current){const el=ref.current;el.focus();const n=el.value.length;el.setSelectionRange(n,n);fit();}},[]);
+  useEffect(()=>()=>clearTimeout(liveT.current),[]);
+  // keep saving while someone writes a long note, not only when they click away
+  const onType=()=>{check();fit();if(live){clearTimeout(liveT.current);liveT.current=setTimeout(()=>{if(ref.current)onCommit(ref.current.value);},1200);}};
   // only suggest what this person is allowed to see
   const all=((ctx&&ctx.entries)||[]).filter(e=>!ctx.can||ctx.can(e.sec,e.id));
   const matches=q?all.filter(e=>e.name.toLowerCase().includes(q.query.toLowerCase())).slice(0,8):[];
@@ -418,7 +437,7 @@ function MentionTextarea({value,onCommit,style,className,placeholder}){
   const check=()=>{
     const el=ref.current;if(!el)return;const pos=el.selectionStart;const before=el.value.slice(0,pos);
     const m=/(^|[\s(>"'])@([^@\n\[\]()]{0,40})$/.exec(before);
-    if(m&&!/\s{2}/.test(m[2])){setQ({start:pos-m[2].length-1,end:pos,query:m[2]});setHi(0);}else setQ(null);
+    if(m&&!/\s{2}/.test(m[2])){setQ({start:pos-m[2].length-1,end:pos,query:m[2],y:grow?caretY(el):null});setHi(0);}else setQ(null);
   };
   const choose=e=>{
     const el=ref.current;if(!el||!q)return;
@@ -427,6 +446,8 @@ function MentionTextarea({value,onCommit,style,className,placeholder}){
     const c=q.start+ins.length;el.focus();el.setSelectionRange(c,c);setQ(null);setMkOpen(false);
   };
   const make=sec=>{const name=q.query.trim().replace(/[\[\]()]/g,"");const id=ctx.create(sec,name);if(id!=null)choose({name,sec,id});};
+  const [moreOpen,setMoreOpen]=useState(false);
+  const quick=QUICK_TYPES.filter(([id])=>(ctx&&ctx.newSections||[]).some(x=>x.id===id));
   const onKey=e=>{
     if(!q||!matches.length)return;
     if(e.key==="ArrowDown"){e.preventDefault();setHi(h=>(h+1)%matches.length);}
@@ -436,19 +457,89 @@ function MentionTextarea({value,onCommit,style,className,placeholder}){
   };
   return(<div style={{position:"relative"}}>
     <textarea ref={ref} defaultValue={value||""} placeholder={placeholder||""} className={className||"sh-input-box"} style={style}
-      onInput={check} onKeyUp={e=>{if(["ArrowLeft","ArrowRight","Home","End"].includes(e.key))check();}} onClick={check} onKeyDown={onKey}
-      onBlur={e=>{setQ(null);setMkOpen(false);onCommit(e.target.value);}}/>
-    {q&&(matches.length>0||canMake)&&<div className="sf-mention-list">
+      onInput={onType} onKeyUp={e=>{if(["ArrowLeft","ArrowRight","Home","End"].includes(e.key))check();}} onClick={check} onKeyDown={onKey}
+      onBlur={e=>{clearTimeout(liveT.current);setQ(null);setMkOpen(false);setMoreOpen(false);onCommit(e.target.value);onDone&&onDone();}}/>
+    {q&&(matches.length>0||canMake)&&<div className="sf-mention-list" style={q.y!=null?{top:q.y+2,marginTop:0,left:12,maxWidth:"calc(100% - 24px)"}:undefined}>
       {matches.length>0&&<div style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".08em",color:"var(--ink3)",padding:"4px 8px"}}>LINK TO…</div>}
       {matches.map((e,i)=><div key={e.sec+e.id} onMouseDown={ev=>{ev.preventDefault();choose(e);}} onMouseEnter={()=>setHi(i)} className={`sf-mention-item${i===hi?" on":""}`}>{sectionIcon(e.sec)} {e.name}</div>)}
-      {canMake&&(!mkOpen
-        ?<div onMouseDown={ev=>{ev.preventDefault();setMkOpen(true);}} className="sf-mention-item" style={{borderTop:matches.length?"1px solid var(--border)":"none",color:"var(--gold)"}}>＋ Create new entry “{q.query.trim()}”…</div>
-        :<div style={{borderTop:matches.length?"1px solid var(--border)":"none"}}>
-          <div style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".08em",color:"var(--ink3)",padding:"4px 8px"}}>CREATE “{q.query.trim().toUpperCase()}” IN…</div>
-          <div style={{maxHeight:220,overflowY:"auto"}}>{(ctx.newSections||[]).map(x=><div key={x.id} onMouseDown={ev=>{ev.preventDefault();make(x.id);}} className="sf-mention-item">{x.icon} {x.label}</div>)}</div>
-        </div>)}
+      {canMake&&<div style={{borderTop:matches.length?"1px solid var(--border)":"none",padding:"5px 8px 7px"}}>
+          <div style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".08em",color:"var(--ink3)",marginBottom:5}}>{matches.length?"OR ":""}NEW: “{q.query.trim().toUpperCase()}” IS A…</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+            {quick.map(([id,ic,lb])=><button key={id} type="button" className="sf-quick-type" onMouseDown={ev=>{ev.preventDefault();make(id);}} style={{fontFamily:"Crimson Pro,serif",fontSize:13,padding:"3px 9px",border:"1px solid var(--gold2)",background:"rgba(196,154,48,0.12)",color:"var(--ink)",borderRadius:12,cursor:"pointer"}}>{ic} {lb}</button>)}
+          </div>
+          {!moreOpen?<div onMouseDown={ev=>{ev.preventDefault();setMoreOpen(true);}} style={{fontSize:11.5,color:"var(--ink3)",fontStyle:"italic",marginTop:5,cursor:"pointer"}}>…or put it somewhere else</div>
+          :<div style={{maxHeight:180,overflowY:"auto",borderTop:"1px solid var(--border)",marginTop:5}}>{(ctx.newSections||[]).map(x=><div key={x.id} onMouseDown={ev=>{ev.preventDefault();make(x.id);}} className="sf-mention-item" style={{fontSize:12.5}}>{x.icon} {x.label}</div>)}</div>}
+        </div>}
     </div>}
-    <div style={{fontSize:10,color:"var(--ink3)",marginTop:2,fontStyle:"italic",opacity:.75}}>Type @ to link another entry</div>
+    {!noHint&&<div style={{fontSize:10,color:"var(--ink3)",marginTop:2,fontStyle:"italic",opacity:.75}}>Type @ to link another entry</div>}
+  </div>);
+}
+
+/* ════ SESSION NOTEBOOK — one long page per player, saved on its own so everyone can write at once ════ */
+const NB_LINE=28;
+const nbPaper={backgroundImage:`repeating-linear-gradient(to bottom,transparent 0,transparent ${NB_LINE-1}px,rgba(154,112,32,0.16) ${NB_LINE-1}px,rgba(154,112,32,0.16) ${NB_LINE}px)`,backgroundPosition:"0 10px",lineHeight:NB_LINE+"px",fontSize:15.5,fontFamily:"Crimson Pro,serif",color:"var(--ink)",padding:"10px 16px 18px",minHeight:NB_LINE*12+28};
+function NotebookBox({label,value,onCommit,canEdit}){
+  const ctx=useContext(LinkCtx);const [ed,setEd]=useState(false);
+  const has=!!(value||"").trim();
+  return(<div className="sf-notebook" style={{background:"#fbf6ea",border:"1px solid var(--border2)",borderRadius:6,boxShadow:"0 1px 6px rgba(60,40,10,0.12)",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div style={{fontFamily:"Cinzel",fontSize:12,letterSpacing:".08em",color:"var(--gold)",padding:"9px 16px 7px",borderBottom:"2px solid rgba(163,36,30,0.35)",background:"rgba(196,154,48,0.08)",display:"flex",alignItems:"center",gap:8,borderRadius:"6px 6px 0 0"}}>
+      <span style={{flex:1}}>✒️ {label}</span>{canEdit&&!ed&&<span style={{fontSize:9.5,color:"var(--ink3)",fontFamily:"Crimson Pro",fontStyle:"italic",letterSpacing:0}}>tap to write · @ to link</span>}
+    </div>
+    {ed&&canEdit
+      ?<MentionTextarea value={value||""} onCommit={onCommit} autoFocus grow live noHint onDone={()=>setEd(false)} placeholder="Write anything… type @ to link a person, place or thing" className="sf-nb-text"
+          style={{...nbPaper,width:"100%",border:"none",outline:"none",resize:"none",display:"block",overflow:"hidden"}}/>
+      :<div className="sf-nb-text" onClick={e=>{if(e.target.closest&&e.target.closest("a"))return;if(canEdit)setEd(true);}} style={{...nbPaper,whiteSpace:"pre-wrap",cursor:canEdit?"text":"default",wordBreak:"break-word"}}>
+        {has?richNodes(value,ctx):<span style={{color:"var(--ink3)",fontStyle:"italic",opacity:.7}}>{canEdit?"Tap here to start writing…":"Nothing written yet."}</span>}</div>}
+  </div>);
+}
+const nbId=(sid,cid)=>`${sid}__${cid}`;
+
+/* ════ WHO LINKS TO WHOM — powers "First met", "Appears in" and "Mentioned in" ════ */
+function buildMentions(lore){
+  const idx={};const re=new RegExp(LINK_RE.source,"g");
+  Object.keys(lore||{}).forEach(sec=>{
+    if(sec==="__customSections"||!Array.isArray(lore[sec]))return;
+    lore[sec].forEach(e=>{if(!e)return;
+      Object.keys(e).forEach(f=>{const t=e[f];if(typeof t!=="string"||t.indexOf("(lore:")<0)return;
+        re.lastIndex=0;let m;while((m=re.exec(t))){if(m[2]===sec&&String(m[3])===String(e.id))continue;const k=m[2]+":"+m[3];(idx[k]=idx[k]||[]).push({sec,id:e.id,f,pos:m.index});}});});
+  });
+  return idx;
+}
+const sessionNum=e=>{const n=parseInt(e&&e.sessionNumber,10);if(!isNaN(n))return n;const m=/(\d+)/.exec((e&&e.name)||"");return m?parseInt(m[1],10):9999;};
+
+/* ════ SEARCH THE WHOLE WIKI (top bar) ════ */
+const SEARCH_TEXT_FIELDS=["description","lore","abilities","relationships","keyEvents","hoverLore","q_who","q_met","q_do","q_want","q_other","featsWithParty","tactics"];
+function GlobalSearch({lore,can,full,onOpen}){
+  const [q,setQ]=useState("");const [open,setOpen]=useState(false);const [hi,setHi]=useState(0);
+  const secLabel=useMemo(()=>{const m={};[...DEFAULT_SECTIONS,...((lore&&lore.__customSections)||[])].forEach(x=>{m[x.id]=x.label;});m.settlements="Places";return m;},[lore&&lore.__customSections]);
+  const all=useMemo(()=>{const out=[];Object.keys(lore||{}).forEach(sec=>{if(sec==="__customSections"||sec==="sessionNotes"||!Array.isArray(lore[sec]))return;lore[sec].forEach(e=>{if(e&&(e.name||"").trim()&&can(sec,e.id))out.push({sec,e});});});return out;},[lore,can]);
+  const results=useMemo(()=>{
+    const t=q.trim().toLowerCase();
+    if(!t){const rec=new Map();all.forEach(r=>{if(r.e._ed)rec.set(r.sec+":"+r.e.id,{...r,ts:r.e._ed});});
+      (lore.sessionNotes||[]).forEach(n=>{if(!n._ed)return;const s=(lore.sessions||[]).find(x=>String(x.id)===String(n.sessionId));if(!s||!can("sessions",s.id))return;const k="sessions:"+s.id;const p=rec.get(k);if(!p||p.ts<n._ed)rec.set(k,{sec:"sessions",e:s,ts:n._ed});});
+      return{recent:true,list:[...rec.values()].sort((a,b)=>b.ts-a.ts).slice(0,7)};}
+    const byName=all.filter(r=>r.e.name.toLowerCase().includes(t)).sort((a,b)=>(b.e.name.toLowerCase().startsWith(t)?1:0)-(a.e.name.toLowerCase().startsWith(t)?1:0));
+    const seen=new Set(byName.map(r=>r.sec+":"+r.e.id));const byText=[];
+    all.forEach(r=>{const k=r.sec+":"+r.e.id;if(seen.has(k))return;if(!full&&isControlled(r.e))return;
+      const hit=SEARCH_TEXT_FIELDS.find(f=>plainLinks(r.e[f]||"").toLowerCase().includes(t));if(hit){seen.add(k);byText.push({...r,snip:plainLinks(r.e[hit])});}});
+    (lore.sessionNotes||[]).forEach(n=>{const txt=plainLinks(n.text||"");if(!txt.toLowerCase().includes(t))return;const s=(lore.sessions||[]).find(x=>String(x.id)===String(n.sessionId));if(!s||!can("sessions",s.id))return;const k="sessions:"+s.id;if(seen.has(k))return;seen.add(k);byText.push({sec:"sessions",e:s,snip:txt});});
+    const snip=(txt)=>{const i=txt.toLowerCase().indexOf(t);const a=Math.max(0,i-30);return(a?"…":"")+txt.slice(a,i+t.length+50).replace(/\s+/g," ")+"…";};
+    return{list:[...byName.slice(0,8),...byText.slice(0,8).map(r=>({...r,snip:snip(r.snip)}))]};
+  },[q,all,lore,full,can]);
+  const go=r=>{onOpen(r.sec,r.e.id);setQ("");setOpen(false);document.activeElement&&document.activeElement.blur&&document.activeElement.blur();};
+  return(<div className="sf-gsearch" style={{position:"relative"}}>
+    <input value={q} onChange={e=>{setQ(e.target.value);setHi(0);setOpen(true);}} onFocus={()=>setOpen(true)} onBlur={()=>setTimeout(()=>setOpen(false),150)}
+      onKeyDown={e=>{const L=results.list;if(e.key==="ArrowDown"){e.preventDefault();setHi(h=>Math.min(h+1,L.length-1));}else if(e.key==="ArrowUp"){e.preventDefault();setHi(h=>Math.max(h-1,0));}else if(e.key==="Enter"&&L[hi]){e.preventDefault();go(L[hi]);}else if(e.key==="Escape"){setQ("");e.target.blur();}}}
+      placeholder="🔍 Search the wiki…" style={{fontFamily:"Crimson Pro,serif",fontSize:12.5,background:"rgba(255,240,200,0.08)",border:"1px solid var(--border2)",color:"var(--gold3)",borderRadius:4,padding:"3px 9px",width:open?230:170,outline:"none",transition:"width .2s"}}/>
+    {open&&(results.list.length>0||q.trim())&&<div style={{position:"absolute",top:"calc(100% + 6px)",right:0,width:320,maxHeight:420,overflowY:"auto",background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:6,boxShadow:"0 8px 30px rgba(0,0,0,0.5)",zIndex:3000}}>
+      {results.recent&&<div style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".08em",color:"var(--ink3)",padding:"6px 10px 3px"}}>RECENTLY EDITED</div>}
+      {!results.list.length&&<div style={{padding:"10px 12px",fontSize:13,color:"var(--ink3)",fontStyle:"italic"}}>Nothing found for “{q.trim()}”.</div>}
+      {results.list.map((r,i)=><div key={r.sec+":"+r.e.id} onMouseDown={ev=>{ev.preventDefault();go(r);}} onMouseEnter={()=>setHi(i)}
+        style={{padding:"6px 10px",cursor:"pointer",background:i===hi?"var(--parch3)":"transparent",borderBottom:"1px solid var(--border)"}}>
+        <div style={{display:"flex",gap:7,alignItems:"baseline"}}><span>{sectionIcon(r.sec)}</span><span style={{flex:1,fontFamily:"Crimson Pro",fontSize:14,color:"var(--ink)"}}>{r.e.name}</span><span style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)"}}>{secLabel[r.sec]||""}</span></div>
+        {r.snip&&<div style={{fontSize:11.5,color:"var(--ink3)",fontStyle:"italic",marginLeft:22,marginTop:1,lineHeight:1.35}}>{r.snip}</div>}
+      </div>)}
+    </div>}
   </div>);
 }
 
@@ -549,13 +640,13 @@ const LoreIF=memo(({label,value,field,editMode,onCommit,eyeState,onEye})=>{
 function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   const isDM=!!dmMode;
   // sections come from the data so new sub-tabs appear for everyone straight away
-  const allSections=useMemo(()=>[...(readOnly?DEFAULT_SECTIONS.filter(x=>!x.group).map(x=>({...x,parent:undefined})):DEFAULT_SECTIONS),...(lore.__customSections||[])],[lore.__customSections,readOnly]);
+  const allSections=useMemo(()=>[...(readOnly?DEFAULT_SECTIONS.filter(x=>!x.group&&x.id!=="people_general"&&x.id!=="items").map(x=>({...x,parent:undefined})):DEFAULT_SECTIONS),...(lore.__customSections||[])],[lore.__customSections,readOnly]);
   const secById=id=>allSections.find(x=>x.id===id);
   // whose private "Past" a section belongs to (walks up through sub-tabs)
   const secOwner=id=>sectionOwner(allSections,id);
   const ownsSec=id=>!!(myPast&&secOwner(id)===myPast);
   const seeAll=id=>!previewPlayer&&(isDM||ownsSec(id));
-  const KIND={allies:"ally",enemies:"enemy",factions:"faction",settlements:"settlement",history:"history",sessions:"session",regions:"region",terrain:"terrain"};
+  const KIND={allies:"ally",enemies:"enemy",people_general:"ally",factions:"faction",items:"item",settlements:"settlement",history:"history",sessions:"session",regions:"region",terrain:"terrain"};
   const kindOf=id=>{let x=secById(id),g=0;while(x&&g++<5){if(KIND[x.id])return KIND[x.id];if(x.layout)return x.layout;x=x.parent?secById(x.parent):null;}return"generic";};
   const [previewPlayer,setPreviewPlayer]=useState(false);
   const [wikiEdit,setWikiEdit]=useState(()=>{try{return localStorage.getItem("sf_wiki_edit")==="1";}catch(e){return false;}});
@@ -604,7 +695,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
 
   // Apply a field edit; keeps revealed passages attached to the right words
   const applyField=(i,field,value)=>{
-    const n={...i,[field]:value};
+    const n={...i,[field]:value,_ed:Date.now()};
     if(i.reveal&&(i.reveal.spans||{})[field]&&(i[field]||"")!==(value||"")){
       const spans=(i.reveal.spans||{});
       n.reveal={...i.reveal,spans:{...spans,[field]:remapSpans(spans[field],i[field],value)}};
@@ -656,6 +747,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
     if(s==="regions"){item.placeType="kingdom";item.parentId=null;}
     if(creatingUnder!=null&&s!=="regions"&&s!=="settlements"){item.underId=creatingUnder;setOpenNodes(prev=>new Set([...prev,"e:"+creatingUnder]));}
     if(s==="settlements")item.placeKind="settlement";
+    if(["ally","enemy","faction"].includes(kindOf(s)))item.quick=true;item._ed=Date.now();
     setCreatingUnder(null);
     if(secOwner(s)&&(isDM||ownsSec(s))){item.reveal={entry:false,fields:{},spans:{}};item._ts=Date.now();}
     else if(isDM){item.reveal={entry:false,fields:{portrait:true},spans:{}};item._ts=Date.now();}
@@ -664,6 +756,54 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
     if(s==="settlements")setOpenNodes(prev=>new Set([...prev,"none"]));
   };
   const reqDel=()=>{if(!selItem)return;setDelT({label:selItem.name||"this entry"});};
+  // ＋ New session: "Session 4" with a blank notebook page for every character
+  const newSession=()=>{
+    const list=lore.sessions||[];const n=list.reduce((m,e)=>{const k=sessionNum(e);return k<9999&&k>m?k:m;},0)+1;
+    const d=new Date();const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    const item={...EMPTY_ENTRY(),name:`Session ${n}`,sessionNumber:String(n),sessionDate:ds,notebook:true,_ed:Date.now()};
+    setLore(prev=>({...prev,sessions:[...(prev.sessions||[]),item]}));
+    setOpenSection("sessions");setSel({s:"sessions",id:item.id});setLocal({...item});setEditMode(false);
+  };
+  const saveNote=(sid,cid,text)=>setLore(prev=>{
+    const arr=prev.sessionNotes||[];const id=nbId(sid,cid);const cur=arr.find(x=>x.id===id);
+    if(cur&&(cur.text||"")===(text||""))return prev;
+    if(!cur&&!(text||"").trim())return prev;
+    const n={...(cur||{id,sessionId:sid,charId:cid}),text,_ed:Date.now()};
+    return{...prev,sessionNotes:cur?arr.map(x=>x.id===id?n:x):[...arr,n]};
+  });
+  const tidyList=useMemo(()=>{const out=[];allSections.forEach(x=>{if(x.group)return;(lore[x.id]||[]).forEach(e=>{if(e&&e.tidy&&(seeAll(x.id)||entryVisible(e)))out.push({sec:x.id,e});});});
+    if(realmTree)(lore.settlements||[]).forEach(e=>{if(e&&e.tidy&&(isDM||entryVisible(e))&&!out.some(o=>o.sec==="settlements"&&o.e.id===e.id))out.push({sec:"settlements",e});});
+    return out;},[lore,allSections,isDM,myPast,previewPlayer]);
+  const [tidyOpen,setTidyOpen]=useState(true);
+  // Short page ↔ Full page. Going short deletes the full-page boxes, so if any have writing it asks for OVERRIDE first.
+  const FULL_ONLY={ally:[["Description","description"],["Background & Lore","lore"],["Abilities & Powers","abilities"],["Relationships & Connections","relationships"],["Feats with the Party","featsWithParty"]],
+    enemy:[["Description","description"],["Background & Lore","lore"],["Abilities & Powers","abilities"],["Threat Level","threatLevel"],["Tactics & Weaknesses","tactics"],["Relationships & Connections","relationships"],["Feats with the Party","featsWithParty"]],
+    faction:[["Description","description"],["Background & Lore","lore"],["Abilities & Powers","abilities"],["Relationships & Connections","relationships"]]};
+  const [shortAsk,setShortAsk]=useState(null);
+  const askShort=()=>commitField("quick",true);
+  // Short → Full: the short answers go into the Description (question first), reveals stay on the same words
+  const QLABELS=[["Who are they?","q_who"],["Where did we meet them?","q_met"],["What do they do?","q_do"],["What do they want?","q_want"],["Other","q_other"]];
+  const mergeQuick=i=>{
+    const n={...i,quick:false,_ed:Date.now()};const sp0=((i.reveal||{}).spans)||{};const sp={...sp0};let moved=false;
+    [["description",""],["dm_description","dm_"]].forEach(([target,pre])=>{
+      let out="";const spans=[];
+      QLABELS.forEach(([lbl,f0])=>{const f=pre+f0;const raw=i[f]||"";if(!raw.trim())return;
+        if(out)out+="\n\n";const off=out.length+lbl.length+1;out+=lbl+" "+raw;(sp0[f]||[]).forEach(([a,b])=>spans.push([a+off,b+off]));n[f]="";delete sp[f];moved=true;});
+      if(!out)return;
+      const old=i[target]||"";if(old.trim()){out+="\n\n";const off=out.length;out+=old;(sp0[target]||[]).forEach(([a,b])=>spans.push([a+off,b+off]));}
+      n[target]=out;if(spans.length)sp[target]=normSpans(spans,out.length);else delete sp[target];
+    });
+    if(moved&&i.reveal){n.reveal={...i.reveal,spans:sp};n._ts=Date.now();}
+    return n;
+  };
+  const toFull=()=>{setLore(prev=>({...prev,[sel.s]:prev[sel.s].map(i=>i.id===sel.id?mergeQuick(i):i)}));setLocal(prev=>prev?mergeQuick(prev):prev);};
+  // what of a full-page box this person can actually see (never hints at Josh's hidden text)
+  const seenText=f=>{if(!local)return"";const sp=(((local.reveal||{}).spans||{})[f])||[];return ownedSec&&isControlled(local)&&!privView?visibleText(local[f],sp):(local[f]||"");};
+  const seenDM=f=>{if(!local||dmView)return"";const sp=(((local.reveal||{}).spans||{})["dm_"+f])||[];return visibleText(local["dm_"+f],sp);};
+  const doShort=()=>{const fs=(shortAsk||[]).map(([,f])=>f);
+    const ap=i=>{const n={...i,_ed:Date.now()};fs.forEach(f=>{n[f]="";});if(i.reveal&&i.reveal.spans){const sp={...i.reveal.spans};fs.forEach(f=>{delete sp[f];});n.reveal={...i.reveal,spans:sp};n._ts=Date.now();}return n;};
+    setLore(prev=>({...prev,[sel.s]:prev[sel.s].map(i=>i.id===sel.id?ap(i):i)}));setLocal(prev=>prev?ap(prev):prev);setShortAsk(null);};
+  const mentions=useMemo(()=>buildMentions(lore),[lore]);
   const confirmDel=()=>{
     setLore(prev=>({...prev,[sel.s]:prev[sel.s].filter(i=>i.id!==sel.id).map(i=>String(i.underId)===String(sel.id)?{...i,underId:(selItem&&selItem.underId!=null)?selItem.underId:null,_ts:Date.now()}:i)}));
     setSel({s:null,id:null});setLocal(null);setDelT(null);setEditMode(false);
@@ -774,9 +914,14 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
     create:readOnly?null:(sec,name)=>{const e=newLinkedEntry(sec,name,isDM||ownsSec(sec));if(secOwner(sec)&&(isDM||ownsSec(sec)))e.reveal={entry:false,fields:{},spans:{}};setLore(prev=>({...prev,[sec]:[...(prev[sec]||[]),e]}));return e.id;},
     open:(sec,id)=>{if(!lore[sec])return;goEntry(sec,(lore[sec].find(x=>String(x.id)===String(id))||{}).id);},
     can:(sec,id)=>{const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));if(!e)return false;if(readOnly||seeAll(sec))return true;return sec==="regions"?placeVisible(getPlaces(lore),e,false):entryVisible(e);}};
-  return(<LinkCtx.Provider value={innerLinks}><div style={{display:"flex",height:"100%",background:"var(--dark)"}}>
+  return(<LinkCtx.Provider value={innerLinks}><div className={`sf-lore${local?" has-sel":""}`} style={{display:"flex",height:"100%",background:"var(--dark)"}}>
     {promptOpen&&local&&<ImagePromptBox entry={local} person={hasPhys(sel.s)} canSee={f=>!isControlled(local)||privView||fieldVisible(local,f)} onClose={()=>setPromptOpen(false)}/>}
     {delT&&!readOnly&&<DelModal name={delT.label} onOk={confirmDel} onNo={()=>setDelT(null)}/>}
+    {shortAsk&&local&&<TypeConfirmModal title="Clear these boxes?" word="override" okLabel="Clear them" onOk={doShort} onNo={()=>setShortAsk(null)}>
+      This <strong>deletes</strong> the writing in these boxes on <strong>{local.name||"this page"}</strong>:
+      <ul style={{margin:"8px 0 0 20px"}}>{shortAsk.map(([l,f])=><li key={f}>{l}</li>)}</ul>
+      <div style={{marginTop:8,fontSize:12.5,color:"var(--ink3)"}}>Only do this once you've moved what you need into the short questions. It can't be undone.</div>
+    </TypeConfirmModal>}
     {delSec&&!readOnly&&<DelModal name={(lore[delSec.id]||[]).length?`the "${delSec.label}" tab and the ${(lore[delSec.id]||[]).length} entr${(lore[delSec.id]||[]).length===1?"y":"ies"} in it`:`the "${delSec.label}" tab`} onOk={()=>{const id=delSec.id;const par=delSec.parent;
       setLore(prev=>{const n={...prev,__customSections:(prev.__customSections||[]).filter(c=>c.id!==id)};delete n[id];return n;});
       if(openSection===id)setOpenSection(par&&secById(par)&&!secById(par).group?par:"allies");if(sel.s===id){setSel({s:null,id:null});setLocal(null);}setDelSec(null);}} onNo={()=>setDelSec(null)}/>}
@@ -785,6 +930,15 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
     <div className="sf-lore-side" style={{width:220,display:"flex",flexDirection:"column",background:"var(--parch2)",borderRight:"2px solid var(--gold2)",flexShrink:0,overflow:"hidden"}}>
       {readOnly&&<div className="tales-banner" style={{margin:"8px",fontSize:9}}>📖 BLOOD SEEKER — ARCHIVED (READ ONLY)</div>}
       <div style={{overflowY:"auto",flex:1}}>
+        {!readOnly&&tidyList.length>0&&<div style={{borderBottom:"2px solid var(--gold2)",background:"rgba(196,154,48,0.12)"}}>
+          <div onClick={()=>setTidyOpen(o=>!o)} style={{padding:"9px 8px 9px 11px",cursor:"pointer",fontSize:12,fontFamily:"Cinzel",letterSpacing:"0.04em",color:"var(--gold)",display:"flex",alignItems:"center",gap:7,userSelect:"none"}}>
+            <span>✒️</span><span style={{flex:1}}>To tidy</span>
+            <span style={{fontSize:9,background:"var(--gold2)",color:"var(--dark)",borderRadius:10,padding:"0 6px"}}>{tidyList.length}</span>
+            <span style={{fontSize:9,color:"var(--ink3)",transform:tidyOpen?"rotate(180deg)":"none",display:"inline-block"}}>▼</span></div>
+          {tidyOpen&&tidyList.map(({sec,e})=>{const on=sel.s===sec&&String(sel.id)===String(e.id);return(
+            <div key={sec+":"+e.id} onClick={()=>goEntry(sec,e.id)} style={{padding:"6px 8px 6px 14px",cursor:"pointer",fontSize:12,fontFamily:"Crimson Pro",display:"flex",gap:6,alignItems:"center",background:on?"var(--parch4)":"transparent",color:on?"var(--gold)":"var(--ink)",borderTop:"1px solid var(--border)"}}>
+              <span style={{fontSize:11}}>{sectionIcon(sec)}</span><span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.name||"Unnamed"}</span></div>);})}
+        </div>}
         {(()=>{const base=allSections.filter(s=>!(realmTree&&s.id==="settlements"));const out=[];
           const isAnc=(a,b)=>{let x=secById(b),g=0;while(x&&g++<6){if(x.id===a)return true;x=x.parent?secById(x.parent):null;}return false;};
           const walk=(s,d)=>{out.push({s,depth:d});if(isAnc(s.id,openSection))base.filter(c=>c.parent===s.id).forEach(c=>walk(c,d+1));};
@@ -805,6 +959,8 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
               </button>}
             </div>
             {isO&&s.group&&<div style={{background:"var(--parch)",padding:"6px 10px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>Pick a sub-tab{allSections.some(c=>c.parent===s.id)?"":" — or add one"}.</div>}
+            {isO&&s.id==="sessions"&&!readOnly&&<div style={{padding:"6px 8px",background:"var(--parch)",borderBottom:"1px solid var(--border)"}}>
+              <button className="btn" onClick={newSession} style={{width:"100%",fontSize:11,padding:"5px",fontFamily:"Cinzel",background:"var(--gold2)",color:"var(--dark)",borderColor:"var(--gold)",fontWeight:600}}>＋ New session</button></div>}
             {isO&&!s.group&&<div style={{background:"var(--parch)"}}>
               {listEditMode&&<div style={{padding:"3px 10px",fontSize:9,color:"var(--ink3)",fontFamily:"Cinzel",letterSpacing:"0.05em",borderBottom:"1px solid var(--border)",background:"var(--parch2)"}}>DRAG TO REORDER · 📍 TO PIN</div>}
               {!listEditMode&&<div style={{padding:"5px 8px",borderBottom:"1px solid var(--border)"}}>
@@ -869,8 +1025,11 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
     </div>
 
     {/* RIGHT detail */}
-    <div ref={detailRef} style={{flex:1,overflowY:"auto",background:"var(--parch)",display:"flex",flexDirection:"column"}}>
-      {(isDM||ownerSel)&&!readOnly&&<div style={{position:"sticky",top:0,zIndex:5,background:isDM?"rgba(80,10,10,0.92)":"rgba(60,40,10,0.92)",color:"#ffcccc",fontFamily:"Cinzel",fontSize:10,letterSpacing:"0.06em",padding:"6px 14px",display:"flex",alignItems:"center",gap:10}}>
+    <div ref={detailRef} className="sf-lore-main" style={{flex:1,minWidth:0,overflowY:"auto",background:"var(--parch)",display:"flex",flexDirection:"column"}}>
+      {local&&<div className="sf-phone-only" style={{position:"sticky",top:0,zIndex:6,background:"var(--parch2)",borderBottom:"1px solid var(--border2)",padding:"6px 10px",alignItems:"center",gap:8}}>
+        <button className="btn" onClick={()=>{setSel({s:null,id:null});setLocal(null);setEditMode(false);}} style={{fontSize:12,padding:"4px 12px",fontFamily:"Cinzel"}}>← {(allSections.find(x=>x.id===(sel.s==="settlements"&&realmTree?"regions":sel.s))||{}).label||"Back"}</button>
+      </div>}
+      {(isDM||ownerSel)&&!readOnly&&<div className="sf-dm-bar" style={{position:"sticky",top:0,zIndex:5,background:isDM?"rgba(80,10,10,0.92)":"rgba(60,40,10,0.92)",color:"#ffcccc",fontFamily:"Cinzel",fontSize:10,letterSpacing:"0.06em",padding:"6px 14px",display:"flex",alignItems:"center",gap:10}}>
         <span>{isDM?"⚔ ":"📜 "}{previewPlayer?"PREVIEWING AS ANOTHER PLAYER":isDM?"DM OVERVIEW — RED IS HIDDEN FROM PLAYERS · HIGHLIGHT TEXT, THEN REVEAL":`${possessive(myPast).toUpperCase()} PAST — RED IS HIDDEN FROM THE OTHER PLAYERS · HIGHLIGHT TEXT, THEN REVEAL`}</span>
         <button onClick={()=>{setPreviewPlayer(p=>!p);setEditMode(false);}} style={{marginLeft:"auto",fontFamily:"Cinzel",fontSize:10,background:"transparent",border:"1px solid rgba(255,180,180,0.5)",color:"#ffcccc",borderRadius:3,padding:"2px 8px",cursor:"pointer"}}>{previewPlayer?"Back to DM view":<><Eye open={true} size={11}/> Preview as player</>}</button>
       </div>}
@@ -884,12 +1043,20 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
         <h3 style={{fontFamily:"Cinzel",fontSize:16,color:"var(--ink3)",marginBottom:8}}>{(allSections.find(s=>s.id===openSection)||{}).label||"Lore"}</h3>
         <p style={{fontSize:14,color:"var(--ink3)",fontStyle:"italic"}}>{readOnly?"Archived — read only":"Select or create an entry"}</p>
       </div>:
-      <div className="sf-lore-detail" style={{padding:"24px 32px",maxWidth:820,margin:"0 auto"}}>
+      <div className="sf-lore-detail" style={{padding:"24px 32px",maxWidth:local.notebook&&sel.s==="sessions"?1240:820,margin:"0 auto"}}>
         {readOnly&&<div className="tales-banner">📖 BLOOD SEEKER — ARCHIVED READ ONLY</div>}
+        {!readOnly&&local.tidy&&<div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"rgba(196,154,48,0.14)",border:"1px dashed var(--gold2)",borderRadius:6,padding:"8px 12px",marginBottom:14}}>
+          <span style={{fontSize:16}}>✒️</span>
+          <span style={{flex:1,minWidth:180,fontSize:13,color:"var(--ink2)",fontFamily:"Crimson Pro"}}><strong style={{fontFamily:"Cinzel",fontSize:11,letterSpacing:".06em",color:"var(--gold)"}}>TO TIDY</strong> — added during play. Fill in what you know, add a picture, move it if it belongs somewhere else, then tick it off.</span>
+          {canEdit&&<button className="btn" onClick={()=>commitField("tidy",false)} style={{fontSize:11,padding:"4px 12px",background:"var(--gold2)",color:"var(--dark)",borderColor:"var(--gold)",fontWeight:600}}>✓ Tidied</button>}
+        </div>}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
           <div style={{flex:1,marginRight:14}}>
             {editMode&&!readOnly?<ShInput value={local.name||""} onCommit={v=>commitField("name",v)} style={{fontSize:24,fontFamily:"Cinzel",color:"var(--gold)",background:"transparent",border:"none",borderBottom:"2px solid var(--gold2)",padding:"2px 0",width:"100%",outline:"none"}} className=""/>
               :<h2 style={{fontSize:24,color:"var(--gold)",letterSpacing:"0.06em"}}>{local.name||"Unnamed"}</h2>}
+            {sel.s==="sessions"&&local.notebook&&(editMode&&canEdit
+              ?<div style={{marginTop:6,display:"flex",gap:8,alignItems:"center",fontSize:12,color:"var(--ink3)"}}>📅 <input type="date" defaultValue={local.sessionDate||""} onChange={e=>commitField("sessionDate",e.target.value)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",borderRadius:4,padding:"3px 6px",fontSize:13}}/></div>
+              :local.sessionDate?<p style={{fontSize:13,color:"var(--ink3)",marginTop:3,fontStyle:"italic",fontFamily:"Cinzel"}}>📅 {(()=>{const d=new Date(local.sessionDate+"T12:00");return isNaN(d)?local.sessionDate:d.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});})()}</p>:null)}
             {!editMode&&(()=>{const rs=(privView||fieldVisible(local,"raceSp"))?local.raceSp:"";const ag=(privView||fieldVisible(local,"age"))?local.age:"";
               return rs?<p style={{fontSize:13,color:"var(--ink3)",marginTop:3,fontStyle:"italic",fontFamily:"Cinzel"}}>{rs}{ag?` · Age ${ag}`:""}</p>:null;})()}
           </div>
@@ -967,13 +1134,50 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
           const descShown=!!(local.description||"").trim();
           return(<>{<LoreVF label={ed2?"Map text — shown when the place is clicked on the map":""} value={v} field="hoverLore" multi height={60} editMode={ed2} onCommit={commitField} eyeState={ctrl2&&privView?fieldVisible(local,"hoverLore"):undefined} onEye={toggleField}/>}
             {!ed2&&(v||"").trim()&&descShown&&<Ornament/>}</>);})()}
-        {TF("Description","description",100)}
-        {TF("Background & Lore","lore",120)}
-        {["ally","enemy","faction"].includes(kindOf(sel.s))&&TF("Abilities & Powers","abilities",90)}
-        {kindOf(sel.s)==="enemy"&&<>{SF("Threat Level","threatLevel")}{TF("Tactics & Weaknesses","tactics",90)}</>}
-        {!["session","history"].includes(kindOf(sel.s))&&TF("Relationships & Connections","relationships",90)}
-        {["ally","enemy"].includes(kindOf(sel.s))&&TF("Feats with the Party","featsWithParty",90)}
-        {kindOf(sel.s)==="session"&&TF("Key Events & Decisions","keyEvents",120)}
+        {canEdit&&!dmView&&["ally","enemy","faction"].includes(kindOf(sel.s))&&sel.s!=="regions"&&<div style={{display:"flex",justifyContent:"flex-end",margin:"-6px 0 10px"}}>
+          <div className="sf-pagetoggle" style={{display:"inline-flex",border:"1px solid var(--border2)",borderRadius:14,overflow:"hidden",fontSize:11.5,fontFamily:"Cinzel",letterSpacing:".03em"}}>
+            {[["short","📄 Short page",!!local.quick],["full","📜 Full page",!local.quick]].map(([k,l,on])=><button key={k} onClick={()=>{if(on)return;k==="full"?toFull():askShort();}}
+              title={k==="full"?"Show every box":"Just the quick questions"} style={{border:"none",padding:"4px 12px",cursor:on?"default":"pointer",background:on?"var(--gold2)":"transparent",color:on?"var(--dark)":"var(--ink3)",fontWeight:on?600:400,fontFamily:"inherit",fontSize:"inherit"}}>{l}</button>)}
+          </div></div>}
+        {(()=>{
+          const kd=kindOf(sel.s);
+          // Session notebook: a long page for every character
+          if(kd==="session"&&local.notebook){
+            const notes=(lore.sessionNotes||[]).filter(n=>String(n.sessionId)===String(local.id));
+            const boxes=characters.map((c,i)=>({cid:c.id,label:`${possessive(c.name||`Player ${i+1}`)} notes`}));
+            notes.forEach(n=>{if(!boxes.some(b=>String(b.cid)===String(n.charId))&&(n.text||"").trim())boxes.push({cid:n.charId,label:"Older notes"});});
+            return(<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(300px,100%),1fr))",gap:16,marginBottom:18}}>
+              {boxes.map(b=>{const n=notes.find(x=>String(x.charId)===String(b.cid));return <NotebookBox key={b.cid} label={b.label} value={n?n.text:""} canEdit={canEdit} onCommit={v=>saveNote(local.id,b.cid,v)}/>;})}
+              {!boxes.length&&<div style={{color:"var(--ink3)",fontStyle:"italic"}}>Make a character sheet first — each character gets their own page here.</div>}
+            </div>);
+          }
+          const QF={ally:[["Who are they?","q_who",70],["Where did we meet them?","q_met",60],["What do they do?","q_do",60],["What do they want?","q_want",60],["Other","q_other",80]],
+            faction:[["Who are they?","q_who",70],["What do they want?","q_want",60],["Other","q_other",80]]};
+          const qset=QF[kd==="enemy"?"ally":kd];
+          if(kd==="item")return <>{TF("Description","description",110)}</>;
+          if(qset&&local.quick&&!dmView){
+            const left=(FULL_ONLY[kd]||[]).filter(([,f])=>seenText(f).trim()||seenDM(f).trim());
+            const clearable=left.filter(([,f])=>(local[f]||"").trim());
+            return(<>
+              {qset.map(([l,f,h])=>TF(l,f,h))}
+              {left.length>0&&<><div style={{display:"flex",alignItems:"center",gap:10,margin:"18px 0 8px"}}><div style={{flex:1,height:1,background:"var(--border2)"}}/><span style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".1em",color:"var(--ink3)"}}>FROM THE FULL PAGE</span><div style={{flex:1,height:1,background:"var(--border2)"}}/></div>
+                <div style={{fontSize:12,color:"var(--ink3)",fontStyle:"italic",marginBottom:10}}>Move anything you want into the questions above. A box disappears here once it's empty.</div>
+                {left.map(([l,f])=>f==="threatLevel"?<React.Fragment key={f}>{SF(l,f)}</React.Fragment>:TF(l,f,90))}
+                {editMode&&canEdit&&clearable.length>0&&<div style={{margin:"2px 0 12px"}}><button className="btn red" onClick={()=>setShortAsk(clearable)} style={{fontSize:11,padding:"4px 10px"}}>🗑 Clear these boxes…</button></div>}
+              </>}
+            </>);
+          }
+          return(<>
+            {qset&&qset.filter(([,f])=>(local[f]||"").trim()||(local["dm_"+f]||"").trim()).map(([l,f,h])=>TF(l,f,h))}
+            {TF("Description","description",100)}
+            {TF("Background & Lore","lore",120)}
+            {["ally","enemy","faction"].includes(kd)&&TF("Abilities & Powers","abilities",90)}
+            {kd==="enemy"&&<>{SF("Threat Level","threatLevel")}{TF("Tactics & Weaknesses","tactics",90)}</>}
+            {!["session","history"].includes(kd)&&TF("Relationships & Connections","relationships",90)}
+            {["ally","enemy"].includes(kd)&&TF("Feats with the Party","featsWithParty",90)}
+            {kd==="session"&&TF("Key Events & Decisions","keyEvents",120)}
+          </>);
+        })()}
         
         {sel.s==="settlements"&&editMode&&canEdit&&(()=>{
           const places=getPlaces(lore);const baronies=places.filter(p=>placeType(p)==="barony");const pl=placeById(places,local.placeId);
@@ -1005,7 +1209,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
             :<button className="btn" onClick={()=>{setCreating(sel.s);setCreatingUnder(local.id);setNewName("");}} style={{fontSize:11}}>＋ Add under {local.name||"this entry"}</button>}
         </div>}
         {editMode&&!readOnly&&(()=>{const topOf=x=>{let c=secById(x),g=0;while(c&&c.parent&&secById(c.parent)&&g++<5)c=secById(c.parent);return c?c.id:x;};const top=topOf(sel.s);
-          const fam=allSections.filter(x=>!x.group&&topOf(x.id)===top&&(secOwner(x.id)||null)===(secOwner(sel.s)||null));
+          const fam=allSections.filter(x=>!x.group&&topOf(x.id)===top&&((secOwner(x.id)||null)===(secOwner(sel.s)||null)||(ownsSec(x.id)&&!secOwner(sel.s))));
           if(fam.length<2||sel.s==="regions"||sel.s==="settlements")return null;
           return(<div style={{marginBottom:12}}><div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>MOVE TO</div>
             <select value={sel.s} onChange={e=>moveEntry(e.target.value)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 8px",fontSize:14,outline:"none"}}>
@@ -1020,6 +1224,24 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
             </select>:local.linkedCharId?<p style={{fontSize:14,color:"var(--ink)"}}>{(characters.find(c=>String(c.id)===String(local.linkedCharId))||{}).name||"Unknown"}</p>:null}
           </div>
         </>}
+        {!readOnly&&!editMode&&(()=>{
+          const src=mentions[sel.s+":"+local.id]||[];if(!src.length)return null;
+          const seenLink=(e,sec,f,pos)=>{if(dmView)return true;const sp=((e.reveal||{}).spans||{})[f];const inSp=!!(sp&&sp.some(([a,b])=>pos>=a&&pos<b));
+            if(f.indexOf("dm_")===0)return inSp;if(isControlled(e)&&secOwner(sec)&&!seeAll(sec))return inSp;if(isControlled(e)&&(f==="hoverLore"||f==="tags")&&!seeAll(sec))return fieldVisible(e,f);return true;};
+          const sess=new Map(),other=new Map();
+          src.forEach(r=>{
+            if(r.sec==="sessionNotes"){const n=(lore.sessionNotes||[]).find(x=>String(x.id)===String(r.id));if(!n)return;const se=(lore.sessions||[]).find(x=>String(x.id)===String(n.sessionId));if(!se||!innerLinks.can("sessions",se.id))return;sess.set(String(se.id),se);return;}
+            const e=(lore[r.sec]||[]).find(x=>String(x.id)===String(r.id));if(!e||!innerLinks.can(r.sec,e.id)||!seenLink(e,r.sec,r.f,r.pos))return;
+            if(r.sec==="sessions")sess.set(String(e.id),e);else other.set(r.sec+":"+e.id,{sec:r.sec,e});});
+          const S2=[...sess.values()].sort((a,b)=>sessionNum(a)-sessionNum(b));const O=[...other.values()];
+          if(!S2.length&&!O.length)return null;
+          const chip=(sec,e)=><a key={sec+":"+e.id} className="sf-link" onClick={ev=>{ev.preventDefault();goEntry(sec,e.id);}} style={{cursor:"pointer"}}>{e.name||"Unnamed"}</a>;
+          const row=(lab,items)=><div style={{display:"flex",gap:10,alignItems:"baseline",marginBottom:6,flexWrap:"wrap"}}><span style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",minWidth:96}}>{lab}</span><span style={{flex:1,fontSize:14.5,fontFamily:"Crimson Pro",lineHeight:1.6}}>{items.map((x,i)=><React.Fragment key={i}>{i?<span style={{color:"var(--ink3)"}}> · </span>:null}{x}</React.Fragment>)}</span></div>;
+          return(<div className="sf-backlinks" style={{marginTop:10}}><Ornament/>
+            {S2.length>0&&sel.s!=="sessions"&&row("FIRST MET",[chip("sessions",S2[0])])}
+            {S2.length>0&&row(sel.s==="sessions"?"MENTIONED IN":"APPEARS IN",S2.map(e=>chip("sessions",e)))}
+            {O.length>0&&row("MENTIONED IN",O.map(o=>chip(o.sec,o.e)))}
+          </div>);})()}
       </div>}
       </div>
       {privView&&local&&!editMode&&<div style={{position:"sticky",bottom:0,zIndex:5,background:"var(--parch2)",borderTop:"2px solid var(--gold2)",padding:"10px 18px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -1314,7 +1536,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
     <div style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:12}}>
       <div>
         <div className="sh-section">ABILITY SCORES · SAVING THROWS · SKILLS</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6}}>
+        <div className="sf-abil" style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6}}>
           {ABILITIES.map(ab=>{
             const score=L[ab]||10;const m=calcMod(score);const savP=getSaveProf(ab);const savB=getSaveBonus(ab);
             const sks=SKILLS_BY_AB[ab]||[];
@@ -1428,7 +1650,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
         </div>}
       </div>
       {/* Armour + Currency + Inventory */}
-      <div style={{display:"grid",gridTemplateColumns:"180px 1fr 1fr",gap:10,alignItems:"stretch"}}>
+      <div className="sf-eqgrid" style={{display:"grid",gridTemplateColumns:"180px 1fr 1fr",gap:10,alignItems:"stretch"}}>
         <div className="sh" style={{gridColumn:1,gridRow:1}}>
           <div className="sh-section">EQUIPMENT / PROFICIENCIES</div>
           <div className="sh-label">ARMOUR</div>
@@ -1478,7 +1700,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
       </div>
     </div>
     {/* Characters from your past */}
-    <div style={{padding:"0 14px"}}><PastSection char={L} commit={commit} lore={lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={onOpenLore} isDM={isDM}/></div>
+    <div style={{padding:"0 14px"}}><PastSection char={L} commit={commit} lore={lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={onOpenLore} isDM={isDM}/><LogsSection char={L} commit={commit} myPast={myPast} isDM={isDM}/></div>
     {lvlPop&&<div style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setLvlPop(null)}>
       <div onClick={e=>e.stopPropagation()} style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:10,padding:24,width:"min(420px,100%)",textAlign:"center",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
         <div style={{fontSize:32}}>⚔</div>
@@ -1491,6 +1713,71 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
     <div style={{height:30}}/>
   </div>);
 }
+
+/* ════ LOGS & LETTERS — private to the character's owner (Past key) and Josh ════ */
+function LogsSection({char,commit,myPast,isDM}){
+  const owner=char.pastOwner||null;const mine=!!owner&&myPast===owner;
+  const logs=char.logs||{tabs:[]};const tabs=logs.tabs||[];
+  const [tab,setTab]=useState(null);const [open,setOpen]=useState({});const [renaming,setRenaming]=useState(null);const [addingTab,setAddingTab]=useState(false);const [tabName,setTabName]=useState("");const [del,setDel]=useState(null);
+  if(!(mine||isDM))return null;
+  const cur=tabs.find(t=>t.id===tab)||tabs[0]||null;
+  const save=nt=>commit("logs",{...logs,tabs:nt});
+  const updTab=(id,fn)=>save(tabs.map(t=>t.id===id?fn(t):t));
+  const newest=!!logs.newest;
+  const shown=cur?(newest?[...(cur.entries||[])].reverse():(cur.entries||[])):[];
+  const move=(i,d)=>{const j=i+d;if(!cur||j<0||j>=shown.length)return;const arr=[...shown];[arr[i],arr[j]]=[arr[j],arr[i]];updTab(cur.id,t=>({...t,entries:newest?arr.reverse():arr}));};
+  const updEntry=(eid,f,v)=>updTab(cur.id,t=>({...t,entries:(t.entries||[]).map(e=>e.id===eid?{...e,[f]:v}:e)}));
+  const addEntry=()=>{if(!cur)return;const e={id:"e"+Date.now(),title:"",when:"",text:""};updTab(cur.id,t=>({...t,entries:[...(t.entries||[]),e]}));setOpen(o=>({...o,[e.id]:"new"}));};
+  const addTab=()=>{const n=tabName.trim();if(!n)return;const t={id:"t"+Date.now(),name:n,entries:[]};save([...tabs,t]);setTab(t.id);setAddingTab(false);setTabName("");};
+  const ink="#2a2a3a",soft="#6a5a40";
+  const small={fontSize:11,color:ink};
+  return(<div className="sh" style={{marginTop:10}}>
+    {del&&<DelModal name={del.label} onOk={()=>{if(del.kind==="tab"){save(tabs.filter(t=>t.id!==del.id));setTab(null);}else updTab(cur.id,t=>({...t,entries:(t.entries||[]).filter(e=>e.id!==del.id)}));setDel(null);}} onNo={()=>setDel(null)}/>}
+    <div className="sh-section">LOGS & LETTERS</div>
+    <div style={{fontSize:11,color:soft,fontStyle:"italic",marginBottom:8}}>{mine?`Only you${isDM?"":" and Josh"} can see these — they stay hidden from the other players.`:`${possessive(owner||char.name||"This character")} private logs — you can read them as DM.`}</div>
+    <div style={{display:"flex",gap:0,flexWrap:"wrap",borderBottom:"2px solid #9a7020",marginBottom:10,alignItems:"flex-end"}}>
+      {tabs.map(t=>{const on=cur&&t.id===cur.id;return renaming===t.id&&mine
+        ?<input key={t.id} autoFocus defaultValue={t.name} onBlur={e=>{const v=e.target.value.trim();if(v)updTab(t.id,x=>({...x,name:v}));setRenaming(null);}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setRenaming(null);}} className="sh-input-box" style={{width:170,fontSize:12,marginBottom:2}}/>
+        :<button key={t.id} onClick={()=>{setTab(t.id);}} onDoubleClick={()=>mine&&setRenaming(t.id)} title={mine?"Double-click to rename":""} style={{fontFamily:"Cinzel",fontSize:11,letterSpacing:".04em",padding:"6px 14px",marginBottom:-2,cursor:"pointer",border:"2px solid "+(on?"#9a7020":"transparent"),borderBottom:on?"2px solid #f3ecdc":"2px solid transparent",borderRadius:"5px 5px 0 0",background:on?"#f3ecdc":"transparent",color:on?"#7a5a14":"#6a5a40",fontWeight:on?700:400}}>{t.name} <span style={{fontSize:9,opacity:.7}}>({(t.entries||[]).length})</span></button>;})}
+      {mine&&(addingTab
+        ?<span style={{display:"inline-flex",gap:4,marginBottom:3,marginLeft:6}}><input autoFocus value={tabName} onChange={e=>setTabName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addTab();if(e.key==="Escape")setAddingTab(false);}} placeholder="e.g. Letters to Tollenheim" className="sh-input-box" style={{width:190,fontSize:12}}/><button className="btn" onClick={addTab} style={small}>✓</button><button className="btn" onClick={()=>setAddingTab(false)} style={small}>✕</button></span>
+        :<button onClick={()=>{setAddingTab(true);setTabName("");}} style={{fontFamily:"Cinzel",fontSize:11,padding:"5px 10px",marginLeft:4,marginBottom:2,border:"1px dashed #b8a070",background:"transparent",borderRadius:4,cursor:"pointer",color:soft}}>＋ Tab</button>)}
+    </div>
+    {!cur&&<div style={{fontSize:12,color:"#777",fontStyle:"italic",marginBottom:6}}>{mine?"Add a tab to start — e.g. “Letters to Tollenheim” or “Field notes”.":"No logs yet."}</div>}
+    {cur&&<>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
+        {mine&&<button className="btn" onClick={addEntry} style={{...small,fontWeight:600}}>＋ New entry</button>}
+        <button className="btn" onClick={()=>commit("logs",{...logs,newest:!newest})} style={small} title="Change the order the entries are shown in">{newest?"⇅ Showing newest first":"⇅ Showing oldest first"}</button>
+        <span style={{flex:1}}/>
+        {mine&&<button className="btn" onClick={()=>setRenaming(cur.id)} style={small}>✏️ Rename tab</button>}
+        {mine&&<button className="btn" onClick={()=>setDel({kind:"tab",id:cur.id,label:`the “${cur.name}” tab and its ${(cur.entries||[]).length} entr${(cur.entries||[]).length===1?"y":"ies"}`})} style={small}>🗑 Tab</button>}
+      </div>
+      {!shown.length&&<div style={{fontSize:12,color:"#777",fontStyle:"italic",marginBottom:6}}>Nothing written in this tab yet.</div>}
+      {shown.map((e,i)=>{const isOpen=!!open[e.id];return(
+        <div key={e.id} style={{border:"1px solid #c9b48a",borderRadius:5,marginBottom:6,background:isOpen?"#fbf6ea":"rgba(255,255,255,0.45)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",cursor:"pointer"}} onClick={()=>setOpen(o=>({...o,[e.id]:!o[e.id]}))}>
+            <span style={{fontSize:13,color:"#7a5a14",width:12}}>{isOpen?"▾":"▸"}</span>
+            <span style={{flex:1,fontFamily:"Cinzel",fontSize:12,color:ink}}>{e.title||<em style={{opacity:.55,fontFamily:"Crimson Pro"}}>Untitled</em>}</span>
+            {e.when&&<span style={{fontSize:11,color:soft,fontStyle:"italic"}}>{e.when}</span>}
+            {mine&&<span onClick={ev=>ev.stopPropagation()} style={{display:"inline-flex",gap:2}}>
+              <button className="btn" disabled={i===0} onClick={()=>move(i,-1)} title="Move up" style={{...small,padding:"1px 7px",opacity:i===0?.35:1}}>▲</button>
+              <button className="btn" disabled={i===shown.length-1} onClick={()=>move(i,1)} title="Move down" style={{...small,padding:"1px 7px",opacity:i===shown.length-1?.35:1}}>▼</button></span>}
+          </div>
+          {isOpen&&<div style={{padding:"0 12px 10px 30px"}}>
+            {mine?<>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:6}}>
+                <ShInput value={e.title} onCommit={v=>updEntry(e.id,"title",v)} placeholder="Title — e.g. Letter #2 to Brother Aldric" style={{flex:"2 1 200px",fontSize:13}}/>
+                <ShInput value={e.when} onCommit={v=>updEntry(e.id,"when",v)} placeholder="When — e.g. Session 4" style={{flex:"1 1 120px",fontSize:13}}/>
+              </div>
+              <MentionTextarea value={e.text} onCommit={v=>updEntry(e.id,"text",v)} grow live placeholder="Write the letter or note… @ to link a person or place" className="sh-input-box" style={{width:"100%",minHeight:120,fontSize:14,lineHeight:1.6,fontFamily:"Crimson Pro,serif",resize:"none",overflow:"hidden"}}/>
+              <div style={{textAlign:"right",marginTop:4}}><button className="btn" onClick={()=>setDel({kind:"entry",id:e.id,label:e.title||"this entry"})} style={{...small,color:"#a3241e"}}>🗑 Delete entry</button></div>
+            </>:<LogText text={e.text}/>}
+          </div>}
+        </div>);})}
+    </>}
+  </div>);
+}
+function LogText({text}){const ctx=useContext(LinkCtx);return (text||"").trim()?<div style={{whiteSpace:"pre-wrap",fontFamily:"Crimson Pro,serif",fontSize:14.5,lineHeight:1.65,color:"#2a2a3a"}}>{richNodes(text,ctx)}</div>:<div style={{fontSize:12,color:"#777",fontStyle:"italic"}}>Empty.</div>;}
 
 /* ════ CHARACTERS FROM YOUR PAST (with "Unlock Past") ════ */
 function PastSection({char,commit,lore,setLore,myPast,setMyPast,onOpenLore,isDM}){
@@ -1846,7 +2133,7 @@ function App(){
   return(<LinkCtx.Provider value={linkCtxVal}><div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--dark)"}}>
     {/* Header */}
     <header className="sf-hdr">
-      <h1 style={{fontSize:16,letterSpacing:"0.16em",color:"var(--gold3)",whiteSpace:"nowrap",fontFamily:"Cinzel",textShadow:"0 0 16px rgba(200,160,40,0.3)"}}>⚔ STEEL & FIRE</h1>
+      <h1 style={{fontSize:16,letterSpacing:"0.16em",color:"var(--gold3)",whiteSpace:"nowrap",fontFamily:"Cinzel",textShadow:"0 0 16px rgba(200,160,40,0.3)"}}>⚔<span className="sf-title-full"> STEEL & FIRE</span></h1>
       <div style={{width:1,height:20,background:"var(--border2)"}}/>
       <nav className="sf-nav">
         {NAV.map(n=><button key={n.id} onClick={()=>setPage(n.id)} className={`btn${page===n.id?" act":""}`} style={{padding:"4px 12px",fontSize:11,fontFamily:"Cinzel",letterSpacing:"0.04em"}}>{n.icon} {n.label}</button>)}
@@ -1858,6 +2145,7 @@ function App(){
         {data.characters.map((c,i)=><button key={c.id} onClick={()=>setCharIdx(i)} className={`btn${charIdx===i?" act":""}`} style={{padding:"3px 10px",fontSize:11,fontFamily:"Cinzel"}}>{c.name||`Player ${i+1}`}</button>)}
       </div>}
       <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
+        <GlobalSearch lore={data.lore||{}} can={linkCtxVal.can} full={isDM} onOpen={openLore}/>
         <span title={syncTitle} style={{fontSize:9,color:syncColor,fontFamily:"Cinzel",letterSpacing:"0.06em",transition:"color .3s",minWidth:60,textAlign:"right",cursor:"default"}}>{syncLabel}</span>
         <button onClick={()=>setShowTheme(t=>!t)} className={`btn${showTheme?" act":""}`} style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel"}}>🎨</button>
         <button onClick={()=>{if(confirm("Change DB settings?\\nThis will reload.")){localStorage.removeItem(SB_KEY);window.location.reload();}}} className="btn" style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel"}}>⚙</button>
@@ -1945,6 +2233,21 @@ function compressImage(file,maxSize=400,quality=0.72){
 
 /* ════ SHARED UI ════ */
 function Ornament(){return(<div style={{display:"flex",alignItems:"center",gap:8,margin:"8px 0"}}><div style={{flex:1,height:1,background:"linear-gradient(to right,transparent,var(--gold2))"}}/><span style={{color:"var(--gold2)",fontSize:11}}>✦</span><div style={{flex:1,height:1,background:"linear-gradient(to left,transparent,var(--gold2))"}}/></div>);}
+function TypeConfirmModal({title,children,word,okLabel,onOk,onNo}){
+  const [t,setT]=useState("");const can=t.trim().toLowerCase()===word.toLowerCase();
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <div style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:8,padding:24,width:420,maxWidth:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
+      <h3 style={{fontFamily:"Cinzel",fontSize:15,marginBottom:10,color:"var(--red)"}}>⚠ {title}</h3>
+      <div style={{fontSize:14,color:"var(--ink2)",marginBottom:12,lineHeight:1.6}}>{children}</div>
+      <p style={{fontSize:12,color:"var(--ink3)",marginBottom:6}}>Type <strong>{word.toUpperCase()}</strong> to confirm:</p>
+      <input autoFocus value={t} onChange={e=>setT(e.target.value)} onKeyDown={e=>e.key==="Enter"&&can&&onOk()} placeholder={word.toUpperCase()} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 10px",width:"100%",fontSize:14,outline:"none",marginBottom:12}}/>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button className="btn" onClick={onNo}>Cancel</button>
+        <button className="btn red" onClick={onOk} disabled={!can} style={{opacity:can?1:0.4}}>{okLabel}</button>
+      </div>
+    </div>
+  </div>);
+}
 function DelModal({name,onOk,onNo}){
   const [t,setT]=useState("");const needs=name&&name.trim();const can=!needs||t.trim().toLowerCase()==="delete";
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -2038,7 +2341,8 @@ const BARONY_TERRAIN=[
 (function(){
   if(typeof document==="undefined"||document.getElementById("sf-extra-css"))return;
   const css=`
-html,body,#root{height:100%;}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+#root{height:var(--app-h,100dvh)}
 .leaflet-container{background:var(--dark)!important;outline:none}
 .sf-place-tip{background:rgba(20,12,4,0.92);border:1px solid var(--gold2);color:var(--gold3);font-family:Cinzel,serif;font-size:12px;letter-spacing:0.05em;padding:4px 10px;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,0.6)}
 .sf-place-tip:before{display:none}
@@ -2084,12 +2388,36 @@ html,body,#root{height:100%;}
   .sf-nav .btn{padding:6px 9px!important}
   .sf-hide-narrow{display:none!important}
 }
+.sf-map-panel{max-height:calc(100% - 70px);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.sf-phone-only{display:none!important}
 @media (max-width:700px){
-  .sf-lore-side{width:150px!important}
-  .sf-lore-detail{padding:16px 14px!important}
+  .sf-lore-detail{padding:14px 14px 20px!important}
+  /* Lore on a phone: the list, or the page — not both squashed side by side */
+  .sf-lore .sf-lore-side{width:100%!important;border-right:none!important}
+  .sf-lore.has-sel .sf-lore-side{display:none!important}
+  .sf-lore:not(.has-sel) .sf-lore-main{display:none!important}
+  .sf-phone-only{display:inline-flex!important}
+  .sf-lore-main>.sf-phone-only{display:flex!important}
+  .sf-dm-bar{position:relative!important;flex-wrap:wrap}
+  .sf-abil{grid-template-columns:repeat(3,1fr)!important}
+  .sf-eqgrid{grid-template-columns:1fr!important}
+  .sf-eqgrid>*{grid-column:auto!important;grid-row:auto!important}
+  .sf-gsearch input{width:150px!important}
+}
+@media (max-width:600px){
+  .sf-title-full{display:none}
+  .sf-hdr{padding:6px 8px!important;gap:6px!important}
+  .sf-nav .btn{padding:5px 7px!important;font-size:10.5px!important}
+  .sf-map-panel{left:8px!important;right:8px!important;bottom:8px!important;width:auto!important;max-width:none!important}
+}
+@media (max-width:420px){
+  .sf-abil{grid-template-columns:repeat(2,1fr)!important}
 }
 `;
   const el=document.createElement("style");el.id="sf-extra-css";el.textContent=css;document.head.appendChild(el);
+  // phones and tablets: their browser bars cover part of the screen, so fit the app to what's actually visible
+  const fitH=()=>{document.documentElement.style.setProperty("--app-h",Math.round(window.innerHeight)+"px");};
+  fitH();window.addEventListener("resize",fitH);window.addEventListener("orientationchange",()=>{setTimeout(fitH,150);setTimeout(fitH,600);});
 })();
 
 /* polygon-clipping (used to snap borders inside their parent and against neighbours) */
@@ -2493,7 +2821,7 @@ function MapExplorer({data,isDM,onOpenLore}){
       </React.Fragment>);})}
       {isDM&&<span style={{fontFamily:"Cinzel",fontSize:10,color:"#ff9999",background:"rgba(80,0,0,0.85)",padding:"3px 8px",borderRadius:3,border:"1px solid rgba(255,100,100,0.4)"}}>⚔ DM VIEW — red dashed = hidden from players</span>}
     </div>
-    {popup&&<div className="sf-panel" style={{position:"absolute",right:14,bottom:14,zIndex:1100,width:300,maxWidth:"calc(100% - 28px)"}}>
+    {popup&&<div className="sf-panel sf-map-panel" style={{position:"absolute",right:14,bottom:14,zIndex:1100,width:300,maxWidth:"calc(100% - 28px)"}}>
       <button onClick={()=>setSel(null)} style={{position:"absolute",top:8,right:10,background:"none",border:"none",color:"#b89a68",cursor:"pointer",fontSize:16}}>✕</button>
       {popup}
     </div>}
