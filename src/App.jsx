@@ -132,6 +132,7 @@ function docsFromData(data){
   const docs={};const lore=data.lore||{};
   Object.keys(lore).forEach(sec=>{
     if(sec==="__customSections"){docs["sf2_meta:sections"]=lore.__customSections||[];return;}
+    if(sec==="__sectionOrder"){docs["sf2_meta:secorder"]=lore.__sectionOrder||{};return;}
     const arr=lore[sec]||[];
     docs["sf2_order:"+sec]=arr.map(e=>String(e.id));
     arr.forEach(e=>{docs["sf2_lore:"+sec+":"+e.id]=e;});
@@ -148,6 +149,7 @@ function dataFromDocs(docs){
   Object.keys(docs).forEach(id=>{
     const v=docs[id];if(v===null||v===undefined)return;
     if(id==="sf2_meta:sections")lore.__customSections=v;
+    else if(id==="sf2_meta:secorder")lore.__sectionOrder=v;
     else if(id.indexOf("sf2_order:")===0)orders[id.slice(10)]=v;
     else if(id.indexOf("sf2_lore:")===0){const r=id.slice(9);const sec=r.slice(0,r.indexOf(":"));(lore[sec]=lore[sec]||[]).push(v);}
     else if(id.indexOf("sf2_char:")===0)chars.push(v);
@@ -155,7 +157,7 @@ function dataFromDocs(docs){
   });
   const sortBy=(arr,ord)=>{const pos={};(ord||[]).forEach((x,i)=>{pos[x]=i;});const P=x=>(String(x.id) in pos)?pos[String(x.id)]:1e9;return arr.slice().sort((a,b)=>P(a)-P(b));};
   Object.keys(orders).forEach(sec=>{if(sec!=="__chars"&&!lore[sec])lore[sec]=[];});
-  Object.keys(lore).forEach(sec=>{if(sec!=="__customSections")lore[sec]=sortBy(lore[sec],orders[sec]);});
+  Object.keys(lore).forEach(sec=>{if(sec!=="__customSections"&&sec!=="__sectionOrder")lore[sec]=sortBy(lore[sec],orders[sec]);});
   data.lore=lore;
   data.characters=sortBy(chars,orders.__chars);
   return data;
@@ -576,7 +578,10 @@ const RevealTextField=memo(({label,text,spans,field})=>{
 /* ════ IMAGE PROMPT for ChatGPT (copy → paste into ChatGPT → upload the picture) ════ */
 function buildImagePrompt(e,person,canSee,extra){
   const v=f=>(canSee(f)&&(e[f]||"").trim())?plainLinks(e[f]).trim():"";
-  const desc=plainLinks(e.description||"").replace(/\s+/g," ").trim().slice(0,500);
+  const clean=t=>plainLinks(t||"").replace(/\s+/g," ").trim();
+  // short-page answers count too (who they are, what they do, anything else written about them)
+  const quick=[["q_who",""],["q_do","What they do: "],["q_want","What they want: "],["q_other",""]].map(([f,pre])=>clean(e[f])?pre+clean(e[f]).replace(/[.\s]*$/,"."):"").filter(Boolean).join(" ");
+  const desc=[quick,clean(e.description)].filter(Boolean).join(" ").slice(0,600);
   if(person){
     const bits=[];
     const who=[v("age")&&`${v("age")}-year-old`,v("raceSp")].filter(Boolean).join(" ");
@@ -775,6 +780,18 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
     if(realmTree)(lore.settlements||[]).forEach(e=>{if(e&&e.tidy&&(isDM||entryVisible(e))&&!out.some(o=>o.sec==="settlements"&&o.e.id===e.id))out.push({sec:"settlements",e});});
     return out;},[lore,allSections,isDM,myPast,previewPlayer]);
   const [tidyOpen,setTidyOpen]=useState(true);
+  // Tab order (shared) — tabs keep their built-in order until someone moves one
+  const secPos=id=>{const o=lore.__sectionOrder||{};return(id in o)?o[id]:1000+allSections.findIndex(x=>x.id===id);};
+  const sortSecs=arr=>[...arr].sort((a,b)=>secPos(a.id)-secPos(b.id));
+  const siblingsOf=sc=>{const top=x=>!x.parent||!secById(x.parent);return sortSecs(allSections.filter(x=>!(realmTree&&x.id==="settlements")&&(top(sc)?top(x):x.parent===sc.parent)));};
+  const moveSec=(sc,dir)=>{const sib=siblingsOf(sc);const i=sib.findIndex(x=>x.id===sc.id),j=i+dir;if(i<0||j<0||j>=sib.length)return;
+    const arr=[...sib];[arr[i],arr[j]]=[arr[j],arr[i]];const upd={};arr.forEach((x,k)=>{upd[x.id]=k;});
+    setLore(prev=>({...prev,__sectionOrder:{...(prev.__sectionOrder||{}),...upd}}));};
+  const depthOf=id=>{let x=secById(id),d=0,g=0;while(x&&x.parent&&secById(x.parent)&&g++<6){d++;x=secById(x.parent);}return d;};
+  const parentChoices=sc=>{const under=new Set([sc.id]);let grew=true;while(grew){grew=false;allSections.forEach(x=>{if(x.parent&&under.has(x.parent)&&!under.has(x.id)){under.add(x.id);grew=true;}});}
+    const deepest=(()=>{let m=0;under.forEach(id=>{const dd=depthOf(id)-depthOf(sc.id);if(dd>m)m=dd;});return m;})();
+    return allSections.filter(x=>!under.has(x.id)&&x.id!=="regions"&&x.id!=="settlements"&&depthOf(x.id)+1+deepest<=2&&(!secOwner(x.id)||seeAll(x.id)));};
+  const setSecParent=(sc,pid)=>{setLore(prev=>({...prev,__customSections:(prev.__customSections||[]).map(c=>c.id===sc.id?{...c,parent:pid||undefined}:c)}));setOpenSection(sc.id);};
   // Short page ↔ Full page. Going short deletes the full-page boxes, so if any have writing it asks for OVERRIDE first.
   const FULL_ONLY={ally:[["Description","description"],["Background & Lore","lore"],["Abilities & Powers","abilities"],["Relationships & Connections","relationships"],["Feats with the Party","featsWithParty"]],
     enemy:[["Description","description"],["Background & Lore","lore"],["Abilities & Powers","abilities"],["Threat Level","threatLevel"],["Tactics & Weaknesses","tactics"],["Relationships & Connections","relationships"],["Feats with the Party","featsWithParty"]],
@@ -941,8 +958,8 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
         </div>}
         {(()=>{const base=allSections.filter(s=>!(realmTree&&s.id==="settlements"));const out=[];
           const isAnc=(a,b)=>{let x=secById(b),g=0;while(x&&g++<6){if(x.id===a)return true;x=x.parent?secById(x.parent):null;}return false;};
-          const walk=(s,d)=>{out.push({s,depth:d});if(isAnc(s.id,openSection))base.filter(c=>c.parent===s.id).forEach(c=>walk(c,d+1));};
-          base.filter(s=>!s.parent||!secById(s.parent)).forEach(s=>walk(s,0));
+          const walk=(s,d)=>{out.push({s,depth:d});if(isAnc(s.id,openSection))sortSecs(base.filter(c=>c.parent===s.id)).forEach(c=>walk(c,d+1));};
+          sortSecs(base.filter(s=>!s.parent||!secById(s.parent))).forEach(s=>walk(s,0));
           return out;})().map(({s,depth})=>{
           const items=realmTree&&s.id==="regions"?[...(lore.regions||[]).filter(p=>isDM||placeVisible(places0,p,false)),...(lore.settlements||[]).filter(i=>isDM||entryVisible(i))]:(lore[s.id]||[]).filter(i=>seeAll(s.id)||entryVisible(i));const isO=openSection===s.id;
           return(<div key={s.id} style={{borderBottom:"1px solid var(--border)"}}>
@@ -959,6 +976,16 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
               </button>}
             </div>
             {isO&&s.group&&<div style={{background:"var(--parch)",padding:"6px 10px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>Pick a sub-tab{allSections.some(c=>c.parent===s.id)?"":" — or add one"}.</div>}
+            {isO&&wikiEdit&&!readOnly&&!listEditMode&&(!secOwner(s.id)||seeAll(s.id))&&(()=>{const sib=siblingsOf(s);const i=sib.findIndex(x=>x.id===s.id);const custom=String(s.id).indexOf("custom_")===0;const opts=custom?parentChoices(s):[];
+              return(<div style={{padding:"5px 8px",background:"var(--parch2)",borderBottom:"1px solid var(--border)",display:"flex",gap:4,alignItems:"center",flexWrap:"wrap",fontSize:10.5}}>
+                <span style={{fontFamily:"Cinzel",fontSize:9,letterSpacing:".06em",color:"var(--ink3)"}}>TAB</span>
+                <button className="btn" disabled={i<=0} onClick={()=>moveSec(s,-1)} title="Move this tab up" style={{fontSize:10,padding:"1px 7px",opacity:i<=0?.35:1}}>▲</button>
+                <button className="btn" disabled={i<0||i>=sib.length-1} onClick={()=>moveSec(s,1)} title="Move this tab down" style={{fontSize:10,padding:"1px 7px",opacity:i>=sib.length-1?.35:1}}>▼</button>
+                {custom&&<select value={s.parent&&secById(s.parent)?s.parent:""} onChange={e=>setSecParent(s,e.target.value)} title="Put this tab inside another one" style={{flex:1,minWidth:90,fontFamily:"Crimson Pro,serif",fontSize:11.5,background:"var(--parch)",border:"1px solid var(--border2)",borderRadius:3,padding:"1px 3px"}}>
+                  <option value="">Inside: (top level)</option>
+                  {opts.map(x=><option key={x.id} value={x.id}>Inside: {x.parent&&secById(x.parent)?secById(x.parent).label+" › ":""}{x.label}</option>)}
+                </select>}
+              </div>);})()}
             {isO&&s.id==="sessions"&&!readOnly&&<div style={{padding:"6px 8px",background:"var(--parch)",borderBottom:"1px solid var(--border)"}}>
               <button className="btn" onClick={newSession} style={{width:"100%",fontSize:11,padding:"5px",fontFamily:"Cinzel",background:"var(--gold2)",color:"var(--dark)",borderColor:"var(--gold)",fontWeight:600}}>＋ New session</button></div>}
             {isO&&!s.group&&<div style={{background:"var(--parch)"}}>
