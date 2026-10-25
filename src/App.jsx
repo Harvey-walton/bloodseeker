@@ -408,7 +408,8 @@ function linkEntries(lore){
   const out=[];Object.keys(lore||{}).forEach(sec=>{if(sec==="__customSections"||!Array.isArray(lore[sec]))return;if(sec==="sessionNotes")return;lore[sec].forEach(e=>{if(e&&(e.name||"").trim())out.push({name:e.name.replace(/[\[\]]/g,""),sec,id:e.id});});});
   return out;
 }
-const sectionIcon=sec=>({regions:"🌍",allies:"🤝",enemies:"💀",people_general:"👤",factions:"⚔️",items:"💎",settlements:"🏰",history:"📖",sessions:"📋",terrain:"🗺"}[sec]||"📌");
+const charEntries=chars=>(chars||[]).filter(c=>(c.name||"").trim()).map(c=>({name:c.name.replace(/[\[\]]/g,""),sec:"char",id:c.id}));
+const sectionIcon=sec=>({char:"🛡️",regions:"🌍",allies:"🤝",enemies:"💀",people_general:"👤",factions:"⚔️",items:"💎",settlements:"🏰",history:"📖",sessions:"📋",terrain:"🗺"}[sec]||"📌");
 // the four quick choices when you @ a new name
 const QUICK_TYPES=[[["people_general","allies"],"👤","Person"],[["factions"],"⚔️","Faction"],[["items",/^items?$/i],"💎","Item"],[["settlements"],"📍","Place"]];
 // built-in tabs people can delete (they're just hidden, so nothing else breaks)
@@ -646,7 +647,7 @@ const LoreIF=memo(({label,value,field,editMode,onCommit,eyeState,onEye})=>{
   </div>);
 });
 
-function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
+function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,onOpenChar}){
   const isDM=!!dmMode;
   // sections come from the data so new sub-tabs appear for everyone straight away
   const allSections=useMemo(()=>{const hid=readOnly?[]:hiddenSecs(lore);return[...(readOnly?DEFAULT_SECTIONS.filter(x=>!x.group&&x.id!=="people_general"&&x.id!=="items").map(x=>({...x,parent:undefined})):DEFAULT_SECTIONS),...(lore.__customSections||[])].filter(x=>!hid.includes(x.id));},[lore.__customSections,lore.__sectionOrder,readOnly]);
@@ -934,11 +935,11 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   // portrait reveal buttons (clear, labelled)
   const PicBtn=({f,label})=>{const on=fieldVisible(local,f);return(<button className="btn" onClick={()=>toggleField(f)} style={{fontSize:10.5,padding:"3px 8px",marginTop:5,width:"100%",color:on?"#2f7a2f":HIDDEN_RED,borderColor:on?"#2f7a2f":HIDDEN_RED,display:"flex",gap:5,alignItems:"center",justifyContent:"center"}}><Eye open={on} size={11}/>{label} {on?"visible":"hidden — click to reveal"}</button>);};
 
-  const innerLinks={entries:linkEntries(lore),
+  const innerLinks={entries:[...charEntries(characters),...linkEntries(lore)],
     newSections:readOnly?[]:creatableSections(lore,id=>!secOwner(id)||seeAll(id)),
     create:readOnly?null:(sec,name)=>{const e=newLinkedEntry(sec,name,isDM||ownsSec(sec));if(secOwner(sec)&&(isDM||ownsSec(sec)))e.reveal={entry:false,fields:{},spans:{}};setLore(prev=>({...prev,[sec]:[...(prev[sec]||[]),e]}));return e.id;},
-    open:(sec,id)=>{if(!lore[sec])return;goEntry(sec,(lore[sec].find(x=>String(x.id)===String(id))||{}).id);},
-    can:(sec,id)=>{const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));if(!e)return false;if(readOnly||seeAll(sec))return true;return sec==="regions"?placeVisible(getPlaces(lore),e,false):entryVisible(e);}};
+    open:(sec,id)=>{if(sec==="char"){onOpenChar&&onOpenChar(id);return;}if(!lore[sec])return;goEntry(sec,(lore[sec].find(x=>String(x.id)===String(id))||{}).id);},
+    can:(sec,id)=>{if(sec==="char")return !!onOpenChar&&(characters||[]).some(c=>String(c.id)===String(id));const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));if(!e)return false;if(readOnly||seeAll(sec))return true;return sec==="regions"?placeVisible(getPlaces(lore),e,false):entryVisible(e);}};
   return(<LinkCtx.Provider value={innerLinks}><div className={`sf-lore${local?" has-sel":""}`} style={{display:"flex",height:"100%",background:"var(--dark)"}}>
     {promptOpen&&local&&<ImagePromptBox entry={local} person={hasPhys(sel.s)} canSee={f=>!isControlled(local)||privView||fieldVisible(local,f)} onClose={()=>setPromptOpen(false)}/>}
     {delT&&!readOnly&&<DelModal name={delT.label} onOk={confirmDel} onNo={()=>setDelT(null)}/>}
@@ -999,9 +1000,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
               <button className="btn" onClick={newSession} style={{width:"100%",fontSize:11,padding:"5px",fontFamily:"Cinzel",background:"var(--gold2)",color:"var(--dark)",borderColor:"var(--gold)",fontWeight:600}}>＋ New session</button></div>}
             {isO&&!s.group&&<div style={{background:"var(--parch)"}}>
               {listEditMode&&<div style={{padding:"3px 10px",fontSize:9,color:"var(--ink3)",fontFamily:"Cinzel",letterSpacing:"0.05em",borderBottom:"1px solid var(--border)",background:"var(--parch2)"}}>DRAG TO REORDER · 📍 TO PIN</div>}
-              {!listEditMode&&!(items.length===0&&allSections.some(c=>c.parent===s.id))&&<div style={{padding:"5px 8px",borderBottom:"1px solid var(--border)"}}>
-                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",width:"100%",fontSize:11,outline:"none"}}/>
-              </div>}
+
               {items.length===0&&!allSections.some(c=>c.parent===s.id)&&<div style={{padding:"7px 14px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>No entries</div>}
               {groupRows(s.id,filteredItems).map(row=>{
                 if(row.folder)return <div key={"f:"+row.nodeKey} onClick={()=>toggleNode(row.nodeKey)} style={{padding:"6px 8px 6px 2px",fontSize:11.5,fontStyle:"italic",color:"var(--ink3)",cursor:"pointer",borderBottom:"1px solid var(--border)",display:"flex",gap:6,alignItems:"center",userSelect:"none"}}>
@@ -2143,14 +2142,15 @@ function App(){
   // One-time upgrade to the kingdom/region/barony layout
   useEffect(()=>{if(!ready||!data)return;const m=migratePlaces(data);if(m){setData(m);return;}const m2=migrateDmDescriptions(data);if(m2){setData(m2);return;}const m3=migrateDmVersions(data);if(m3)setData(m3);},[ready,data&&data.placesV2,data&&data.dmDescV2,data&&data.dmVersionsV3]);
   const openLore=(sec,id)=>{setLoreTarget({s:sec,id,n:Date.now()});setPage("lore");};
+  const openChar=id=>{const i=((data&&data.characters)||[]).findIndex(c=>String(c.id)===String(id));if(i>=0){setCharIdx(i);setPage("chars");}};
   useEffect(()=>{setVisited(v=>v[page]?v:{...v,[page]:true});},[page]);
   const linkCtxVal=useMemo(()=>{
     const lore=(data&&data.lore)||{};const places=getPlaces(lore);
-    return{entries:linkEntries(lore),open:openLore,
+    return{entries:[...charEntries(data&&data.characters),...linkEntries(lore)],open:(sec,id)=>sec==="char"?openChar(id):openLore(sec,id),
       newSections:creatableSections(lore,id=>{const o=sectionOwner([...DEFAULT_SECTIONS,...(lore.__customSections||[])],id);return !o||isDM||o===myPast;}),
       create:(sec,name)=>{const e=newLinkedEntry(sec,name,isDM);setLore(prev=>({...prev,[sec]:[...(prev[sec]||[]),e]}));return e.id;},
-      can:(sec,id)=>{const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));if(!e)return false;if(isDM)return true;const o=sectionOwner([...DEFAULT_SECTIONS,...(lore.__customSections||[])],sec);if(o&&myPast&&o===myPast)return true;return sec==="regions"?placeVisible(places,e,false):entryVisible(e);}};
-  },[data&&data.lore,isDM,myPast]);
+      can:(sec,id)=>{if(sec==="char")return((data&&data.characters)||[]).some(c=>String(c.id)===String(id));const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));if(!e)return false;if(isDM)return true;const o=sectionOwner([...DEFAULT_SECTIONS,...(lore.__customSections||[])],sec);if(o&&myPast&&o===myPast)return true;return sec==="regions"?placeVisible(places,e,false):entryVisible(e);}};
+  },[data&&data.lore,data&&data.characters,isDM,myPast]);
 
   if(!sbCfg)return <SetupScreen onSave={cfg=>{initSB(cfg.url,cfg.key);setSbCfg(cfg);}}/>;
   if(!data)return(
@@ -2193,7 +2193,7 @@ function App(){
     {/* Main */}
     <main style={{flex:1,minHeight:0,overflow:"hidden",padding:8,background:"var(--dark)"}}>
       {visited.map&&<div style={{height:"100%",display:page==="map"?"block":"none"}}><MapExplorer data={data} isDM={isDM} onOpenLore={openLore}/></div>}
-      {visited.lore&&<div style={{height:"100%",display:page==="lore"?"block":"none"}}><LorePanel lore={data.lore} setLore={setLore} characters={data.characters} readOnly={false} dmMode={false} openTarget={loreTarget} myPast={myPast}/></div>}
+      {visited.lore&&<div style={{height:"100%",display:page==="lore"?"block":"none"}}><LorePanel lore={data.lore} setLore={setLore} characters={data.characters} readOnly={false} dmMode={false} onOpenChar={openChar} openTarget={loreTarget} myPast={myPast}/></div>}
       {visited.chars&&<div style={{height:"100%",display:page==="chars"?"block":"none"}}><CharSheet char={data.characters[charIdx]} onChange={c=>updateChar(charIdx,c)} lore={data.lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={openLore} isDM={isDM}/></div>}
       {visited.tales&&<div style={{height:"100%",display:page==="tales"?"block":"none"}}><TalesPanel/></div>}
       {visited.dm&&<div style={{height:"100%",display:page==="dm"?"block":"none"}}><DMTab data={data} setData={setData} lore={data.lore} setLore={setLore} onAuth={setIsDM} characters={data.characters}/></div>}
