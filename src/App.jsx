@@ -272,7 +272,6 @@ const DEFAULT_SECTIONS=[
   {id:"enemies",label:"Enemies",icon:"💀",parent:"people"},
   {id:"people_general",label:"General",icon:"👤",parent:"people"},
   {id:"factions",label:"Factions",icon:"⚔️"},
-  {id:"items",label:"Items",icon:"💎"},
   {id:"settlements",label:"Settlements",icon:"🏰"},
   {id:"history",label:"History",icon:"📖"},
   {id:"sessions",label:"Session Details",icon:"📋"},
@@ -393,7 +392,7 @@ function richNodes(text,ctx){
   });
 }
 function creatableSections(lore,canUse){
-  const all=[...DEFAULT_SECTIONS,...((lore&&lore.__customSections)||[])];
+  const hid=hiddenSecs(lore);const all=[...DEFAULT_SECTIONS,...((lore&&lore.__customSections)||[])].filter(x=>!hid.includes(x.id));
   const by=id=>all.find(x=>x.id===id);
   const path=x=>{const out=[];let c=x,g=0;while(c&&g++<6){out.unshift(c.label);c=c.parent?by(c.parent):null;}return out.join(" › ");};
   return all.filter(x=>!x.group&&x.id!=="regions"&&(!canUse||canUse(x.id))).map(x=>({id:x.id,icon:x.icon||"📜",label:x.id==="settlements"?"Places (not in a barony yet)":path(x)}));
@@ -411,7 +410,10 @@ function linkEntries(lore){
 }
 const sectionIcon=sec=>({regions:"🌍",allies:"🤝",enemies:"💀",people_general:"👤",factions:"⚔️",items:"💎",settlements:"🏰",history:"📖",sessions:"📋",terrain:"🗺"}[sec]||"📌");
 // the four quick choices when you @ a new name
-const QUICK_TYPES=[["people_general","👤","Person"],["factions","⚔️","Faction"],["items","💎","Item"],["settlements","📍","Place"]];
+const QUICK_TYPES=[[["people_general","allies"],"👤","Person"],[["factions"],"⚔️","Faction"],[["items",/^items?$/i],"💎","Item"],[["settlements"],"📍","Place"]];
+// built-in tabs people can delete (they're just hidden, so nothing else breaks)
+const REMOVABLE_DEFAULTS=["people_general","items","allies","enemies","factions","history","terrain"];
+const hiddenSecs=lore=>((lore&&lore.__sectionOrder&&lore.__sectionOrder.__hidden)||[]);
 // where the typing cursor sits inside a textarea (px from its top), so the @ menu can open right under it
 function caretY(el){
   try{const cs=getComputedStyle(el);const d=document.createElement("div");
@@ -449,7 +451,9 @@ function MentionTextarea({value,onCommit,style,className,placeholder,autoFocus,g
   };
   const make=sec=>{const name=q.query.trim().replace(/[\[\]()]/g,"");const id=ctx.create(sec,name);if(id!=null)choose({name,sec,id});};
   const [moreOpen,setMoreOpen]=useState(false);
-  const quick=QUICK_TYPES.filter(([id])=>(ctx&&ctx.newSections||[]).some(x=>x.id===id));
+  const quick=QUICK_TYPES.map(([ids,ic,lb])=>{const ns=(ctx&&ctx.newSections)||[];let hit=null;
+    for(const k of ids){hit=ns.find(x=>k instanceof RegExp?k.test((x.label||"").split(" › ").pop()):x.id===k);if(hit)break;}
+    return hit?[hit.id,ic,lb]:null;}).filter(Boolean);
   const onKey=e=>{
     if(!q||!matches.length)return;
     if(e.key==="ArrowDown"){e.preventDefault();setHi(h=>(h+1)%matches.length);}
@@ -645,14 +649,14 @@ const LoreIF=memo(({label,value,field,editMode,onCommit,eyeState,onEye})=>{
 function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   const isDM=!!dmMode;
   // sections come from the data so new sub-tabs appear for everyone straight away
-  const allSections=useMemo(()=>[...(readOnly?DEFAULT_SECTIONS.filter(x=>!x.group&&x.id!=="people_general"&&x.id!=="items").map(x=>({...x,parent:undefined})):DEFAULT_SECTIONS),...(lore.__customSections||[])],[lore.__customSections,readOnly]);
+  const allSections=useMemo(()=>{const hid=readOnly?[]:hiddenSecs(lore);return[...(readOnly?DEFAULT_SECTIONS.filter(x=>!x.group&&x.id!=="people_general"&&x.id!=="items").map(x=>({...x,parent:undefined})):DEFAULT_SECTIONS),...(lore.__customSections||[])].filter(x=>!hid.includes(x.id));},[lore.__customSections,lore.__sectionOrder,readOnly]);
   const secById=id=>allSections.find(x=>x.id===id);
   // whose private "Past" a section belongs to (walks up through sub-tabs)
   const secOwner=id=>sectionOwner(allSections,id);
   const ownsSec=id=>!!(myPast&&secOwner(id)===myPast);
   const seeAll=id=>!previewPlayer&&(isDM||ownsSec(id));
   const KIND={allies:"ally",enemies:"enemy",people_general:"ally",factions:"faction",items:"item",settlements:"settlement",history:"history",sessions:"session",regions:"region",terrain:"terrain"};
-  const kindOf=id=>{let x=secById(id),g=0;while(x&&g++<5){if(KIND[x.id])return KIND[x.id];if(x.layout)return x.layout;x=x.parent?secById(x.parent):null;}return"generic";};
+  const kindOf=id=>{let x=secById(id),g=0;while(x&&g++<6){if(KIND[x.id])return KIND[x.id];if(x.layout)return x.layout;if(x.id==="people")return "ally";x=x.parent?secById(x.parent):null;}return"generic";};
   const [previewPlayer,setPreviewPlayer]=useState(false);
   const [wikiEdit,setWikiEdit]=useState(()=>{try{return localStorage.getItem("sf_wiki_edit")==="1";}catch(e){return false;}});
   const setWiki=v=>{setWikiEdit(v);try{localStorage.setItem("sf_wiki_edit",v?"1":"0");}catch(e){}if(!v){setEditMode(false);setListEditMode(false);setCreating(null);setSubFor(null);setShowAddSection(false);}};
@@ -782,7 +786,9 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   const [tidyOpen,setTidyOpen]=useState(true);
   // Tab order (shared) — tabs keep their built-in order until someone moves one
   const secPos=id=>{const o=lore.__sectionOrder||{};return(id in o)?o[id]:1000+allSections.findIndex(x=>x.id===id);};
-  const sortSecs=arr=>[...arr].sort((a,b)=>secPos(a.id)-secPos(b.id));
+  // Past folders (Mathas' Past, Karl's Past …) always sit at the bottom of People
+  const isPastTab=x=>x.parent==="people"&&!!(x.owner||ownerByLabel(x.label));
+  const sortSecs=arr=>[...arr].sort((a,b)=>(isPastTab(a)?1e6:0)+secPos(a.id)-((isPastTab(b)?1e6:0)+secPos(b.id)));
   const siblingsOf=sc=>{const top=x=>!x.parent||!secById(x.parent);return sortSecs(allSections.filter(x=>!(realmTree&&x.id==="settlements")&&(top(sc)?top(x):x.parent===sc.parent)));};
   const moveSec=(sc,dir)=>{const sib=siblingsOf(sc);const i=sib.findIndex(x=>x.id===sc.id),j=i+dir;if(i<0||j<0||j>=sib.length)return;
     const arr=[...sib];[arr[i],arr[j]]=[arr[j],arr[i]];const upd={};arr.forEach((x,k)=>{upd[x.id]=k;});
@@ -791,7 +797,9 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
   const parentChoices=sc=>{const under=new Set([sc.id]);let grew=true;while(grew){grew=false;allSections.forEach(x=>{if(x.parent&&under.has(x.parent)&&!under.has(x.id)){under.add(x.id);grew=true;}});}
     const deepest=(()=>{let m=0;under.forEach(id=>{const dd=depthOf(id)-depthOf(sc.id);if(dd>m)m=dd;});return m;})();
     return allSections.filter(x=>!under.has(x.id)&&x.id!=="regions"&&x.id!=="settlements"&&depthOf(x.id)+1+deepest<=2&&(!secOwner(x.id)||seeAll(x.id)));};
-  const setSecParent=(sc,pid)=>{setLore(prev=>({...prev,__customSections:(prev.__customSections||[]).map(c=>c.id===sc.id?{...c,parent:pid||undefined}:c)}));setOpenSection(sc.id);};
+  // moving a tab keeps its page layout (people stay people, factions stay factions)
+  const setSecParent=(sc,pid)=>{const k=kindOf(sc.id);const keep=["ally","enemy","faction","item","settlement"].includes(k)?k:null;
+    setLore(prev=>({...prev,__customSections:(prev.__customSections||[]).map(c=>c.id===sc.id?{...c,parent:pid||undefined,...(keep&&!c.layout?{layout:keep}:{})}:c)}));setOpenSection(sc.id);};
   // Short page ↔ Full page. Going short deletes the full-page boxes, so if any have writing it asks for OVERRIDE first.
   const FULL_ONLY={ally:[["Description","description"],["Background & Lore","lore"],["Abilities & Powers","abilities"],["Relationships & Connections","relationships"],["Feats with the Party","featsWithParty"]],
     enemy:[["Description","description"],["Background & Lore","lore"],["Abilities & Powers","abilities"],["Threat Level","threatLevel"],["Tactics & Weaknesses","tactics"],["Relationships & Connections","relationships"],["Feats with the Party","featsWithParty"]],
@@ -940,7 +948,8 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
       <div style={{marginTop:8,fontSize:12.5,color:"var(--ink3)"}}>Only do this once you've moved what you need into the short questions. It can't be undone.</div>
     </TypeConfirmModal>}
     {delSec&&!readOnly&&<DelModal name={(lore[delSec.id]||[]).length?`the "${delSec.label}" tab and the ${(lore[delSec.id]||[]).length} entr${(lore[delSec.id]||[]).length===1?"y":"ies"} in it`:`the "${delSec.label}" tab`} onOk={()=>{const id=delSec.id;const par=delSec.parent;
-      setLore(prev=>{const n={...prev,__customSections:(prev.__customSections||[]).filter(c=>c.id!==id)};delete n[id];return n;});
+      setLore(prev=>{const n={...prev,__customSections:(prev.__customSections||[]).filter(c=>c.id!==id)};delete n[id];
+        if(REMOVABLE_DEFAULTS.includes(id)){const o=prev.__sectionOrder||{};n.__sectionOrder={...o,__hidden:[...(o.__hidden||[]).filter(x=>x!==id),id]};}return n;});
       if(openSection===id)setOpenSection(par&&secById(par)&&!secById(par).group?par:"allies");if(sel.s===id){setSel({s:null,id:null});setLocal(null);}setDelSec(null);}} onNo={()=>setDelSec(null)}/>}
 
     {/* LEFT sidebar */}
@@ -970,7 +979,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
                 <span style={{fontSize:9,color:"var(--ink3)",transform:isO?"rotate(180deg)":"none",display:"inline-block",transition:"transform .2s"}}>▼</span>
               </div>
               {isO&&!readOnly&&(!secOwner(s.id)||seeAll(s.id))&&<button title={wikiEdit?"Finish editing":"Edit mode — add, rename, move and delete"} onClick={e=>{e.stopPropagation();setWiki(!wikiEdit);}} style={{background:wikiEdit?"rgba(154,112,32,0.25)":"none",border:"none",cursor:"pointer",fontSize:11,padding:"4px 5px",color:wikiEdit?"var(--gold2)":"var(--ink3)",borderLeft:"1px solid var(--border)",flexShrink:0}}>{wikiEdit?"✓":"✏️"}</button>}
-              {wikiEdit&&isO&&!readOnly&&String(s.id).indexOf("custom_")===0||wikiEdit&&isO&&!readOnly&&String(s.id).indexOf("past_")===0?((!secOwner(s.id)||seeAll(s.id))&&<button title="Delete this tab" onClick={e=>{e.stopPropagation();if(allSections.some(c=>c.parent===s.id)){alert(`Delete the sub-tabs inside "${s.label}" first.`);return;}setDelSec(s);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"4px 5px",color:"var(--ink3)",borderLeft:"1px solid var(--border)",flexShrink:0}}>🗑</button>):null}
+              {wikiEdit&&isO&&!readOnly&&(String(s.id).indexOf("custom_")===0||String(s.id).indexOf("past_")===0||REMOVABLE_DEFAULTS.includes(s.id))?((!secOwner(s.id)||seeAll(s.id))&&<button title="Delete this tab" onClick={e=>{e.stopPropagation();if(allSections.some(c=>c.parent===s.id)){alert(`Delete the sub-tabs inside "${s.label}" first.`);return;}setDelSec(s);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"4px 5px",color:"var(--ink3)",borderLeft:"1px solid var(--border)",flexShrink:0}}>🗑</button>):null}
               {wikiEdit&&isO&&!readOnly&&<button onClick={e=>{e.stopPropagation();setListEditMode(m=>!m);}} title="Reorder/pin" style={{background:listEditMode?"rgba(154,112,32,0.25)":"none",border:"none",cursor:"pointer",fontSize:11,padding:"4px 5px",color:listEditMode?"var(--gold2)":"var(--ink3)",borderLeft:"1px solid var(--border)",flexShrink:0,fontFamily:"Cinzel"}}>
                 {listEditMode?"✓":"⠿"}
               </button>}
@@ -990,10 +999,10 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast}){
               <button className="btn" onClick={newSession} style={{width:"100%",fontSize:11,padding:"5px",fontFamily:"Cinzel",background:"var(--gold2)",color:"var(--dark)",borderColor:"var(--gold)",fontWeight:600}}>＋ New session</button></div>}
             {isO&&!s.group&&<div style={{background:"var(--parch)"}}>
               {listEditMode&&<div style={{padding:"3px 10px",fontSize:9,color:"var(--ink3)",fontFamily:"Cinzel",letterSpacing:"0.05em",borderBottom:"1px solid var(--border)",background:"var(--parch2)"}}>DRAG TO REORDER · 📍 TO PIN</div>}
-              {!listEditMode&&<div style={{padding:"5px 8px",borderBottom:"1px solid var(--border)"}}>
+              {!listEditMode&&!(items.length===0&&allSections.some(c=>c.parent===s.id))&&<div style={{padding:"5px 8px",borderBottom:"1px solid var(--border)"}}>
                 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",width:"100%",fontSize:11,outline:"none"}}/>
               </div>}
-              {items.length===0&&<div style={{padding:"7px 14px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>No entries</div>}
+              {items.length===0&&!allSections.some(c=>c.parent===s.id)&&<div style={{padding:"7px 14px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>No entries</div>}
               {groupRows(s.id,filteredItems).map(row=>{
                 if(row.folder)return <div key={"f:"+row.nodeKey} onClick={()=>toggleNode(row.nodeKey)} style={{padding:"6px 8px 6px 2px",fontSize:11.5,fontStyle:"italic",color:"var(--ink3)",cursor:"pointer",borderBottom:"1px solid var(--border)",display:"flex",gap:6,alignItems:"center",userSelect:"none"}}>
                   <span style={{width:26+(row.depth||0)*16,flexShrink:0,textAlign:"right",fontStyle:"normal",fontSize:16,lineHeight:1}}>{openNodes.has(row.nodeKey)?"▾":"▸"}</span>{row.folder} <span style={{fontSize:9,opacity:.7}}>({row.kids})</span></div>;
