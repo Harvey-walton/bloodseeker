@@ -701,7 +701,12 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
   const [wikiEdit,setWikiEdit]=useState(()=>{try{return localStorage.getItem("sf_wiki_edit")==="1";}catch(e){return false;}});
   const setWiki=v=>{setWikiEdit(v);try{localStorage.setItem("sf_wiki_edit",v?"1":"0");}catch(e){}if(!v){setEditMode(false);setListEditMode(false);setCreating(null);setSubFor(null);setShowAddSection(false);}};
   const [subFor,setSubFor]=useState(null);const [subName,setSubName]=useState("");const [subLayout,setSubLayout]=useState("ally");
-  const [openSection,setOpenSection]=useState("allies");
+  // several tabs can be open at once; openSection is the one you opened last
+  const [openSection,setActiveSec]=useState("allies");
+  const [openSet,setOpenSet]=useState(()=>new Set(["people","allies"]));
+  const setOpenSection=id=>{setActiveSec(id);if(id==null)return;setOpenSet(prev=>{const n=new Set(prev);let x=secById(id),g=0;while(x&&g++<8){n.add(x.id);x=x.parent?secById(x.parent):null;}n.add(id);return n;});};
+  const closeSection=id=>{setOpenSet(prev=>{const n=new Set(prev);const kill=[id];while(kill.length){const k=kill.pop();n.delete(k);allSections.forEach(c=>{if(c.parent===k)kill.push(c.id);});}return n;});
+    setActiveSec(a=>{let x=secById(a),g=0;while(x&&g++<8){if(x.id===id){const par=secById(id);return par&&par.parent&&secById(par.parent)?par.parent:null;}x=x.parent?secById(x.parent):null;}return a;});};
   const [sel,setSel]=useState({s:null,id:null});
   const [creating,setCreating]=useState(null);
   const [creatingUnder,setCreatingUnder]=useState(null);
@@ -869,6 +874,9 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
     const ap=i=>{const n={...i,_ed:Date.now()};fs.forEach(f=>{n[f]="";});if(i.reveal&&i.reveal.spans){const sp={...i.reveal.spans};fs.forEach(f=>{delete sp[f];});n.reveal={...i.reveal,spans:sp};n._ts=Date.now();}return n;};
     setLore(prev=>({...prev,[sel.s]:prev[sel.s].map(i=>i.id===sel.id?ap(i):i)}));setLocal(prev=>prev?ap(prev):prev);setShortAsk(null);};
   const mentions=useMemo(()=>buildMentions(lore),[lore]);
+  // Session notebooks: write in the boxes at the table, read it back as one clean page
+  const [nbWrite,setNbWrite]=useState(false);
+  useEffect(()=>{if(sel.s!=="sessions"){setNbWrite(false);return;}const any=(lore.sessionNotes||[]).some(n=>String(n.sessionId)===String(sel.id)&&(n.text||"").trim());setNbWrite(!any);},[sel.s,sel.id]);
   const confirmDel=()=>{
     setLore(prev=>({...prev,[sel.s]:prev[sel.s].filter(i=>i.id!==sel.id).map(i=>String(i.underId)===String(sel.id)?{...i,underId:(selItem&&selItem.underId!=null)?selItem.underId:null,_ts:Date.now()}:i)}));
     setSel({s:null,id:null});setLocal(null);setDelT(null);setEditMode(false);
@@ -902,18 +910,15 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
     setOpenSection(id);setShowAddSection(false);setNewSectionName("");
   };
 
-  const filteredItems=useMemo(()=>{
-    const s=openSection;if(!s||!lore[s])return[];
+  const listFor=s=>{if(!s||!lore[s])return[];
     const items=(lore[s]||[]).filter(i=>seeAll(s)||entryVisible(i));
-    const sorted=[...items.filter(i=>i.pinned),...items.filter(i=>!i.pinned)];
-    return search.trim()?sorted.filter(i=>(i.name||"").toLowerCase().includes(search.toLowerCase())):sorted;
-  },[lore,openSection,search,isDM,myPast,previewPlayer]);
+    return[...items.filter(i=>i.pinned),...items.filter(i=>!i.pinned)];};
 
   const hasPhys=s=>["ally","enemy"].includes(kindOf(s));
   const places0=getPlaces(lore);
   // Regions: one foldable tree — kingdoms › regions › baronies › settlements
   const groupRows=(sec,items)=>{
-    if(sec!=="regions"&&!listEditMode&&!search.trim()&&!readOnly&&items.some(i=>i.underId!=null)){
+    if(sec!=="regions"&&listEditMode!==sec&&!search.trim()&&!readOnly&&items.some(i=>i.underId!=null)){
       // entries nested under other entries (e.g. Lothar › his wives › their children)
       const ids=new Set(items.map(i=>String(i.id)));
       const kids=pid=>items.filter(i=>pid==null?(i.underId==null||!ids.has(String(i.underId))):String(i.underId)===String(pid));
@@ -921,7 +926,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
       const walk=(pid,d)=>kids(pid).forEach(i=>{if(seen.has(String(i.id)))return;seen.add(String(i.id));const k=kids(i.id).length;out.push({item:i,sec,depth:d,kids:k,nodeKey:"e:"+i.id});if(openNodes.has("e:"+i.id))walk(i.id,d+1);});
       walk(null,0);return out;
     }
-    if(listEditMode||sec!=="regions"||!realmTree)return items.map(item=>({item}));
+    if(listEditMode===sec||sec!=="regions"||!realmTree)return items.map(item=>({item}));
     const places=getPlaces(lore).filter(p=>isDM||placeVisible(places0,p,false));
     const sets=(lore.settlements||[]).filter(e=>isDM||entryVisible(e));
     const q=search.trim().toLowerCase();
@@ -1007,25 +1012,25 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
         </div>}
         {(()=>{const base=allSections.filter(s=>!(realmTree&&s.id==="settlements"));const out=[];
           const isAnc=(a,b)=>{let x=secById(b),g=0;while(x&&g++<6){if(x.id===a)return true;x=x.parent?secById(x.parent):null;}return false;};
-          const walk=(s,d)=>{out.push({s,depth:d});if(isAnc(s.id,openSection))sortSecs(base.filter(c=>c.parent===s.id)).forEach(c=>walk(c,d+1));};
+          const walk=(s,d)=>{out.push({s,depth:d});if(openSet.has(s.id))sortSecs(base.filter(c=>c.parent===s.id)).forEach(c=>walk(c,d+1));};
           sortSecs(base.filter(s=>!s.parent||!secById(s.parent))).forEach(s=>walk(s,0));
           return out;})().map(({s,depth})=>{
-          const items=realmTree&&s.id==="regions"?[...(lore.regions||[]).filter(p=>isDM||placeVisible(places0,p,false)),...(lore.settlements||[]).filter(i=>isDM||entryVisible(i))]:(lore[s.id]||[]).filter(i=>seeAll(s.id)||entryVisible(i));const isO=openSection===s.id;
+          const items=realmTree&&s.id==="regions"?[...(lore.regions||[]).filter(p=>isDM||placeVisible(places0,p,false)),...(lore.settlements||[]).filter(i=>isDM||entryVisible(i))]:(lore[s.id]||[]).filter(i=>seeAll(s.id)||entryVisible(i));const isO=openSet.has(s.id);const le=listEditMode===s.id;
           return(<div key={s.id} style={{borderBottom:"1px solid var(--border)"}}>
             <div style={{display:"flex",alignItems:"center",background:isO?"var(--parch3)":"var(--parch2)",borderLeft:isO?"3px solid var(--gold2)":"3px solid transparent"}}>
-              <div onClick={()=>{if(isO){const par=s.parent&&secById(s.parent)?s.parent:null;setOpenSection(par);}else setOpenSection(s.id);setSearch("");setListEditMode(false);}} style={{flex:1,minWidth:0,padding:`${depth?8:10}px 6px ${depth?8:10}px ${11+depth*16}px`,cursor:"pointer",fontSize:12,fontFamily:"Cinzel",letterSpacing:"0.04em",color:isO?"var(--gold)":"var(--ink2)",display:"flex",alignItems:"center",gap:7,userSelect:"none"}}>
+              <div onClick={()=>{if(isO)closeSection(s.id);else setOpenSection(s.id);setSearch("");setListEditMode(false);}} style={{flex:1,minWidth:0,padding:`${depth?8:10}px 6px ${depth?8:10}px ${11+depth*16}px`,cursor:"pointer",fontSize:12,fontFamily:"Cinzel",letterSpacing:"0.04em",color:isO?"var(--gold)":"var(--ink2)",display:"flex",alignItems:"center",gap:7,userSelect:"none"}}>
                 <span>{s.icon}</span><span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.label}</span>
                 {items.length>0&&<span style={{fontSize:9,background:"var(--gold2)",color:"var(--dark)",borderRadius:10,padding:"0 5px",fontFamily:"Cinzel"}}>{items.length}</span>}
                 <span style={{fontSize:9,color:"var(--ink3)",transform:isO?"rotate(180deg)":"none",display:"inline-block",transition:"transform .2s"}}>▼</span>
               </div>
-              {isO&&!readOnly&&(!secOwner(s.id)||seeAll(s.id))&&<button title={wikiEdit?"Finish editing":"Edit mode — add, rename, move and delete"} onClick={e=>{e.stopPropagation();setWiki(!wikiEdit);}} style={{background:wikiEdit?"rgba(154,112,32,0.25)":"none",border:"none",cursor:"pointer",fontSize:11,padding:"4px 5px",color:wikiEdit?"var(--gold2)":"var(--ink3)",borderLeft:"1px solid var(--border)",flexShrink:0}}>{wikiEdit?"✓":"✏️"}</button>}
+              {isO&&(openSection===s.id||wikiEdit)&&!readOnly&&(!secOwner(s.id)||seeAll(s.id))&&<button title={wikiEdit?"Finish editing":"Edit mode — add, rename, move and delete"} onClick={e=>{e.stopPropagation();setWiki(!wikiEdit);}} style={{background:wikiEdit?"rgba(154,112,32,0.25)":"none",border:"none",cursor:"pointer",fontSize:11,padding:"4px 5px",color:wikiEdit?"var(--gold2)":"var(--ink3)",borderLeft:"1px solid var(--border)",flexShrink:0}}>{wikiEdit?"✓":"✏️"}</button>}
               {wikiEdit&&isO&&!readOnly&&(String(s.id).indexOf("custom_")===0||String(s.id).indexOf("past_")===0||REMOVABLE_DEFAULTS.includes(s.id))?((!secOwner(s.id)||seeAll(s.id))&&<button title="Delete this tab" onClick={e=>{e.stopPropagation();if(allSections.some(c=>c.parent===s.id)){alert(`Delete the sub-tabs inside "${s.label}" first.`);return;}setDelSec(s);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"4px 5px",color:"var(--ink3)",borderLeft:"1px solid var(--border)",flexShrink:0}}>🗑</button>):null}
-              {wikiEdit&&isO&&!readOnly&&<button onClick={e=>{e.stopPropagation();setListEditMode(m=>!m);}} title="Reorder/pin" style={{background:listEditMode?"rgba(154,112,32,0.25)":"none",border:"none",cursor:"pointer",fontSize:11,padding:"4px 5px",color:listEditMode?"var(--gold2)":"var(--ink3)",borderLeft:"1px solid var(--border)",flexShrink:0,fontFamily:"Cinzel"}}>
-                {listEditMode?"✓":"⠿"}
+              {wikiEdit&&isO&&!readOnly&&<button onClick={e=>{e.stopPropagation();setListEditMode(m=>m===s.id?false:s.id);}} title="Reorder/pin" style={{background:le?"rgba(154,112,32,0.25)":"none",border:"none",cursor:"pointer",fontSize:11,padding:"4px 5px",color:le?"var(--gold2)":"var(--ink3)",borderLeft:"1px solid var(--border)",flexShrink:0,fontFamily:"Cinzel"}}>
+                {le?"✓":"⠿"}
               </button>}
             </div>
-            {isO&&s.group&&<div style={{background:"var(--parch)",padding:"6px 10px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>Pick a sub-tab{allSections.some(c=>c.parent===s.id)?"":" — or add one"}.</div>}
-            {isO&&wikiEdit&&!readOnly&&!listEditMode&&(!secOwner(s.id)||seeAll(s.id))&&(()=>{const sib=siblingsOf(s);const i=sib.findIndex(x=>x.id===s.id);const custom=String(s.id).indexOf("custom_")===0;const opts=custom?parentChoices(s):[];
+            {false&&s.group&&<div style={{background:"var(--parch)",padding:"6px 10px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>Pick a sub-tab{allSections.some(c=>c.parent===s.id)?"":" — or add one"}.</div>}
+            {isO&&wikiEdit&&!readOnly&&!le&&(!secOwner(s.id)||seeAll(s.id))&&(()=>{const sib=siblingsOf(s);const i=sib.findIndex(x=>x.id===s.id);const custom=String(s.id).indexOf("custom_")===0;const opts=custom?parentChoices(s):[];
               return(<div style={{padding:"5px 8px",background:"var(--parch2)",borderBottom:"1px solid var(--border)",display:"flex",gap:4,alignItems:"center",flexWrap:"wrap",fontSize:10.5}}>
                 <span style={{fontFamily:"Cinzel",fontSize:9,letterSpacing:".06em",color:"var(--ink3)"}}>TAB</span>
                 <button className="btn" disabled={i<=0} onClick={()=>moveSec(s,-1)} title="Move this tab up" style={{fontSize:10,padding:"1px 7px",opacity:i<=0?.35:1}}>▲</button>
@@ -1038,32 +1043,32 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
             {isO&&s.id==="sessions"&&!readOnly&&<div style={{padding:"6px 8px",background:"var(--parch)",borderBottom:"1px solid var(--border)"}}>
               <button className="btn" onClick={newSession} style={{width:"100%",fontSize:11,padding:"5px",fontFamily:"Cinzel",background:"var(--gold2)",color:"var(--dark)",borderColor:"var(--gold)",fontWeight:600}}>＋ New session</button></div>}
             {isO&&!s.group&&<div style={{background:"var(--parch)"}}>
-              {listEditMode&&<div style={{padding:"3px 10px",fontSize:9,color:"var(--ink3)",fontFamily:"Cinzel",letterSpacing:"0.05em",borderBottom:"1px solid var(--border)",background:"var(--parch2)"}}>DRAG TO REORDER · 📍 TO PIN</div>}
+              {le&&<div style={{padding:"3px 10px",fontSize:9,color:"var(--ink3)",fontFamily:"Cinzel",letterSpacing:"0.05em",borderBottom:"1px solid var(--border)",background:"var(--parch2)"}}>DRAG TO REORDER · 📍 TO PIN</div>}
 
               {items.length===0&&!allSections.some(c=>c.parent===s.id)&&<div style={{padding:"7px 14px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>No entries</div>}
-              {groupRows(s.id,filteredItems).map(row=>{
+              {groupRows(s.id,listFor(s.id)).map(row=>{
                 if(row.folder)return <div key={"f:"+row.nodeKey} onClick={()=>toggleNode(row.nodeKey)} style={{padding:"6px 8px 6px 2px",fontSize:11.5,fontStyle:"italic",color:"var(--ink3)",cursor:"pointer",borderBottom:"1px solid var(--border)",display:"flex",gap:6,alignItems:"center",userSelect:"none"}}>
                   <span style={{width:26+(row.depth||0)*16,flexShrink:0,textAlign:"right",fontStyle:"normal",fontSize:16,lineHeight:1}}>{openNodes.has(row.nodeKey)?"▾":"▸"}</span>{row.folder} <span style={{fontSize:9,opacity:.7}}>({row.kids})</span></div>;
                 const item=row.item;const rsec=row.sec||s.id;
                 const isSel=sel.id===item.id&&sel.s===rsec;const isDO=dragOver===item.id;
-                return(<div key={rsec+":"+item.id} draggable={listEditMode}
+                return(<div key={rsec+":"+item.id} draggable={le}
                   onDragStart={e=>{dragId.current=item.id;e.dataTransfer.effectAllowed="move";}}
-                  onDragOver={e=>{if(!listEditMode)return;e.preventDefault();setDragOver(item.id);}}
+                  onDragOver={e=>{if(!le)return;e.preventDefault();setDragOver(item.id);}}
                   onDragLeave={()=>setDragOver(null)}
                   onDrop={e=>{e.preventDefault();if(dragId.current&&dragId.current!==item.id)reorder(s.id,dragId.current,item.id);dragId.current=null;setDragOver(null);}}
                   onDragEnd={()=>{dragId.current=null;setDragOver(null);}}
-                  onClick={()=>{if(!listEditMode){setSel({s:rsec,id:item.id});setEditMode(wikiEdit);}}}
-                  style={{padding:`${row.sec?6:7}px 8px ${row.sec?6:7}px ${row.sec?2:10+(row.depth||0)*14}px`,cursor:listEditMode?"grab":"pointer",fontSize:12,fontFamily:"Crimson Pro",background:isDO?"var(--parch3)":isSel&&!listEditMode?"var(--parch4)":"transparent",color:isSel&&!listEditMode?"var(--gold)":"var(--ink)",borderLeft:isSel&&!listEditMode?"3px solid var(--gold2)":"3px solid transparent",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:6,borderTop:isDO?"2px solid var(--gold2)":"2px solid transparent",userSelect:"none"}}>
-                  {listEditMode&&<span style={{fontSize:12,color:"var(--ink3)",flexShrink:0}}>⠿</span>}
-                  {row.sec&&!listEditMode&&<span title={row.kids?(openNodes.has(row.nodeKey)?"Fold up":"Open"):""} onClick={e=>{if(!row.kids)return;e.stopPropagation();toggleNode(row.nodeKey);}} style={{width:26+(row.depth||0)*16,alignSelf:"stretch",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"flex-end",color:"var(--ink3)",fontSize:16,lineHeight:1,cursor:row.kids?"pointer":"inherit",margin:"-6px 0",padding:"6px 0"}}>{row.kids?(openNodes.has(row.nodeKey)?"▾":"▸"):""}</span>}
-                  {row.sec&&!listEditMode&&(()=>{const person=row.sec!=="settlements"&&row.sec!=="regions";const im=row.sec==="settlements"?(settlementIcon(item).img||imgSrc(item.portrait)):row.sec==="regions"?imgSrc(item.heraldry):(seeAll(row.sec)||fieldVisible(item,"portrait")?imgSrc(item.portrait):null);return im?<img src={im} alt="" style={person?{width:18,height:18,borderRadius:"50%",objectFit:"cover",flexShrink:0}:{width:20,height:20,objectFit:"contain",flexShrink:0}}/>:null;})()}
-                  {listEditMode&&!readOnly&&<button onClick={e=>{e.stopPropagation();togglePin(s.id,item.id);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"0 2px",color:item.pinned?"var(--gold2)":"var(--ink3)",flexShrink:0}}>{item.pinned?"📌":"📍"}</button>}
-                  {!listEditMode&&item.pinned&&<span style={{fontSize:9,flexShrink:0}}>📌</span>}
+                  onClick={()=>{if(!le){setSel({s:rsec,id:item.id});setEditMode(wikiEdit);}}}
+                  style={{padding:`${row.sec?6:7}px 8px ${row.sec?6:7}px ${row.sec?2:10+(row.depth||0)*14}px`,cursor:le?"grab":"pointer",fontSize:12,fontFamily:"Crimson Pro",background:isDO?"var(--parch3)":isSel&&!le?"var(--parch4)":"transparent",color:isSel&&!le?"var(--gold)":"var(--ink)",borderLeft:isSel&&!le?"3px solid var(--gold2)":"3px solid transparent",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:6,borderTop:isDO?"2px solid var(--gold2)":"2px solid transparent",userSelect:"none"}}>
+                  {le&&<span style={{fontSize:12,color:"var(--ink3)",flexShrink:0}}>⠿</span>}
+                  {row.sec&&!le&&<span title={row.kids?(openNodes.has(row.nodeKey)?"Fold up":"Open"):""} onClick={e=>{if(!row.kids)return;e.stopPropagation();toggleNode(row.nodeKey);}} style={{width:26+(row.depth||0)*16,alignSelf:"stretch",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"flex-end",color:"var(--ink3)",fontSize:16,lineHeight:1,cursor:row.kids?"pointer":"inherit",margin:"-6px 0",padding:"6px 0"}}>{row.kids?(openNodes.has(row.nodeKey)?"▾":"▸"):""}</span>}
+                  {row.sec&&!le&&(()=>{const person=row.sec!=="settlements"&&row.sec!=="regions";const im=row.sec==="settlements"?(settlementIcon(item).img||imgSrc(item.portrait)):row.sec==="regions"?imgSrc(item.heraldry):(seeAll(row.sec)||fieldVisible(item,"portrait")?imgSrc(item.portrait):null);return im?<img src={im} alt="" style={person?{width:18,height:18,borderRadius:"50%",objectFit:"cover",flexShrink:0}:{width:20,height:20,objectFit:"contain",flexShrink:0}}/>:null;})()}
+                  {le&&!readOnly&&<button onClick={e=>{e.stopPropagation();togglePin(s.id,item.id);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"0 2px",color:item.pinned?"var(--gold2)":"var(--ink3)",flexShrink:0}}>{item.pinned?"📌":"📍"}</button>}
+                  {!le&&item.pinned&&<span style={{fontSize:9,flexShrink:0}}>📌</span>}
                   {!row.sec&&(seeAll(s.id)||fieldVisible(item,"portrait"))&&imgSrc(item.portrait)&&<img src={imgSrc(item.portrait)} alt="" style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>}
                   <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:seeAll(rsec)&&!entryVisible(item)?HIDDEN_RED:undefined}}>{seeAll(rsec)&&!entryVisible(item)&&<><Eye open={false} size={11} color={HIDDEN_RED}/> </>}{item.name||<em style={{opacity:.5,fontSize:10}}>Unnamed</em>}</span>
                 </div>);
               })}
-              {wikiEdit&&!listEditMode&&!readOnly&&(!secOwner(s.id)||seeAll(s.id))&&((creating===s.id&&creatingUnder==null)||(realmTree&&s.id==="regions"&&creating==="settlements")
+              {wikiEdit&&!le&&!readOnly&&(!secOwner(s.id)||seeAll(s.id))&&((creating===s.id&&creatingUnder==null)||(realmTree&&s.id==="regions"&&creating==="settlements")
                 ?<div style={{padding:"6px 8px",display:"flex",gap:4,borderTop:"1px solid var(--border)"}}>
                   <input autoFocus placeholder={creating==="settlements"?"Place name (town, forest, ruins…)":"Name..."} value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")createItem(creating);if(e.key==="Escape")setCreating(null);}} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",flex:1,fontSize:11,outline:"none"}}/>
                   <button className="btn" onClick={()=>createItem(creating)} style={{padding:"2px 6px",fontSize:11}}>✓</button>
@@ -1077,7 +1082,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
                 </div>
               )}
             </div>}
-            {wikiEdit&&!readOnly&&depth<2&&openSection===s.id&&!listEditMode&&s.id!=="regions"&&(!secOwner(s.id)||seeAll(s.id))&&<div style={{padding:"5px 8px",background:"var(--parch)",borderTop:"1px solid var(--border)"}}>
+            {wikiEdit&&!readOnly&&depth<2&&isO&&!le&&s.id!=="regions"&&(!secOwner(s.id)||seeAll(s.id))&&<div style={{padding:"5px 8px",background:"var(--parch)",borderTop:"1px solid var(--border)"}}>
               {subFor===s.id?<div style={{display:"flex",flexDirection:"column",gap:4}}>
                 <input autoFocus placeholder="Sub-tab name (e.g. Mathas Family)..." value={subName} onChange={e=>setSubName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addSubTab(s.id);if(e.key==="Escape")setSubFor(null);}} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",fontSize:11,outline:"none"}}/>
                 {s.id==="people"&&<select value={subLayout} onChange={e=>setSubLayout(e.target.value)} style={{fontFamily:"Crimson Pro,serif",fontSize:11,background:"var(--parch2)",border:"1px solid var(--border2)",borderRadius:3,padding:"2px 4px"}}><option value="ally">Use the Ally layout</option><option value="enemy">Use the Enemy layout</option></select>}
@@ -1117,7 +1122,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
         <h3 style={{fontFamily:"Cinzel",fontSize:16,color:"var(--ink3)",marginBottom:8}}>{(allSections.find(s=>s.id===openSection)||{}).label||"Lore"}</h3>
         <p style={{fontSize:14,color:"var(--ink3)",fontStyle:"italic"}}>{readOnly?"Archived — read only":"Select or create an entry"}</p>
       </div>:
-      <div className="sf-lore-detail" style={{padding:"24px 32px",maxWidth:local.notebook&&sel.s==="sessions"?1240:820,margin:"0 auto"}}>
+      <div className="sf-lore-detail" style={{padding:"24px 32px",maxWidth:local.notebook&&sel.s==="sessions"&&nbWrite?1240:820,margin:"0 auto"}}>
         {readOnly&&<div className="tales-banner">📖 BLOOD SEEKER — ARCHIVED READ ONLY</div>}
         {!readOnly&&local.tidy&&<div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"rgba(196,154,48,0.14)",border:"1px dashed var(--gold2)",borderRadius:6,padding:"8px 12px",marginBottom:14}}>
           <span style={{fontSize:16}}>✒️</span>
@@ -1220,10 +1225,21 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
             const notes=(lore.sessionNotes||[]).filter(n=>String(n.sessionId)===String(local.id));
             const boxes=characters.map((c,i)=>({cid:c.id,label:`${possessive(c.name||`Player ${i+1}`)} notes`}));
             notes.forEach(n=>{if(!boxes.some(b=>String(b.cid)===String(n.charId))&&(n.text||"").trim())boxes.push({cid:n.charId,label:"Older notes"});});
-            return(<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(300px,100%),1fr))",gap:16,marginBottom:18}}>
+            const filled=boxes.map(b=>({...b,n:notes.find(x=>String(x.charId)===String(b.cid))})).filter(b=>b.n&&(b.n.text||"").trim());
+            if(!nbWrite&&filled.length)return(<div style={{marginBottom:18}}>
+              {canEdit&&<div style={{display:"flex",justifyContent:"flex-end",margin:"-6px 0 6px"}}><button className="btn" onClick={()=>setNbWrite(true)} style={{fontSize:11.5,padding:"4px 12px"}}>✒️ Write notes</button></div>}
+              {filled.map((b,i)=><div key={b.cid} style={{marginBottom:14}}>
+                {i>0&&<Ornament/>}
+                <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>{b.label.toUpperCase()}</div>
+                <div style={{fontSize:15,color:"var(--ink)",lineHeight:1.7,fontFamily:"Crimson Pro",whiteSpace:"pre-wrap"}}>{richNodes(b.n.text,innerLinks)}</div>
+              </div>)}
+            </div>);
+            return(<div style={{marginBottom:18}}>
+              {canEdit&&filled.length>0&&<div style={{display:"flex",justifyContent:"flex-end",margin:"-6px 0 8px"}}><button className="btn" onClick={()=>setNbWrite(false)} style={{fontSize:11.5,padding:"4px 12px",background:"var(--gold2)",color:"var(--dark)",borderColor:"var(--gold)",fontWeight:600}}>✓ Done writing</button></div>}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(300px,100%),1fr))",gap:16}}>
               {boxes.map(b=>{const n=notes.find(x=>String(x.charId)===String(b.cid));return <NotebookBox key={b.cid} label={b.label} value={n?n.text:""} canEdit={canEdit} onCommit={v=>saveNote(local.id,b.cid,v)}/>;})}
               {!boxes.length&&<div style={{color:"var(--ink3)",fontStyle:"italic"}}>Make a character sheet first — each character gets their own page here.</div>}
-            </div>);
+            </div></div>);
           }
           const QF={ally:[["Who are they?","q_who",70],["Where did we meet them?","q_met",60],["What do they do?","q_do",60],["What do they want?","q_want",60],["Other","q_other",80]],
             faction:[["Who are they?","q_who",70],["What do they want?","q_want",60],["Other","q_other",80]]};
