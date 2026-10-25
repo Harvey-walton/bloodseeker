@@ -414,7 +414,17 @@ const sectionIcon=sec=>({char:"🛡️",regions:"🌍",allies:"🤝",enemies:"�
 const QUICK_TYPES=[[["people_general","allies"],"👤","Person"],[["factions"],"⚔️","Faction"],[["items",/^items?$/i],"💎","Item"],[["settlements"],"📍","Place"]];
 // built-in tabs people can delete (they're just hidden, so nothing else breaks)
 const REMOVABLE_DEFAULTS=["people_general","items","allies","enemies","factions","history","terrain"];
-const hiddenSecs=lore=>((lore&&lore.__sectionOrder&&lore.__sectionOrder.__hidden)||[]);
+const hiddenSecs=lore=>{const h=((lore&&lore.__sectionOrder&&lore.__sectionOrder.__hidden)||[]).slice();if(!((lore&&lore.people_general)||[]).length&&!h.includes("people_general"))h.push("people_general");return h;};
+// tap a picture to see it big; tap anywhere else to close
+const zoomImg=src=>{if(src)window.dispatchEvent(new CustomEvent("sf-zoom",{detail:src}));};
+function ZoomLayer(){
+  const [src,setSrc]=useState(null);
+  useEffect(()=>{const h=e=>setSrc(e.detail);const k=e=>{if(e.key==="Escape")setSrc(null);};window.addEventListener("sf-zoom",h);window.addEventListener("keydown",k);return()=>{window.removeEventListener("sf-zoom",h);window.removeEventListener("keydown",k);};},[]);
+  if(!src)return null;
+  return(<div onClick={()=>setSrc(null)} style={{position:"fixed",inset:0,zIndex:5000,background:"rgba(10,6,2,0.88)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,cursor:"zoom-out"}}>
+    <img src={src} alt="" onClick={e=>e.stopPropagation()} style={{maxWidth:"94vw",maxHeight:"92vh",objectFit:"contain",borderRadius:6,boxShadow:"0 10px 50px rgba(0,0,0,0.7)",cursor:"default"}}/>
+  </div>);
+}
 /* ════ @ EDITOR — links show as gold chips while you write; saved as [@Name](lore:sec:id) exactly like before ════ */
 const ZW="​";
 function chipEl(link,ctx){const s=document.createElement("span");s.className="sf-chip"+(ctx&&ctx.can&&ctx.can(link.sec,link.id)?"":" off");s.contentEditable="false";
@@ -689,7 +699,7 @@ const LoreIF=memo(({label,value,field,editMode,onCommit,eyeState,onEye})=>{
 function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,onOpenChar}){
   const isDM=!!dmMode;
   // sections come from the data so new sub-tabs appear for everyone straight away
-  const allSections=useMemo(()=>{const hid=readOnly?[]:hiddenSecs(lore);return[...(readOnly?DEFAULT_SECTIONS.filter(x=>!x.group&&x.id!=="people_general"&&x.id!=="items").map(x=>({...x,parent:undefined})):DEFAULT_SECTIONS),...(lore.__customSections||[])].filter(x=>!hid.includes(x.id));},[lore.__customSections,lore.__sectionOrder,readOnly]);
+  const allSections=useMemo(()=>{const hid=readOnly?[]:hiddenSecs(lore);return[...(readOnly?DEFAULT_SECTIONS.filter(x=>!x.group&&x.id!=="people_general"&&x.id!=="items").map(x=>({...x,parent:undefined})):DEFAULT_SECTIONS),...(lore.__customSections||[])].filter(x=>!hid.includes(x.id));},[lore.__customSections,lore.__sectionOrder,lore.people_general,readOnly]);
   const secById=id=>allSections.find(x=>x.id===id);
   // whose private "Past" a section belongs to (walks up through sub-tabs)
   const secOwner=id=>sectionOwner(allSections,id);
@@ -1155,7 +1165,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
             {showHer&&<div style={{flexShrink:0}}>
               <div style={lab}>HERALDRY{privView&&!editMode&&isControlled(local)&&<EyeBtn on={fieldVisible(local,"heraldry")} onClick={()=>toggleField("heraldry")}/>}</div>
               <div style={{width:100,height:100,background:"var(--parch2)",border:`2px solid ${dmView&&isControlled(local)&&!fieldVisible(local,"heraldry")?HIDDEN_RED:"var(--border2)"}`,borderRadius:6,overflow:"hidden",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                {imgSrc(local.heraldry)?<img src={imgSrc(local.heraldry)} alt="" style={{width:"100%",height:"100%",objectFit:"contain"}}/>:<div style={{color:"var(--ink3)",fontSize:28}}>{PLACE_TYPES[pt].icon}</div>}
+                {imgSrc(local.heraldry)?<img src={imgSrc(local.heraldry)} alt="" onClick={()=>!editMode&&zoomImg(imgSrc(local.heraldry))} style={{width:"100%",height:"100%",objectFit:"contain",cursor:editMode?"default":"zoom-in"}}/>:<div style={{color:"var(--ink3)",fontSize:28}}>{PLACE_TYPES[pt].icon}</div>}
                 {editMode&&!readOnly&&<label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.65)",color:"var(--gold3)",fontSize:9,textAlign:"center",padding:"3px",cursor:"pointer",fontFamily:"Cinzel"}}>
                   Upload<input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;const url=await cutoutFile(f,300).catch(()=>null);if(url)commitField("heraldry",url);}}/>
                 </label>}
@@ -1169,7 +1179,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
           </div>);
         })()}
         {!hasPhys(sel.s)&&(privView||!ctrl||fieldVisible(local,"portrait"))&&(imgSrc(local.portrait)||(editMode&&!readOnly))&&<div style={{marginBottom:16,position:"relative"}}>
-          {imgSrc(local.portrait)?<img src={imgSrc(local.portrait)} alt="" style={{width:"100%",height:"auto",display:"block",borderRadius:6,border:`2px solid ${privView&&ctrl&&!fieldVisible(local,"portrait")?HIDDEN_RED:"var(--border2)"}`}}/>
+          {imgSrc(local.portrait)?<img src={imgSrc(local.portrait)} alt="" onClick={()=>!editMode&&zoomImg(imgSrc(local.portrait))} style={{cursor:editMode?"default":"zoom-in",width:"100%",height:"auto",display:"block",borderRadius:6,border:`2px solid ${privView&&ctrl&&!fieldVisible(local,"portrait")?HIDDEN_RED:"var(--border2)"}`}}/>
             :<div style={{height:110,border:"2px dashed var(--border2)",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--ink3)",fontStyle:"italic",fontSize:13}}>No picture yet</div>}
           {editMode&&!readOnly&&<div style={{position:"absolute",bottom:8,left:8,display:"flex",gap:6}}>
             <label className="btn act" style={{cursor:"pointer",fontSize:11,background:"rgba(20,12,4,0.85)"}}>📷 {imgSrc(local.portrait)?"Change":"Upload"} picture<input type="file" accept="image/*" onChange={handleWidePic} style={{display:"none"}}/></label>
@@ -1185,7 +1195,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
             const slot=(f,label,cap,see)=>{if(!see)return null;const img=imgSrc(local[f]);const hid=privView&&ctrl&&!fieldVisible(local,f);
               return(<div key={f} style={{flexShrink:0,width:140}}>
                 <div style={{width:140,height:180,background:"var(--parch2)",border:`2px solid ${hid?HIDDEN_RED:"var(--border2)"}`,borderRadius:4,overflow:"hidden",position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  {img?<img src={img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{color:"var(--ink3)",fontSize:11,fontStyle:"italic",textAlign:"center",padding:8}}>No {label.toLowerCase()}</div>}
+                  {img?<img src={img} alt="" onClick={()=>!editMode&&zoomImg(img)} style={{width:"100%",height:"100%",objectFit:"cover",cursor:editMode?"default":"zoom-in"}}/>:<div style={{color:"var(--ink3)",fontSize:11,fontStyle:"italic",textAlign:"center",padding:8}}>No {label.toLowerCase()}</div>}
                   {editMode&&canEdit&&<label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.65)",color:"var(--gold3)",fontSize:10,textAlign:"center",padding:"4px",cursor:"pointer",fontFamily:"Cinzel"}}>📷 Upload<input type="file" accept="image/*" onChange={async e=>{const fl=(e.target.files&&e.target.files[0]);e.target.value="";if(!fl)return;const c=await compressImage(fl,600,0.8);commitField(f,c);}} style={{display:"none"}}/></label>}
                 </div>
                 {cap&&<div style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".08em",color:"var(--ink3)",textAlign:"center",marginTop:4}}>{cap}</div>}
@@ -1547,7 +1557,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
       </button>
       {/* Portrait */}
       <div style={{position:"relative",width:80,height:96,background:"rgba(255,255,255,0.08)",border:"2px solid rgba(255,255,255,0.2)",borderRadius:3,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        {imgSrc(L.portrait)?<img src={imgSrc(L.portrait)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{color:"rgba(255,255,255,0.2)",fontSize:10}}>Portrait</span>}
+        {imgSrc(L.portrait)?<img src={imgSrc(L.portrait)} alt="" onClick={()=>!editMode&&zoomImg(imgSrc(L.portrait))} style={{width:"100%",height:"100%",objectFit:"cover",cursor:editMode?"default":"zoom-in"}}/>:<span style={{color:"rgba(255,255,255,0.2)",fontSize:10}}>Portrait</span>}
         {editMode&&<label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.7)",color:"rgba(255,255,255,0.7)",fontSize:8,textAlign:"center",padding:"3px",cursor:"pointer",fontFamily:"Cinzel"}}>📷<input type="file" accept="image/*" onChange={handlePortrait} style={{display:"none"}}/></label>}
       </div>
       {/* Name + fields */}
@@ -2221,7 +2231,7 @@ function App(){
 
   const NAV=[{id:"map",label:"Map",icon:"🗺"},{id:"lore",label:"Lore",icon:"📜"},{id:"chars",label:"Characters",icon:"⚔"}];
 
-  return(<LinkCtx.Provider value={linkCtxVal}><div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--dark)"}}>
+  return(<LinkCtx.Provider value={linkCtxVal}><ZoomLayer/><div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--dark)"}}>
     {/* Header */}
     <header className="sf-hdr">
       <h1 style={{fontSize:16,letterSpacing:"0.16em",color:"var(--gold3)",whiteSpace:"nowrap",fontFamily:"Cinzel",textShadow:"0 0 16px rgba(200,160,40,0.3)"}}>⚔<span className="sf-title-full"> STEEL & FIRE</span></h1>
