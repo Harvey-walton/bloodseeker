@@ -415,58 +415,92 @@ const QUICK_TYPES=[[["people_general","allies"],"👤","Person"],[["factions"],"
 // built-in tabs people can delete (they're just hidden, so nothing else breaks)
 const REMOVABLE_DEFAULTS=["people_general","items","allies","enemies","factions","history","terrain"];
 const hiddenSecs=lore=>((lore&&lore.__sectionOrder&&lore.__sectionOrder.__hidden)||[]);
-// where the typing cursor sits inside a textarea (px from its top), so the @ menu can open right under it
-function caretY(el){
-  try{const cs=getComputedStyle(el);const d=document.createElement("div");
-    ["fontFamily","fontSize","fontWeight","lineHeight","letterSpacing","paddingTop","paddingLeft","paddingRight","paddingBottom","borderTopWidth","borderLeftWidth","boxSizing"].forEach(k=>{d.style[k]=cs[k];});
-    d.style.position="absolute";d.style.visibility="hidden";d.style.whiteSpace="pre-wrap";d.style.wordWrap="break-word";d.style.width=el.offsetWidth+"px";d.style.top="0";d.style.left="-9999px";
-    d.textContent=el.value.slice(0,el.selectionStart);const sp=document.createElement("span");sp.textContent="\u200b";d.appendChild(sp);document.body.appendChild(d);
-    const lh=parseFloat(cs.lineHeight)||20;const y=sp.offsetTop+lh-el.scrollTop;document.body.removeChild(d);return y;}catch(e){return null;}
+/* ════ @ EDITOR — links show as gold chips while you write; saved as [@Name](lore:sec:id) exactly like before ════ */
+const ZW="​";
+function chipEl(link,ctx){const s=document.createElement("span");s.className="sf-chip"+(ctx&&ctx.can&&ctx.can(link.sec,link.id)?"":" off");s.contentEditable="false";
+  s.dataset.sec=link.sec;s.dataset.id=String(link.id);s.dataset.name=link.name;s.textContent=link.name;return s;}
+function textFrag(str){const f=document.createDocumentFragment();String(str).split("\n").forEach((p,i)=>{if(i)f.appendChild(document.createElement("br"));if(p)f.appendChild(document.createTextNode(p));});return f;}
+function fillEditor(root,value,ctx){
+  root.innerHTML="";const t=value||"";
+  linkTokens(t).forEach(k=>{root.appendChild(k.link?chipEl(k.link,ctx):textFrag(t.slice(k.r0,k.r1)));});
+  if(t.endsWith("\n")||!root.lastChild||root.lastChild.nodeName==="BR"){const br=document.createElement("br");br.dataset.tail="1";root.appendChild(br);}
 }
-// Text box where typing @ suggests wiki entries to link
+function readEditor(root){
+  let out="";
+  const walk=node=>{node.childNodes.forEach(n=>{
+    if(n.nodeType===3){out+=n.nodeValue.replace(/​/g,"").replace(/ /g," ");return;}
+    if(n.nodeType!==1)return;
+    if(n.classList&&n.classList.contains("sf-chip")){out+=`[@${n.dataset.name}](lore:${n.dataset.sec}:${n.dataset.id})`;return;}
+    if(n.nodeName==="BR"){if(n.dataset&&n.dataset.tail)return;if(n.parentNode!==root&&n.parentNode.childNodes.length===1)return;out+="\n";return;}
+    if(n.nodeName==="DIV"||n.nodeName==="P"){if(out&&!out.endsWith("\n"))out+="\n";walk(n);return;}
+    walk(n);});};
+  walk(root);return out.replace(/\n+$/,"");
+}
 function MentionTextarea({value,onCommit,style,className,placeholder,autoFocus,grow,live,onDone,noHint}){
-  const ctx=useContext(LinkCtx);const ref=useRef(null);
-  const [q,setQ]=useState(null);const [hi,setHi]=useState(0);
-  const liveT=useRef(null);
-  const fit=()=>{const el=ref.current;if(grow&&el){el.style.height="auto";el.style.height=(el.scrollHeight+4)+"px";}};
-  useEffect(()=>{if(ref.current&&document.activeElement!==ref.current)ref.current.value=value||"";fit();},[value]);
-  useEffect(()=>{if(autoFocus&&ref.current){const el=ref.current;el.focus();const n=el.value.length;el.setSelectionRange(n,n);fit();}},[]);
-  useEffect(()=>()=>clearTimeout(liveT.current),[]);
-  // keep saving while someone writes a long note, not only when they click away
-  const onType=()=>{check();fit();if(live){clearTimeout(liveT.current);liveT.current=setTimeout(()=>{if(ref.current)onCommit(ref.current.value);},1200);}};
-  // only suggest what this person is allowed to see
+  const ctx=useContext(LinkCtx);const ref=useRef(null);const wrap=useRef(null);
+  const [q,setQ]=useState(null);const [hi,setHi]=useState(0);const [empty,setEmpty]=useState(!(value||"").trim());
+  const [chipMenu,setChipMenu]=useState(null);const [moreOpen,setMoreOpen]=useState(false);
+  const liveT=useRef(null);const last=useRef(value||"");const qRef=useRef(null);qRef.current=q;
   const all=((ctx&&ctx.entries)||[]).filter(e=>!ctx.can||ctx.can(e.sec,e.id));
   const matches=q?all.filter(e=>e.name.toLowerCase().includes(q.query.toLowerCase())).slice(0,8):[];
-  const [mkOpen,setMkOpen]=useState(false);
   const canMake=!!(ctx&&ctx.create&&q&&q.query.trim().length>1&&!all.some(e=>e.name.toLowerCase()===q.query.trim().toLowerCase()));
-  const check=()=>{
-    const el=ref.current;if(!el)return;const pos=el.selectionStart;const before=el.value.slice(0,pos);
-    const m=/(^|[\s(>"'])@([^@\n\[\]()]{0,40})$/.exec(before);
-    if(m&&!/\s{2}/.test(m[2])){setQ({start:pos-m[2].length-1,end:pos,query:m[2],y:grow?caretY(el):null});setHi(0);}else setQ(null);
-  };
-  const choose=e=>{
-    const el=ref.current;if(!el||!q)return;
-    const ins=`[@${e.name}](lore:${e.sec}:${e.id})`;
-    el.value=el.value.slice(0,q.start)+ins+el.value.slice(q.end);
-    const c=q.start+ins.length;el.focus();el.setSelectionRange(c,c);setQ(null);setMkOpen(false);
-  };
-  const make=sec=>{const name=q.query.trim().replace(/[\[\]()]/g,"");const id=ctx.create(sec,name);if(id!=null)choose({name,sec,id});};
-  const [moreOpen,setMoreOpen]=useState(false);
   const quick=QUICK_TYPES.map(([ids,ic,lb])=>{const ns=(ctx&&ctx.newSections)||[];let hit=null;
     for(const k of ids){hit=ns.find(x=>k instanceof RegExp?k.test((x.label||"").split(" › ").pop()):x.id===k);if(hit)break;}
     return hit?[hit.id,ic,lb]:null;}).filter(Boolean);
-  const onKey=e=>{
-    if(!q||!matches.length)return;
-    if(e.key==="ArrowDown"){e.preventDefault();setHi(h=>(h+1)%matches.length);}
-    else if(e.key==="ArrowUp"){e.preventDefault();setHi(h=>(h-1+matches.length)%matches.length);}
-    else if(e.key==="Enter"||e.key==="Tab"){e.preventDefault();choose(matches[hi]);}
-    else if(e.key==="Escape"){setQ(null);}
+  // load / refresh the box from the saved text (never while someone is typing in it)
+  useEffect(()=>{const el=ref.current;if(!el)return;if(document.activeElement===el)return;if(readEditor(el)!==(value||"")||!el.childNodes.length){fillEditor(el,value,ctx);last.current=value||"";setEmpty(!(value||"").trim());}},[value]);
+  useEffect(()=>{if(autoFocus&&ref.current){const el=ref.current;el.focus();caretToEnd(el);}},[]);
+  useEffect(()=>()=>clearTimeout(liveT.current),[]);
+  const caretToEnd=el=>{const r=document.createRange();const t=el.lastChild;if(t&&t.nodeName==="BR"&&t.dataset.tail)r.setStartBefore(t);else{r.selectNodeContents(el);r.collapse(false);}r.collapse(true);const sel=getSelection();sel.removeAllRanges();sel.addRange(r);};
+  const save=()=>{const el=ref.current;if(!el)return;const v=readEditor(el);if(v!==last.current){last.current=v;onCommit(v);}};
+  const changed=()=>{const el=ref.current;if(!el)return;setEmpty(!readEditor(el).trim());if(live){clearTimeout(liveT.current);liveT.current=setTimeout(save,1200);}};
+  const putAtCaret=(node,after)=>{const sel=getSelection();if(!sel.rangeCount)return;const r=sel.getRangeAt(0);r.deleteContents();r.insertNode(node);
+    const r2=document.createRange();if(after){r2.setStart(after,after.nodeValue?after.nodeValue.length:0);}else r2.setStartAfter(node);r2.collapse(true);sel.removeAllRanges();sel.addRange(r2);};
+  const ensureTail=()=>{const el=ref.current;const l=el.lastChild;if(!l||l.nodeName!=="BR"||!l.dataset.tail){const br=document.createElement("br");br.dataset.tail="1";el.appendChild(br);}};
+  const newLine=()=>{const br=document.createElement("br");putAtCaret(br);ensureTail();changed();};
+  // spot "@name" just before the cursor
+  const check=()=>{
+    const el=ref.current;const sel=getSelection();if(!el||!sel.rangeCount||!el.contains(sel.anchorNode)){if(qRef.current)setQ(null);return;}
+    const n=sel.anchorNode;if(n.nodeType!==3){if(qRef.current)setQ(null);return;}
+    const off=sel.anchorOffset;const before=n.nodeValue.slice(0,off);
+    const m=/(^|[\s(>"'​ ])@([^@\n\[\]()​]{0,40})$/.exec(before);
+    if(m&&!/\s{2}/.test(m[2])){const r=document.createRange();r.setStart(n,Math.max(0,off-m[2].length-1));r.setEnd(n,off);const rc=r.getBoundingClientRect();const w=wrap.current.getBoundingClientRect();
+      setQ({node:n,start:off-m[2].length-1,end:off,query:m[2].replace(/ /g," "),y:rc.bottom-w.top,x:Math.max(0,Math.min(rc.left-w.left,w.width-250))});setHi(0);}
+    else if(qRef.current)setQ(null);
   };
-  return(<div style={{position:"relative"}}>
-    <textarea ref={ref} defaultValue={value||""} placeholder={placeholder||""} className={className||"sh-input-box"} style={style}
-      onInput={onType} onKeyUp={e=>{if(["ArrowLeft","ArrowRight","Home","End"].includes(e.key))check();}} onClick={check} onKeyDown={onKey}
-      onBlur={e=>{clearTimeout(liveT.current);setQ(null);setMkOpen(false);setMoreOpen(false);onCommit(e.target.value);onDone&&onDone();}}/>
-    {q&&(matches.length>0||canMake)&&<div className="sf-mention-list" style={q.y!=null?{top:q.y+2,marginTop:0,left:12,maxWidth:"calc(100% - 24px)"}:undefined}>
+  useEffect(()=>{const h=()=>{if(document.activeElement===ref.current)check();};document.addEventListener("selectionchange",h);return()=>document.removeEventListener("selectionchange",h);},[]);
+  // Enter = a plain line break everywhere (phones included); paste = plain text
+  useEffect(()=>{const el=ref.current;if(!el)return;const bi=e=>{if(e.inputType==="insertParagraph"||e.inputType==="insertLineBreak"){if(qRef.current&&(e.inputType==="insertParagraph"))return;e.preventDefault();newLine();}};
+    el.addEventListener("beforeinput",bi);return()=>el.removeEventListener("beforeinput",bi);},[]);
+  const choose=e=>{
+    const el=ref.current;const cq=qRef.current;if(!el||!cq)return;
+    const r=document.createRange();r.setStart(cq.node,cq.start);r.setEnd(cq.node,cq.end);r.deleteContents();
+    const chip=chipEl({name:e.name,sec:e.sec,id:e.id},ctx);r.insertNode(chip);const zw=document.createTextNode(ZW);chip.after(zw);
+    const sel=getSelection();const r2=document.createRange();r2.setStart(zw,1);r2.collapse(true);sel.removeAllRanges();sel.addRange(r2);
+    el.focus();setQ(null);setMoreOpen(false);ensureTail();changed();
+  };
+  const make=sec=>{const cq=qRef.current;if(!cq)return;const name=cq.query.trim().replace(/[\[\]()]/g,"");const id=ctx.create(sec,name);if(id!=null)choose({name,sec,id});};
+  const onKey=e=>{
+    if(q&&matches.length){
+      if(e.key==="ArrowDown"){e.preventDefault();setHi(h=>(h+1)%matches.length);return;}
+      if(e.key==="ArrowUp"){e.preventDefault();setHi(h=>(h-1+matches.length)%matches.length);return;}
+      if(e.key==="Enter"||e.key==="Tab"){e.preventDefault();choose(matches[hi]);return;}
+    }
+    if(e.key==="Escape"){setQ(null);setChipMenu(null);return;}
+    if(e.key==="Enter"){e.preventDefault();newLine();}
+  };
+  const onPaste=e=>{e.preventDefault();const t=(e.clipboardData||window.clipboardData).getData("text/plain")||"";if(!t)return;
+    const f=textFrag(t);const lastN=f.lastChild;putAtCaret(f,lastN&&lastN.nodeType===3?lastN:null);ensureTail();changed();};
+  const onClick=e=>{const c=e.target.closest&&e.target.closest(".sf-chip");if(!c){setChipMenu(null);return;}
+    const rc=c.getBoundingClientRect(),w=wrap.current.getBoundingClientRect();setChipMenu({el:c,y:rc.bottom-w.top+2,x:Math.max(0,Math.min(rc.left-w.left,w.width-200))});};
+  const chipToText=(c,withAt)=>{const t=document.createTextNode((withAt?"@":"")+c.dataset.name);c.replaceWith(t);const sel=getSelection();const r=document.createRange();r.setStart(t,t.nodeValue.length);r.collapse(true);sel.removeAllRanges();sel.addRange(r);ref.current.focus();setChipMenu(null);changed();setTimeout(check,0);};
+  const edStyle={...style,whiteSpace:"pre-wrap",overflowWrap:"anywhere",outline:"none",cursor:"text",overflow:"visible",height:"auto",resize:undefined};
+  return(<div ref={wrap} style={{position:"relative"}}>
+    <div ref={ref} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" className={(className||"sh-input-box")+" sf-me"} style={edStyle}
+      onInput={()=>{changed();check();}} onKeyDown={onKey} onKeyUp={e=>{if(["ArrowLeft","ArrowRight","Home","End","ArrowUp","ArrowDown"].includes(e.key))check();}} onPaste={onPaste} onClick={onClick}
+      onBlur={()=>{clearTimeout(liveT.current);setQ(null);setMoreOpen(false);setTimeout(()=>setChipMenu(m=>document.activeElement===ref.current?m:null),150);save();onDone&&onDone();}}/>
+    {empty&&placeholder&&<div style={{position:"absolute",top:0,left:0,right:0,pointerEvents:"none",padding:(style&&style.padding)||"6px 9px",paddingTop:(style&&style.paddingTop)||undefined,fontFamily:style&&style.fontFamily,fontSize:style&&style.fontSize,lineHeight:style&&style.lineHeight,color:"var(--ink3)",fontStyle:"italic",opacity:.6}}>{placeholder}</div>}
+    {q&&(matches.length>0||canMake)&&<div className="sf-mention-list" style={{top:q.y+2,marginTop:0,left:q.x,maxWidth:"calc(100% - 8px)"}}>
       {matches.length>0&&<div style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".08em",color:"var(--ink3)",padding:"4px 8px"}}>LINK TO…</div>}
       {matches.map((e,i)=><div key={e.sec+e.id} onMouseDown={ev=>{ev.preventDefault();choose(e);}} onMouseEnter={()=>setHi(i)} className={`sf-mention-item${i===hi?" on":""}`}>{sectionIcon(e.sec)} {e.name}</div>)}
       {canMake&&<div style={{borderTop:matches.length?"1px solid var(--border)":"none",padding:"5px 8px 7px"}}>
@@ -478,7 +512,12 @@ function MentionTextarea({value,onCommit,style,className,placeholder,autoFocus,g
           :<div style={{maxHeight:180,overflowY:"auto",borderTop:"1px solid var(--border)",marginTop:5}}>{(ctx.newSections||[]).map(x=><div key={x.id} onMouseDown={ev=>{ev.preventDefault();make(x.id);}} className="sf-mention-item" style={{fontSize:12.5}}>{x.icon} {x.label}</div>)}</div>}
         </div>}
     </div>}
-    {!noHint&&<div style={{fontSize:10,color:"var(--ink3)",marginTop:2,fontStyle:"italic",opacity:.75}}>Type @ to link another entry</div>}
+    {chipMenu&&<div className="sf-mention-list sf-chip-menu" style={{top:chipMenu.y,left:chipMenu.x,minWidth:190,marginTop:0}}>
+      {ctx&&ctx.can&&ctx.can(chipMenu.el.dataset.sec,chipMenu.el.dataset.id)&&<div className="sf-mention-item" onMouseDown={ev=>{ev.preventDefault();const c=chipMenu.el;save();setChipMenu(null);ctx.open(c.dataset.sec,c.dataset.id);}}>📜 Open {chipMenu.el.dataset.name}</div>}
+      <div className="sf-mention-item" onMouseDown={ev=>{ev.preventDefault();chipToText(chipMenu.el,true);}}>🔁 Change link</div>
+      <div className="sf-mention-item" onMouseDown={ev=>{ev.preventDefault();chipToText(chipMenu.el,false);}}>✂️ Remove link (keep the word)</div>
+    </div>}
+    {!noHint&&<div style={{fontSize:10,color:"var(--ink3)",marginTop:2,fontStyle:"italic",opacity:.75}}>Type @ to link · tap a gold name to change it</div>}
   </div>);
 }
 
@@ -631,7 +670,7 @@ const LoreVF=memo(({label,value,field,multi,height,editMode,onCommit,eyeState,on
   return(<div style={{marginBottom:12}}>
     <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>{label.toUpperCase()}{hasEye&&<EyeBtn on={eyeState} onClick={()=>onEye(field)}/>}</div>
     {editMode?(multi
-      ?<MentionTextarea value={value||""} onCommit={v=>onCommit(field,v)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 9px",fontSize:14,width:"100%",resize:"vertical",minHeight:height||80,lineHeight:1.6,outline:"none"}}/>
+      ?<MentionTextarea value={value||""} onCommit={v=>onCommit(field,v)} grow style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 9px",fontSize:14,width:"100%",resize:"none",overflow:"hidden",minHeight:height||80,lineHeight:1.6,outline:"none"}}/>
       :<ShInput value={value||""} onCommit={v=>onCommit(field,v)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 9px",fontSize:14,width:"100%",outline:"none"}} className=""/>)
       :<p style={{fontSize:15,color:hasEye&&!eyeState?HIDDEN_RED:"var(--ink)",lineHeight:1.7,fontFamily:"Crimson Pro",whiteSpace:"pre-wrap"}}>{richNodes(value,ctx)}</p>}
   </div>);
@@ -2414,6 +2453,10 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 .sf-mention-list{position:absolute;z-index:50;left:0;top:100%;margin-top:2px;min-width:240px;max-width:100%;background:var(--parch);border:1px solid var(--gold2);border-radius:5px;box-shadow:0 6px 20px rgba(0,0,0,0.35);overflow:hidden}
 .sf-mention-item{padding:6px 10px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--ink);cursor:pointer}
 .sf-mention-item.on{background:var(--parch3);color:var(--gold)}
+.sf-chip{color:#a87a10;font-weight:600;background:rgba(196,154,48,0.16);border-radius:4px;padding:0 3px;margin:0 1px;cursor:pointer;white-space:nowrap;border-bottom:1px solid rgba(168,122,16,0.35);user-select:all;-webkit-user-select:all}
+.sf-chip.off{color:var(--ink2);font-weight:400;background:rgba(0,0,0,0.06);border-bottom-color:transparent}
+.sf-me:empty:before{content:"\\200b"}
+.sf-me:focus{outline:none;box-shadow:0 0 0 2px rgba(196,154,48,0.35)}
 .sf-hidden-para{position:relative;border-left:3px solid #b3261e;padding-left:24px;background:rgba(179,38,30,0.045);border-radius:0 3px 3px 0}
 .sf-hidden-para:before{content:"";position:absolute;left:5px;top:0.42em;width:13px;height:13px;background-image:${RED_LOCK_SVG};background-size:contain;background-repeat:no-repeat}
 .sf-para{padding-left:27px}
