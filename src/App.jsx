@@ -842,7 +842,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
   // Tab order (shared) — tabs keep their built-in order until someone moves one
   const secPos=id=>{const o=lore.__sectionOrder||{};return(id in o)?o[id]:1000+allSections.findIndex(x=>x.id===id);};
   // Past folders (Mathas' Past, Karl's Past …) always sit at the bottom of People
-  const isPastTab=x=>x.parent==="people"&&!!(x.owner||ownerByLabel(x.label));
+  const isPastTab=x=>x.parent==="people"&&!!(x.owner||ownerByLabel(x.label)||/^\s*pasts\s*$/i.test(x.label||""));
   const sortSecs=arr=>[...arr].sort((a,b)=>(isPastTab(a)?1e6:0)+secPos(a.id)-((isPastTab(b)?1e6:0)+secPos(b.id)));
   const siblingsOf=sc=>{const top=x=>!x.parent||!secById(x.parent);return sortSecs(allSections.filter(x=>!(realmTree&&x.id==="settlements")&&(top(sc)?top(x):x.parent===sc.parent)));};
   const moveSec=(sc,dir)=>{const sib=siblingsOf(sc);const i=sib.findIndex(x=>x.id===sc.id),j=i+dir;if(i<0||j<0||j>=sib.length)return;
@@ -851,10 +851,12 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
   const depthOf=id=>{let x=secById(id),d=0,g=0;while(x&&x.parent&&secById(x.parent)&&g++<6){d++;x=secById(x.parent);}return d;};
   const parentChoices=sc=>{const under=new Set([sc.id]);let grew=true;while(grew){grew=false;allSections.forEach(x=>{if(x.parent&&under.has(x.parent)&&!under.has(x.id)){under.add(x.id);grew=true;}});}
     const deepest=(()=>{let m=0;under.forEach(id=>{const dd=depthOf(id)-depthOf(sc.id);if(dd>m)m=dd;});return m;})();
-    return allSections.filter(x=>!under.has(x.id)&&x.id!=="regions"&&x.id!=="settlements"&&depthOf(x.id)+1+deepest<=2&&(!secOwner(x.id)||seeAll(x.id)));};
+    return allSections.filter(x=>!under.has(x.id)&&x.id!=="regions"&&x.id!=="settlements"&&depthOf(x.id)+1+deepest<=3&&(!secOwner(x.id)||seeAll(x.id)));};
   // moving a tab keeps its page layout (people stay people, factions stay factions)
   const setSecParent=(sc,pid)=>{const k=kindOf(sc.id);const keep=["ally","enemy","faction","item","settlement"].includes(k)?k:null;
-    setLore(prev=>({...prev,__customSections:(prev.__customSections||[]).map(c=>c.id===sc.id?{...c,parent:pid||undefined,...(keep&&!c.layout?{layout:keep}:{})}:c)}));setOpenSection(sc.id);};
+    setLore(prev=>({...prev,__customSections:(prev.__customSections||[]).map(c=>c.id===sc.id?{...c,parent:pid||undefined,...(keep&&!c.layout?{layout:keep}:{})}:c)}));
+    // open the tab it moved into so you can see it there
+    setActiveSec(sc.id);setOpenSet(prev=>{const n=new Set(prev);n.add(sc.id);let x=pid?secById(pid):null,g=0;while(x&&g++<8){n.add(x.id);x=x.parent?secById(x.parent):null;}return n;});};
   // Short page ↔ Full page. Going short deletes the full-page boxes, so if any have writing it asks for OVERRIDE first.
   const FULL_ONLY={ally:[["Description","description"],["Background & Lore","lore"],["Abilities & Powers","abilities"],["Relationships & Connections","relationships"],["Feats with the Party","featsWithParty"]],
     enemy:[["Description","description"],["Background & Lore","lore"],["Abilities & Powers","abilities"],["Threat Level","threatLevel"],["Tactics & Weaknesses","tactics"],["Relationships & Connections","relationships"],["Feats with the Party","featsWithParty"]],
@@ -1040,7 +1042,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
               </button>}
             </div>
             {false&&s.group&&<div style={{background:"var(--parch)",padding:"6px 10px",fontSize:11,color:"var(--ink3)",fontStyle:"italic"}}>Pick a sub-tab{allSections.some(c=>c.parent===s.id)?"":" — or add one"}.</div>}
-            {isO&&wikiEdit&&!readOnly&&!le&&(!secOwner(s.id)||seeAll(s.id))&&(()=>{const sib=siblingsOf(s);const i=sib.findIndex(x=>x.id===s.id);const custom=String(s.id).indexOf("custom_")===0;const opts=custom?parentChoices(s):[];
+            {isO&&wikiEdit&&!readOnly&&!le&&(!secOwner(s.id)||seeAll(s.id))&&(()=>{const sib=siblingsOf(s);const i=sib.findIndex(x=>x.id===s.id);const custom=(lore.__customSections||[]).some(c=>c.id===s.id);const opts=custom?parentChoices(s):[];
               return(<div style={{padding:"5px 8px",background:"var(--parch2)",borderBottom:"1px solid var(--border)",display:"flex",gap:4,alignItems:"center",flexWrap:"wrap",fontSize:10.5}}>
                 <span style={{fontFamily:"Cinzel",fontSize:9,letterSpacing:".06em",color:"var(--ink3)"}}>TAB</span>
                 <button className="btn" disabled={i<=0} onClick={()=>moveSec(s,-1)} title="Move this tab up" style={{fontSize:10,padding:"1px 7px",opacity:i<=0?.35:1}}>▲</button>
@@ -1092,7 +1094,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
                 </div>
               )}
             </div>}
-            {wikiEdit&&!readOnly&&depth<2&&isO&&!le&&s.id!=="regions"&&(!secOwner(s.id)||seeAll(s.id))&&<div style={{padding:"5px 8px",background:"var(--parch)",borderTop:"1px solid var(--border)"}}>
+            {wikiEdit&&!readOnly&&depth<3&&isO&&!le&&s.id!=="regions"&&(!secOwner(s.id)||seeAll(s.id))&&<div style={{padding:"5px 8px",background:"var(--parch)",borderTop:"1px solid var(--border)"}}>
               {subFor===s.id?<div style={{display:"flex",flexDirection:"column",gap:4}}>
                 <input autoFocus placeholder="Sub-tab name (e.g. Mathas Family)..." value={subName} onChange={e=>setSubName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addSubTab(s.id);if(e.key==="Escape")setSubFor(null);}} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch2)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:3,padding:"3px 7px",fontSize:11,outline:"none"}}/>
                 {s.id==="people"&&<select value={subLayout} onChange={e=>setSubLayout(e.target.value)} style={{fontFamily:"Crimson Pro,serif",fontSize:11,background:"var(--parch2)",border:"1px solid var(--border2)",borderRadius:3,padding:"2px 4px"}}><option value="ally">Use the Ally layout</option><option value="enemy">Use the Enemy layout</option></select>}
@@ -1956,7 +1958,7 @@ function GameClock({data,setData}){
   const c=clockOf(data);const chars=(data.characters||[]).filter(ch=>(ch.name||"").trim());
   const [dlg,setDlg]=useState(null);
   const open=kind=>setDlg({kind,days:kind==="next"?1:3,rest:[],year:c.year||"",month:c.month,day:c.day});
-  const go=()=>{const n=Math.max(1,Math.min(365,parseInt(dlg.days)||1));setData(d=>advanceDays(d,n,dlg.kind==="skip"?dlg.rest:[]));setDlg(null);};
+  const go=()=>{const n=Math.max(1,Math.min(365,parseInt(dlg.days)||1));setData(d=>advanceDays(d,n,dlg.rest));setDlg(null);};
   const btn={fontFamily:"Cinzel",fontSize:10,padding:"3px 8px",borderRadius:4,border:"1px solid var(--border2)",background:"rgba(255,240,200,0.08)",color:"var(--gold3)",cursor:"pointer",whiteSpace:"nowrap"};
   const target=dlg?addDays(c,Math.max(1,parseInt(dlg.days)||1)):null;
   return(<div className="sf-clock" style={{display:"flex",alignItems:"center",gap:5}}>
@@ -1969,21 +1971,15 @@ function GameClock({data,setData}){
         <h3 style={{fontFamily:"Cinzel",fontSize:15,color:"var(--gold)",marginBottom:10}}>{dlg.kind==="next"?"Next day":"Time skip"}</h3>
         {dlg.kind==="skip"&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,fontSize:14}}>Skip <input type="number" min={1} max={365} value={dlg.days} onChange={e=>setDlg({...dlg,days:e.target.value})} style={{width:60,fontSize:14,padding:"2px 6px"}}/> days</div>}
         <div style={{fontSize:14,marginBottom:10}}>{fmtDate(c)} → <strong>{fmtDate(target)}</strong></div>
-        {dlg.kind==="skip"&&<div style={{marginBottom:10}}>
-          <div style={{fontFamily:"Cinzel",fontSize:11,color:"var(--ink2)",marginBottom:4}}>REST DAYS — WHO'S RESTING?</div>
+        {<div style={{marginBottom:10}}>
+          <div style={{fontFamily:"Cinzel",fontSize:11,color:"var(--ink2)",marginBottom:4}}>{dlg.kind==="skip"?"REST DAYS — WHO'S RESTING?":"WHO'S RESTING TODAY?"}</div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{chars.map(ch=>{const on=dlg.rest.includes(String(ch.id));return(
             <button key={ch.id} className="btn" onClick={()=>setDlg({...dlg,rest:on?dlg.rest.filter(x=>x!==String(ch.id)):[...dlg.rest,String(ch.id)]})}
               style={{fontSize:12.5,padding:"3px 10px",...(on?{background:"var(--gold2)",color:"var(--dark)",fontWeight:600,borderColor:"var(--gold)"}:{})}}>{on?"✓ ":""}{ch.name}</button>);})}</div>
-          <div style={{fontSize:12,color:"var(--ink3)",marginTop:4}}>Anyone resting heals one hit die + Con for each day, up to their max HP.</div>
+          <div style={{fontSize:12,color:"var(--ink3)",marginTop:4}}>Anyone resting heals one hit die + Con{dlg.kind==="skip"?" for each day":""}, up to their max HP.</div>
         </div>}
-        <div style={{fontSize:12.5,color:"var(--ink3)",marginBottom:10,lineHeight:1.5}}>Everyone pays <strong>{Math.max(1,parseInt(dlg.days)||1)} gp</strong> expenses (gold can go into debt). Death marks older than 7 days fade.</div>
+        <div style={{fontSize:12.5,color:"var(--ink3)",marginBottom:10,lineHeight:1.5}}>Everyone pays <strong>{Math.max(1,parseInt(dlg.days)||1)} gp</strong> expenses. Death marks older than 7 days fade.</div>
         <div style={{fontFamily:"Cinzel",fontSize:13,color:"var(--gold)",marginBottom:12,textAlign:"center"}}>Is the party together?</div>
-        <div style={{borderTop:"1px solid var(--border)",paddingTop:8,marginBottom:10,display:"flex",gap:6,alignItems:"center",fontSize:12,color:"var(--ink3)",flexWrap:"wrap"}}>
-          Fix the date: <select value={dlg.month} onChange={e=>setDlg({...dlg,month:parseInt(e.target.value)})} style={{fontSize:12}}>{MONTHS.map((m,i)=><option key={m} value={i+1}>{m}</option>)}</select>
-          <input type="number" min={1} max={31} value={dlg.day} onChange={e=>setDlg({...dlg,day:e.target.value})} style={{width:44,fontSize:12}}/>
-          year <input value={dlg.year} onChange={e=>setDlg({...dlg,year:e.target.value})} placeholder="—" style={{width:60,fontSize:12}}/>
-          <button className="btn" onClick={()=>{setData(d=>({...d,clock:{...clockOf(d),month:dlg.month,day:Math.max(1,Math.min(31,parseInt(dlg.day)||1)),year:dlg.year.trim()}}));setDlg(null);}} style={{fontSize:11,padding:"1px 8px"}}>Set</button>
-        </div>
         <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
           <button className="btn" onClick={()=>setDlg(null)}>Cancel</button>
           <button className="btn" onClick={go} style={{background:"var(--gold2)",color:"var(--dark)",fontWeight:600,borderColor:"var(--gold)"}}>Yes — {dlg.kind==="next"?"next day":"skip time"}</button>
