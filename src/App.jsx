@@ -1567,7 +1567,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,
 
   return(<div style={{height:"100%",background:"#f0ebe0",overflowY:"auto"}}>
     {/* Header */}
-    <div className="sf-sheet-head" style={{background:"#2a2a3a",padding:"10px 92px 10px 18px",display:"flex",gap:14,alignItems:"flex-start",flexWrap:"wrap",position:"relative"}}>
+    <div className="sf-sheet-head" style={{background:"#2a2a3a",padding:"10px 84px 10px 12px",display:"flex",gap:8,alignItems:"flex-start",flexWrap:"wrap",position:"relative"}}>
       <button onClick={()=>setEditMode(m=>!m)} style={{position:"absolute",top:10,right:12,fontFamily:"Cinzel",fontSize:11,padding:"4px 12px",background:editMode?"rgba(200,160,40,0.3)":"rgba(255,255,255,0.1)",border:`1px solid ${editMode?"var(--gold2)":"rgba(255,255,255,0.25)"}`,color:editMode?"var(--gold3)":"rgba(255,255,255,0.7)",borderRadius:4,cursor:"pointer",letterSpacing:"0.06em"}}>
         {editMode?"✓ DONE":"✏️ EDIT"}
       </button>
@@ -1577,7 +1577,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,
         {editMode&&<label style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.7)",color:"rgba(255,255,255,0.7)",fontSize:8,textAlign:"center",padding:"3px",cursor:"pointer",fontFamily:"Cinzel"}}>📷<input type="file" accept="image/*" onChange={handlePortrait} style={{display:"none"}}/></label>}
       </div>
       {/* Name + fields */}
-      <div style={{flex:1,minWidth:200,paddingRight:80}}>
+      <div style={{flex:"1 1 120px",minWidth:120}}>
         {editMode?<ShInput value={L.name||""} onCommit={v=>commit("name",v)} placeholder="Character Name" style={{fontFamily:"Cinzel",background:"transparent",border:"none",borderBottom:"2px solid rgba(255,255,255,0.4)",color:"white",fontSize:24,fontWeight:700,width:"100%",outline:"none",marginBottom:6,padding:"2px 0"}}/>
           :<div style={{fontFamily:"Cinzel",color:"white",fontSize:24,fontWeight:700,marginBottom:6,borderBottom:"2px solid rgba(255,255,255,0.15)",padding:"2px 0"}}>{L.name||<span style={{opacity:.3}}>Unnamed Hero</span>}</div>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"3px 14px"}}>
@@ -1588,9 +1588,10 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,
           </div>)}
         </div>
       </div>
-      {/* Level + AC */}
-      <div style={{display:"flex",gap:10,flexShrink:0}}>
-        {[["level","LEVEL"],["ac","AC"]].map(([f,lbl])=><div key={f} style={{textAlign:"center",background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:4,padding:"6px 10px",minWidth:62}}>
+      {/* Level + AC, with Armour underneath */}
+      <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0,width:editMode?210:134}}>
+      <div style={{display:"flex",gap:10}}>
+        {[["level","LEVEL"],["ac","AC"]].map(([f,lbl])=><div key={f} style={{textAlign:"center",background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:4,padding:"6px 10px",minWidth:62,flex:editMode?"0 0 62px":1}}>
           <div style={{fontSize:8,color:"rgba(255,255,255,0.45)",fontFamily:"Cinzel",marginBottom:3}}>{lbl}</div>
           {f==="ac"&&acNow!=null?<div title="Worked out from your armour, Dex and gear" style={{fontFamily:"Cinzel",color:"white",fontSize:26,fontWeight:700}}>{acNow}</div>
             :editMode?<ShNumInput value={L[f]||0} onCommit={v=>commitNum(f,v)} style={{fontFamily:"Cinzel",background:"transparent",border:"none",color:"white",fontSize:26,textAlign:"center",width:"100%",outline:"none",fontWeight:700}}/>
@@ -1598,8 +1599,14 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,
         </div>)}
       </div>
       {/* Armour + gear that changes AC */}
-      <div className="sf-armour" style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:4,padding:"7px 10px",flexShrink:0,minWidth:170,maxWidth:240}}>
-        <div style={{fontSize:8,color:"rgba(255,255,255,0.45)",fontFamily:"Cinzel",marginBottom:4}}>ARMOUR</div>
+      <div className="sf-armour" style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:4,padding:"6px 10px"}}>
+        <div style={{fontSize:8,color:"rgba(255,255,255,0.45)",fontFamily:"Cinzel",marginBottom:3}}>ARMOUR</div>
+        {!editMode&&<>
+          <div style={{fontFamily:"Cinzel",color:"white",fontSize:14,fontWeight:600,lineHeight:1.2}}>{armour?armour.name:<span style={{opacity:.4,fontSize:12}}>None set</span>}</div>
+          {(L.acItems||[]).filter(g=>g.on!==false).length>0&&<div style={{fontSize:11,color:"rgba(255,255,255,0.7)",marginTop:2,lineHeight:1.3}}>{(L.acItems||[]).filter(g=>g.on!==false).map(g=>`${g.name} ${(parseInt(g.bonus)||0)>=0?"+":""}${parseInt(g.bonus)||0}`).join(" · ")}</div>}
+          {armour&&(armour.stealth||armour.str)&&<div style={{fontSize:9.5,color:"rgba(255,255,255,0.5)",marginTop:2,lineHeight:1.3}}>{armour.stealth?"Stealth disadv.":""}{armour.stealth&&armour.str?" · ":""}{armour.str?<span style={{color:(parseInt(L.str)||10)<armour.str?"#ff9a9a":undefined}}>Str {armour.str}</span>:null}</div>}
+        </>}
+        {editMode&&<>
         <select value={L.armourKey||""} onChange={e=>{const v=e.target.value;if(v==="__new"){setArmForm({name:"",type:"medium",base:14,bonus:1,stealth:false});return;}commit("armourKey",v||undefined);}}
           style={{width:"100%",fontFamily:"Crimson Pro,serif",fontSize:13,background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:3,padding:"2px 4px"}}>
           <option value="" style={{color:"#222"}}>{L.armourKey?"— none chosen —":"Choose armour…"}</option>
@@ -1607,6 +1614,9 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,
           {(L.myArmour||[]).length>0&&<optgroup label="✨ Magic / custom" style={{color:"#222"}}>{L.myArmour.map(a=><option key={a.k} value={a.k} style={{color:"#222"}}>{a.name} ({ARMOUR_TYPES[a.type]}, {a.base}{a.bonus?` +${a.bonus}`:""})</option>)}</optgroup>}
           <option value="__new" style={{color:"#222"}}>✨ Make magic / custom armour…</option>
         </select>
+        <div style={{display:"flex",alignItems:"center",gap:5,marginTop:4,fontSize:10,color:"rgba(255,255,255,0.6)"}}>AC uses
+          <select value={L.acAbility||"dex"} onChange={e=>commit("acAbility",e.target.value==="dex"?undefined:e.target.value)} style={{flex:1,fontSize:11,background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:3}}>
+            {ABILITIES.map(a=><option key={a} value={a} style={{color:"#222"}}>{AB_FULL[a]} ({fmtMod(calcMod(L[a]||10))})</option>)}</select></div>
         {armour&&<div style={{fontSize:10,color:"rgba(255,255,255,0.55)",marginTop:3,lineHeight:1.35}}>
           {armour.stealth&&<div>Stealth: disadvantage</div>}
           {armour.str&&<div style={{color:(parseInt(L.str)||10)<armour.str?"#ff9a9a":undefined}}>Needs Str {armour.str}{(parseInt(L.str)||10)<armour.str?" — speed −10 ft":""}</div>}
@@ -1637,11 +1647,13 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,
           :<div style={{display:"flex",gap:4,marginTop:2}}>
             {!(L.acItems||[]).some(g=>/shield/i.test(g.name))&&<button onClick={()=>commit("acItems",[...(L.acItems||[]),{id:"g"+Date.now(),name:"Shield",bonus:2,on:true}])} style={{fontSize:10,background:"none",border:"1px dashed rgba(255,255,255,0.3)",color:"rgba(255,255,255,0.6)",borderRadius:3,padding:"1px 6px",cursor:"pointer"}}>+ Shield</button>}
             <button onClick={()=>setGearForm({name:"",bonus:1})} style={{fontSize:10,background:"none",border:"1px dashed rgba(255,255,255,0.3)",color:"rgba(255,255,255,0.6)",borderRadius:3,padding:"1px 6px",cursor:"pointer"}}>+ Other gear</button></div>}
+        </>}
+      </div>
       </div>
       {/* HP + Hit Die */}
-      <div style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:4,padding:"7px 10px",flexShrink:0}}>
-        <div style={{fontSize:8,color:"rgba(255,255,255,0.45)",fontFamily:"Cinzel",marginBottom:4}}>HIT POINTS</div>
-        <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:5}}>
+      <div style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:4,padding:"6px 10px",flexShrink:0,display:"grid",gridTemplateColumns:"auto auto",columnGap:12,alignItems:"end"}}>
+        <div style={{fontSize:8,color:"rgba(255,255,255,0.45)",fontFamily:"Cinzel",marginBottom:2,gridColumn:"1 / span 2"}}>HIT POINTS</div>
+        <div style={{display:"flex",gap:6,alignItems:"center",gridRow:2,gridColumn:1}}>
           {[["hpCurrent","CURRENT",20],["hpMax","MAX",20],["hpTemp","TEMP",14]].map(([f,lbl,sz],i)=><React.Fragment key={f}>{i>0&&<div style={{color:"rgba(255,255,255,0.3)",fontSize:14}}>{i===1?"/":"+"}</div>}<div style={{textAlign:"center"}}>
             <div style={{fontSize:7,color:"rgba(255,255,255,0.35)",fontFamily:"Cinzel",marginBottom:1}}>{lbl}</div>
             {editMode?<ShNumInput value={L[f]||0} onCommit={v=>commitNum(f,v)} style={{fontFamily:"Cinzel",background:"transparent",border:"none",color:f==="hpCurrent"&&L.hpCurrent>0&&L.hpMax>0&&L.hpCurrent<L.hpMax/2?"#ff8888":"white",fontSize:sz,textAlign:"center",width:f==="hpTemp"?34:44,outline:"none",fontWeight:700}}/>
@@ -1649,17 +1661,18 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,
               :<QuickNum value={L[f]||0} onCommit={v=>commit(f,v)} style={{fontFamily:"Cinzel",color:f==="hpCurrent"&&L.hpCurrent>0&&L.hpMax>0&&L.hpCurrent<L.hpMax/2?"#ff8888":"white",fontSize:sz,fontWeight:700,width:f==="hpTemp"?34:48,minWidth:f==="hpTemp"?34:44,textAlign:"center"}}/>}
           </div></React.Fragment>)}
         </div>
-        {!editMode&&<div style={{display:"flex",gap:4,alignItems:"center",marginBottom:6}}>
+        {!editMode&&<div style={{display:"flex",gap:4,alignItems:"center",marginTop:5,gridRow:3,gridColumn:"1 / span 2"}}>
           <button title="-1 HP" onClick={()=>commit("hpCurrent",Math.max(0,(L.hpCurrent||0)-1))} style={{width:22,height:22,borderRadius:3,border:"1px solid rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.08)",color:"white",cursor:"pointer",fontSize:14,lineHeight:1}}>−</button>
           <button title="+1 HP" onClick={()=>commit("hpCurrent",Math.min(hpCap(),(L.hpCurrent||0)+1))} style={{width:22,height:22,borderRadius:3,border:"1px solid rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.08)",color:"white",cursor:"pointer",fontSize:14,lineHeight:1}}>+</button>
           <input type="number" value={hpAmt} onChange={e=>setHpAmt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")damage();}} placeholder="amt" style={{width:44,fontFamily:"Cinzel",fontSize:12,background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.3)",color:"white",borderRadius:3,padding:"2px 4px",outline:"none"}}/>
           <button onClick={damage} style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(255,120,120,0.6)",background:"rgba(160,30,30,0.5)",color:"#ffd0d0",cursor:"pointer"}}>DAMAGE</button>
           <button onClick={heal} style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(120,220,120,0.6)",background:"rgba(30,110,30,0.5)",color:"#d0ffd0",cursor:"pointer"}}>HEAL</button>
+          <button className="sf-rest" onClick={restDay} disabled={restedToday} title={restedToday?"Already rested today — wait for the next day":`A day of rest heals ${L.hitDieMax||"d8"} + Con = ${restHeal(L)} HP`}
+            style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(160,200,255,0.5)",background:restedToday?"rgba(255,255,255,0.05)":"rgba(40,70,130,0.55)",color:restedToday?"rgba(255,255,255,0.35)":"#dbe7ff",cursor:restedToday?"default":"pointer",whiteSpace:"nowrap"}}>
+            {restedToday?"RESTED":`REST +${restHeal(L)}`}</button>
         </div>}
-        {!editMode&&<button className="sf-rest" onClick={restDay} disabled={restedToday} title={restedToday?"Already rested today — wait for the next day":`A day of rest heals ${L.hitDieMax||"d8"} + Con = ${restHeal(L)} HP`}
-          style={{width:"100%",marginBottom:6,fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(160,200,255,0.5)",background:restedToday?"rgba(255,255,255,0.05)":"rgba(40,70,130,0.55)",color:restedToday?"rgba(255,255,255,0.35)":"#dbe7ff",cursor:restedToday?"default":"pointer"}}>
-          {restedToday?"RESTED TODAY":`REST DAY  +${restHeal(L)} HP`}</button>}
-        <div style={{display:"flex",gap:8}}>
+
+        <div style={{display:"flex",gap:7,gridRow:2,gridColumn:2,borderLeft:"1px solid rgba(255,255,255,0.15)",paddingLeft:10,alignSelf:"center"}}>
           <div><div style={{fontSize:7,color:"rgba(255,255,255,0.35)",fontFamily:"Cinzel",marginBottom:1}}>HIT DIE</div>
             {editMode?<select value={L.hitDieMax||"d8"} onChange={e=>commit("hitDieMax",e.target.value)} style={{fontFamily:"Cinzel",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"white",fontSize:12,padding:"2px 4px",outline:"none",borderRadius:2}}>{["d4","d6","d8","d10","d12"].map(d=><option key={d} style={{background:"#333"}}>{d}</option>)}</select>
               :<div style={{fontFamily:"Cinzel",color:"white",fontSize:13}}>{L.hitDieMax||"d8"}</div>}
@@ -1680,13 +1693,13 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,
       {/* Death marks: 4, red only, -2 each, fade after 7 in-game days */}
       <div style={{background:marks.length>=MAX_MARKS?"rgba(140,0,0,0.45)":"rgba(255,255,255,0.07)",border:"1px solid "+(marks.length>=MAX_MARKS?"#ff6b6b":"rgba(255,255,255,0.15)"),borderRadius:4,padding:"7px 10px",flexShrink:0}}>
         <div style={{fontSize:8,color:"rgba(255,255,255,0.45)",fontFamily:"Cinzel",marginBottom:5}}>DEATH MARKS{pen?<span style={{color:"#ff9a9a"}}> · −{pen}</span>:null}</div>
-        <div style={{display:"flex",gap:5,marginBottom:3}}>
+        <div style={{display:"flex",gap:3,marginBottom:3}}>
           {Array.from({length:MAX_MARKS}).map((_,i)=>{const m=[...marks].sort((a,b)=>(a.day||0)-(b.day||0))[i];const left=m?MARK_DAYS-(today-(m.day||0)):0;return(
-            <div key={i} className={`death-box${m?" red":""}`} title={m?`Fades in ${left} day${left===1?"":"s"} — tap to remove`:"Tap to take a death mark"} onClick={()=>m?delMark(m.id):addMark()} style={{width:30,height:30,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",lineHeight:1}}>
-              {m&&<><span style={{color:"#900",fontWeight:"bold",fontSize:13}}>✕</span><span style={{fontSize:7,color:"#600",fontFamily:"Cinzel"}}>{left}d</span></>}
+            <div key={i} className={`death-box${m?" red":""}`} title={m?`Fades in ${left} day${left===1?"":"s"} — tap to remove`:"Tap to take a death mark"} onClick={()=>m?delMark(m.id):addMark()}>
+              {m&&<span style={{color:"#900",fontWeight:"bold"}}>✕</span>}
             </div>);})}
         </div>
-        <div style={{fontSize:7,color:marks.length>=MAX_MARKS?"#ffd0d0":"rgba(255,255,255,0.25)",fontFamily:"Cinzel",textAlign:"center"}}>{marks.length>=MAX_MARKS?"☠ DEAD":"FADE AFTER 7 DAYS"}</div>
+        <div style={{fontSize:7,color:marks.length>=MAX_MARKS?"#ffd0d0":"rgba(255,255,255,0.25)",fontFamily:"Cinzel",textAlign:"center"}}>{marks.length>=MAX_MARKS?"☠ DEAD":marks.length?"FADE IN "+[...marks].sort((a,b)=>(a.day||0)-(b.day||0)).map(m=>MARK_DAYS-(today-(m.day||0))).join(" · ")+" DAYS":"FADE AFTER 7 DAYS"}</div>
       </div>
     </div>
     {/* Stat row */}
@@ -1907,7 +1920,7 @@ const ARMOUR_TYPES={none:"No armour",light:"Light",medium:"Medium",heavy:"Heavy"
 const findArmour=(ch,k)=>ARMOUR.find(a=>a.k===k)||((ch&&ch.myArmour)||[]).find(a=>a.k===k)||null;
 const abMod=v=>Math.floor(((parseInt(v)||10)-10)/2);
 // AC = armour (with the Dex rules for its type) + its magic bonus + any gear that's switched on
-const calcAC=ch=>{const a=findArmour(ch,ch&&ch.armourKey);if(!a)return null;const dx=abMod(ch.dex);
+const calcAC=ch=>{const a=findArmour(ch,ch&&ch.armourKey);if(!a)return null;const dx=abMod(ch[ch.acAbility||"dex"]);
   const fromDex=a.type==="heavy"?0:a.type==="medium"?Math.min(dx,2):dx;
   const gear=((ch.acItems)||[]).reduce((t,g)=>t+(g.on===false?0:(parseInt(g.bonus)||0)),0);
   return(parseInt(a.base)||10)+fromDex+(parseInt(a.bonus)||0)+gear;};
