@@ -1144,8 +1144,8 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
             {editMode&&!readOnly?<ShInput value={local.name||""} onCommit={v=>commitField("name",v)} style={{fontSize:24,fontFamily:"Cinzel",color:"var(--gold)",background:"transparent",border:"none",borderBottom:"2px solid var(--gold2)",padding:"2px 0",width:"100%",outline:"none"}} className=""/>
               :<h2 style={{fontSize:24,color:"var(--gold)",letterSpacing:"0.06em"}}>{local.name||"Unnamed"}</h2>}
             {sel.s==="sessions"&&local.notebook&&(editMode&&canEdit
-              ?<div style={{marginTop:6,display:"flex",gap:8,alignItems:"center",fontSize:12,color:"var(--ink3)"}}>📅 <input type="date" defaultValue={local.sessionDate||""} onChange={e=>commitField("sessionDate",e.target.value)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",borderRadius:4,padding:"3px 6px",fontSize:13}}/></div>
-              :local.sessionDate?<p style={{fontSize:13,color:"var(--ink3)",marginTop:3,fontStyle:"italic",fontFamily:"Cinzel"}}>📅 {(()=>{const d=new Date(local.sessionDate+"T12:00");return isNaN(d)?local.sessionDate:d.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});})()}</p>:null)}
+              ?<div style={{marginTop:6,display:"flex",gap:8,alignItems:"center",fontSize:12,color:"var(--ink3)"}}><input type="date" defaultValue={local.sessionDate||""} onChange={e=>commitField("sessionDate",e.target.value)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",borderRadius:4,padding:"3px 6px",fontSize:13}}/></div>
+              :local.sessionDate?<p style={{fontSize:13,color:"var(--ink3)",marginTop:3,fontStyle:"italic",fontFamily:"Cinzel"}}>{(()=>{const d=new Date(local.sessionDate+"T12:00");return isNaN(d)?local.sessionDate:d.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});})()}</p>:null)}
             {!editMode&&(()=>{const rs=(privView||fieldVisible(local,"raceSp"))?local.raceSp:"";const ag=(privView||fieldVisible(local,"age"))?local.age:"";
               return rs?<p style={{fontSize:13,color:"var(--ink3)",marginTop:3,fontStyle:"italic",fontFamily:"Cinzel"}}>{rs}{ag?` · Age ${ag}`:""}</p>:null;})()}
           </div>
@@ -1479,7 +1479,8 @@ const defaultBoxes=L=>{
   ];
 };
 
-function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}){
+function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,clock}){
+  const today=(clock||DEFAULT_CLOCK).dayNo||0;
   const [editMode,setEditMode]=useState(false);
   const [L,setL]=useState({...char});
   const flush=useRef(null);
@@ -1498,7 +1499,22 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
   const ABILITIES=["str","dex","con","int","wis","cha"];
   const AB_FULL={str:"Strength",dex:"Dexterity",con:"Constitution",int:"Intelligence",wis:"Wisdom",cha:"Charisma"};
   const SKILLS_BY_AB={str:["Athletics"],dex:["Acrobatics","Sleight of Hand","Stealth"],con:[],int:["Arcana","History","Investigation","Nature","Religion"],wis:["Animal Handling","Insight","Medicine","Perception","Survival"],cha:["Deception","Intimidation","Performance","Persuasion"]};
-  const cycleMark=i=>{const m=[...(L.deathMarks||Array(10).fill(0))];m[i]=(m[i]+1)%3;commit("deathMarks",m);};
+  // death marks: up to 4, each -2 to ability checks and to-hit, fade 7 in-game days after they were taken
+  const marks=(L.marks||[]).filter(m=>today-(m.day||0)<MARK_DAYS);
+  const pen=2*marks.length;
+  const addMark=()=>{if(marks.length>=MAX_MARKS)return;commit("marks",[...marks,{id:"m"+Date.now(),day:today}]);};
+  const delMark=id=>commit("marks",marks.filter(m=>m.id!==id));
+  const [armForm,setArmForm]=useState(null);const [gearForm,setGearForm]=useState(null);
+  const acNow=calcAC(L);const armour=findArmour(L,L.armourKey);
+  const [potionRoll,setPotionRoll]=useState(null);const [potMsg,setPotMsg]=useState("");
+  const gp=(L.currency&&L.currency.gp)||0;
+  const buyPotion=()=>{if(gp<50){setPotMsg("Not enough gold (50 gp)");setTimeout(()=>setPotMsg(""),2500);return;}commit("currency",{...L.currency,gp:gp-50});setTimeout(()=>commit("superiorPotions",(L.superiorPotions||0)+1),0);};
+  const sellPotion=()=>{if(!(L.superiorPotions>0))return;commit("superiorPotions",L.superiorPotions-1);setTimeout(()=>commit("currency",{...L.currency,gp:gp+50}),0);};
+  const usePotion=()=>{if(!(L.superiorPotions>0))return;commit("superiorPotions",L.superiorPotions-1);
+    if(marks.length){const oldest=[...marks].sort((a,b)=>(a.day||0)-(b.day||0))[0];setTimeout(()=>commit("marks",marks.filter(m=>m.id!==oldest.id)),0);}
+    setPotionRoll("");};
+  const restedToday=L.restDay===today;
+  const restDay=()=>{if(restedToday)return;const max=L.hpMax||0;const add=restHeal(L);commit("hpCurrent",max>0?Math.min(max,Math.max(L.hpCurrent||0,(L.hpCurrent||0)+add)):(L.hpCurrent||0)+add);setTimeout(()=>commit("restDay",today),0);};
   const updSR=(id,f,v)=>commit("statRows",(L.statRows||[]).map(r=>r.id===id?{...r,[f]:v}:r));
   const addSR=()=>commit("statRows",[...(L.statRows||[]),{id:Date.now(),label:"NEW",value:""}]);
   const delSR=id=>commit("statRows",(L.statRows||[]).filter(r=>r.id!==id));
@@ -1551,7 +1567,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
 
   return(<div style={{height:"100%",background:"#f0ebe0",overflowY:"auto"}}>
     {/* Header */}
-    <div style={{background:"#2a2a3a",padding:"10px 18px",display:"flex",gap:14,alignItems:"flex-start",flexWrap:"wrap",position:"relative"}}>
+    <div className="sf-sheet-head" style={{background:"#2a2a3a",padding:"10px 92px 10px 18px",display:"flex",gap:14,alignItems:"flex-start",flexWrap:"wrap",position:"relative"}}>
       <button onClick={()=>setEditMode(m=>!m)} style={{position:"absolute",top:10,right:12,fontFamily:"Cinzel",fontSize:11,padding:"4px 12px",background:editMode?"rgba(200,160,40,0.3)":"rgba(255,255,255,0.1)",border:`1px solid ${editMode?"var(--gold2)":"rgba(255,255,255,0.25)"}`,color:editMode?"var(--gold3)":"rgba(255,255,255,0.7)",borderRadius:4,cursor:"pointer",letterSpacing:"0.06em"}}>
         {editMode?"✓ DONE":"✏️ EDIT"}
       </button>
@@ -1576,9 +1592,51 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
       <div style={{display:"flex",gap:10,flexShrink:0}}>
         {[["level","LEVEL"],["ac","AC"]].map(([f,lbl])=><div key={f} style={{textAlign:"center",background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:4,padding:"6px 10px",minWidth:62}}>
           <div style={{fontSize:8,color:"rgba(255,255,255,0.45)",fontFamily:"Cinzel",marginBottom:3}}>{lbl}</div>
-          {editMode?<ShNumInput value={L[f]||0} onCommit={v=>commitNum(f,v)} style={{fontFamily:"Cinzel",background:"transparent",border:"none",color:"white",fontSize:26,textAlign:"center",width:"100%",outline:"none",fontWeight:700}}/>
+          {f==="ac"&&acNow!=null?<div title="Worked out from your armour, Dex and gear" style={{fontFamily:"Cinzel",color:"white",fontSize:26,fontWeight:700}}>{acNow}</div>
+            :editMode?<ShNumInput value={L[f]||0} onCommit={v=>commitNum(f,v)} style={{fontFamily:"Cinzel",background:"transparent",border:"none",color:"white",fontSize:26,textAlign:"center",width:"100%",outline:"none",fontWeight:700}}/>
             :<div style={{fontFamily:"Cinzel",color:"white",fontSize:26,fontWeight:700}}>{L[f]||0}</div>}
         </div>)}
+      </div>
+      {/* Armour + gear that changes AC */}
+      <div className="sf-armour" style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:4,padding:"7px 10px",flexShrink:0,minWidth:170,maxWidth:240}}>
+        <div style={{fontSize:8,color:"rgba(255,255,255,0.45)",fontFamily:"Cinzel",marginBottom:4}}>ARMOUR</div>
+        <select value={L.armourKey||""} onChange={e=>{const v=e.target.value;if(v==="__new"){setArmForm({name:"",type:"medium",base:14,bonus:1,stealth:false});return;}commit("armourKey",v||undefined);}}
+          style={{width:"100%",fontFamily:"Crimson Pro,serif",fontSize:13,background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:3,padding:"2px 4px"}}>
+          <option value="" style={{color:"#222"}}>{L.armourKey?"— none chosen —":"Choose armour…"}</option>
+          {["none","light","medium","heavy"].map(t=><optgroup key={t} label={ARMOUR_TYPES[t]} style={{color:"#222"}}>{ARMOUR.filter(a=>a.type===t).map(a=><option key={a.k} value={a.k} style={{color:"#222"}}>{a.name} ({a.type==="heavy"?a.base:a.base+" + Dex"+(a.type==="medium"?" (max 2)":"")})</option>)}</optgroup>)}
+          {(L.myArmour||[]).length>0&&<optgroup label="✨ Magic / custom" style={{color:"#222"}}>{L.myArmour.map(a=><option key={a.k} value={a.k} style={{color:"#222"}}>{a.name} ({ARMOUR_TYPES[a.type]}, {a.base}{a.bonus?` +${a.bonus}`:""})</option>)}</optgroup>}
+          <option value="__new" style={{color:"#222"}}>✨ Make magic / custom armour…</option>
+        </select>
+        {armour&&<div style={{fontSize:10,color:"rgba(255,255,255,0.55)",marginTop:3,lineHeight:1.35}}>
+          {armour.stealth&&<div>Stealth: disadvantage</div>}
+          {armour.str&&<div style={{color:(parseInt(L.str)||10)<armour.str?"#ff9a9a":undefined}}>Needs Str {armour.str}{(parseInt(L.str)||10)<armour.str?" — speed −10 ft":""}</div>}
+          {String(armour.k).indexOf("c")===0&&(L.myArmour||[]).some(a=>a.k===armour.k)&&editMode&&<button onClick={()=>{commit("myArmour",(L.myArmour||[]).filter(a=>a.k!==armour.k));setTimeout(()=>commit("armourKey",undefined),0);}} style={{marginTop:2,fontSize:9,background:"none",border:"none",color:"#ff9a9a",cursor:"pointer",padding:0}}>✕ delete this armour</button>}
+        </div>}
+        {armForm&&<div style={{marginTop:6,padding:6,background:"rgba(0,0,0,0.3)",borderRadius:4,display:"flex",flexDirection:"column",gap:4}}>
+          <input autoFocus value={armForm.name} onChange={e=>setArmForm({...armForm,name:e.target.value})} placeholder="Name, e.g. Elven chain" style={{fontSize:12,padding:"2px 5px"}}/>
+          <div style={{display:"flex",gap:4,alignItems:"center",fontSize:10,color:"rgba(255,255,255,0.6)"}}>
+            <select value={armForm.type} onChange={e=>setArmForm({...armForm,type:e.target.value})} style={{fontSize:11,flex:1}}>{["light","medium","heavy"].map(t=><option key={t} value={t}>{ARMOUR_TYPES[t]}</option>)}</select>
+            base <input type="number" value={armForm.base} onChange={e=>setArmForm({...armForm,base:e.target.value})} style={{width:38,fontSize:11}}/>
+            magic + <input type="number" value={armForm.bonus} onChange={e=>setArmForm({...armForm,bonus:e.target.value})} style={{width:32,fontSize:11}}/>
+          </div>
+          <label style={{fontSize:10,color:"rgba(255,255,255,0.6)",display:"flex",gap:4,alignItems:"center"}}><input type="checkbox" checked={!!armForm.stealth} onChange={e=>setArmForm({...armForm,stealth:e.target.checked})}/>Stealth disadvantage</label>
+          <div style={{display:"flex",gap:4}}><button className="btn" onClick={()=>{if(!armForm.name.trim())return;const a={k:"c"+Date.now(),name:armForm.name.trim(),type:armForm.type,base:parseInt(armForm.base)||10,bonus:parseInt(armForm.bonus)||0,stealth:!!armForm.stealth};commit("myArmour",[...(L.myArmour||[]),a]);setTimeout(()=>commit("armourKey",a.k),0);setArmForm(null);}} style={{fontSize:10,padding:"2px 8px",flex:1}}>✓ Save & wear</button>
+            <button className="btn" onClick={()=>setArmForm(null)} style={{fontSize:10,padding:"2px 8px"}}>✕</button></div>
+        </div>}
+        <div style={{fontSize:8,color:"rgba(255,255,255,0.45)",fontFamily:"Cinzel",margin:"6px 0 3px"}}>GEAR (SHIELD, RINGS…)</div>
+        {(L.acItems||[]).map(g=><div key={g.id} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:g.on===false?"rgba(255,255,255,0.35)":"white",marginBottom:2}}>
+          <input type="checkbox" checked={g.on!==false} title="Wearing it?" onChange={()=>commit("acItems",(L.acItems||[]).map(x=>x.id===g.id?{...x,on:x.on===false}:x))}/>
+          <span style={{flex:1,textDecoration:g.on===false?"line-through":"none"}}>{g.name}</span><span style={{fontFamily:"Cinzel",fontSize:11}}>{(parseInt(g.bonus)||0)>=0?"+":""}{parseInt(g.bonus)||0}</span>
+          {editMode&&<button onClick={()=>commit("acItems",(L.acItems||[]).filter(x=>x.id!==g.id))} style={{background:"none",border:"none",color:"#ff9a9a",cursor:"pointer",fontSize:10,padding:0}}>✕</button>}
+        </div>)}
+        {gearForm?<div style={{display:"flex",gap:3,marginTop:3}}>
+            <input autoFocus value={gearForm.name} onChange={e=>setGearForm({...gearForm,name:e.target.value})} placeholder="Ring of Protection" style={{flex:1,minWidth:0,fontSize:11,padding:"1px 4px"}}/>
+            <input type="number" value={gearForm.bonus} onChange={e=>setGearForm({...gearForm,bonus:e.target.value})} style={{width:34,fontSize:11}}/>
+            <button className="btn" onClick={()=>{if(!gearForm.name.trim())return;commit("acItems",[...(L.acItems||[]),{id:"g"+Date.now(),name:gearForm.name.trim(),bonus:parseInt(gearForm.bonus)||0,on:true}]);setGearForm(null);}} style={{fontSize:10,padding:"1px 6px"}}>✓</button>
+            <button className="btn" onClick={()=>setGearForm(null)} style={{fontSize:10,padding:"1px 5px"}}>✕</button></div>
+          :<div style={{display:"flex",gap:4,marginTop:2}}>
+            {!(L.acItems||[]).some(g=>/shield/i.test(g.name))&&<button onClick={()=>commit("acItems",[...(L.acItems||[]),{id:"g"+Date.now(),name:"Shield",bonus:2,on:true}])} style={{fontSize:10,background:"none",border:"1px dashed rgba(255,255,255,0.3)",color:"rgba(255,255,255,0.6)",borderRadius:3,padding:"1px 6px",cursor:"pointer"}}>+ Shield</button>}
+            <button onClick={()=>setGearForm({name:"",bonus:1})} style={{fontSize:10,background:"none",border:"1px dashed rgba(255,255,255,0.3)",color:"rgba(255,255,255,0.6)",borderRadius:3,padding:"1px 6px",cursor:"pointer"}}>+ Other gear</button></div>}
       </div>
       {/* HP + Hit Die */}
       <div style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:4,padding:"7px 10px",flexShrink:0}}>
@@ -1598,27 +1656,37 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
           <button onClick={damage} style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(255,120,120,0.6)",background:"rgba(160,30,30,0.5)",color:"#ffd0d0",cursor:"pointer"}}>DAMAGE</button>
           <button onClick={heal} style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(120,220,120,0.6)",background:"rgba(30,110,30,0.5)",color:"#d0ffd0",cursor:"pointer"}}>HEAL</button>
         </div>}
+        {!editMode&&<button className="sf-rest" onClick={restDay} disabled={restedToday} title={restedToday?"Already rested today — wait for the next day":`A day of rest heals ${L.hitDieMax||"d8"} + Con = ${restHeal(L)} HP`}
+          style={{width:"100%",marginBottom:6,fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(160,200,255,0.5)",background:restedToday?"rgba(255,255,255,0.05)":"rgba(40,70,130,0.55)",color:restedToday?"rgba(255,255,255,0.35)":"#dbe7ff",cursor:restedToday?"default":"pointer"}}>
+          {restedToday?"RESTED TODAY":`REST DAY  +${restHeal(L)} HP`}</button>}
         <div style={{display:"flex",gap:8}}>
           <div><div style={{fontSize:7,color:"rgba(255,255,255,0.35)",fontFamily:"Cinzel",marginBottom:1}}>HIT DIE</div>
             {editMode?<select value={L.hitDieMax||"d8"} onChange={e=>commit("hitDieMax",e.target.value)} style={{fontFamily:"Cinzel",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"white",fontSize:12,padding:"2px 4px",outline:"none",borderRadius:2}}>{["d4","d6","d8","d10","d12"].map(d=><option key={d} style={{background:"#333"}}>{d}</option>)}</select>
               :<div style={{fontFamily:"Cinzel",color:"white",fontSize:13}}>{L.hitDieMax||"d8"}</div>}
           </div>
+          <div><div style={{fontSize:7,color:"rgba(255,255,255,0.35)",fontFamily:"Cinzel",marginBottom:1}}>TOTAL</div>
+            {editMode?<ShNumInput value={L.hitDiceTotal||0} onCommit={v=>commitNum("hitDiceTotal",v)} style={{fontFamily:"Cinzel",background:"transparent",border:"none",color:"white",fontSize:12,width:28,outline:"none",textAlign:"center"}}/>
+              :<div style={{fontFamily:"Cinzel",color:"white",fontSize:12,textAlign:"center"}}>{L.hitDiceTotal||0}</div>}
+          </div>
           <div><div style={{fontSize:7,color:"rgba(255,255,255,0.35)",fontFamily:"Cinzel",marginBottom:1}}>SPENT</div>
             {editMode?<ShNumInput value={L.hitDieSpent||0} onCommit={v=>commitNum("hitDieSpent",v)} style={{fontFamily:"Cinzel",background:"transparent",border:"none",color:"white",fontSize:12,width:28,outline:"none",textAlign:"center"}}/>
               :<div style={{fontFamily:"Cinzel",color:"white",fontSize:12,textAlign:"center"}}>{L.hitDieSpent||0}</div>}
           </div>
+          <div><div style={{fontSize:7,color:"rgba(255,255,255,0.35)",fontFamily:"Cinzel",marginBottom:1}}>LEFT</div>
+            <div style={{fontFamily:"Cinzel",color:"white",fontSize:12,textAlign:"center"}}>{Math.max(0,(L.hitDiceTotal||0)-(L.hitDieSpent||0))}</div>
+          </div>
         </div>
       </div>
-      {/* Death marks */}
-      <div style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:4,padding:"7px 10px",flexShrink:0}}>
-        <div style={{fontSize:8,color:"rgba(255,255,255,0.45)",fontFamily:"Cinzel",marginBottom:5}}>DEATH MARKS</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:3,marginBottom:3}}>
-          {(L.deathMarks||Array(10).fill(0)).map((m,i)=><div key={i} className={`death-box${m===1?" red":m===2?" black":""}`} onClick={()=>cycleMark(i)}>
-            {m===1&&<span style={{color:"#900",fontWeight:"bold"}}>✕</span>}
-            {m===2&&<span style={{color:"#eee"}}>☠</span>}
-          </div>)}
+      {/* Death marks: 4, red only, -2 each, fade after 7 in-game days */}
+      <div style={{background:marks.length>=MAX_MARKS?"rgba(140,0,0,0.45)":"rgba(255,255,255,0.07)",border:"1px solid "+(marks.length>=MAX_MARKS?"#ff6b6b":"rgba(255,255,255,0.15)"),borderRadius:4,padding:"7px 10px",flexShrink:0}}>
+        <div style={{fontSize:8,color:"rgba(255,255,255,0.45)",fontFamily:"Cinzel",marginBottom:5}}>DEATH MARKS{pen?<span style={{color:"#ff9a9a"}}> · −{pen}</span>:null}</div>
+        <div style={{display:"flex",gap:5,marginBottom:3}}>
+          {Array.from({length:MAX_MARKS}).map((_,i)=>{const m=[...marks].sort((a,b)=>(a.day||0)-(b.day||0))[i];const left=m?MARK_DAYS-(today-(m.day||0)):0;return(
+            <div key={i} className={`death-box${m?" red":""}`} title={m?`Fades in ${left} day${left===1?"":"s"} — tap to remove`:"Tap to take a death mark"} onClick={()=>m?delMark(m.id):addMark()} style={{width:30,height:30,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",lineHeight:1}}>
+              {m&&<><span style={{color:"#900",fontWeight:"bold",fontSize:13}}>✕</span><span style={{fontSize:7,color:"#600",fontFamily:"Cinzel"}}>{left}d</span></>}
+            </div>);})}
         </div>
-        <div style={{fontSize:7,color:"rgba(255,255,255,0.25)",fontFamily:"Cinzel",textAlign:"center"}}>CLICK TO CYCLE</div>
+        <div style={{fontSize:7,color:marks.length>=MAX_MARKS?"#ffd0d0":"rgba(255,255,255,0.25)",fontFamily:"Cinzel",textAlign:"center"}}>{marks.length>=MAX_MARKS?"☠ DEAD":"FADE AFTER 7 DAYS"}</div>
       </div>
     </div>
     {/* Stat row */}
@@ -1628,7 +1696,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
           <ShInput value={r.value} onCommit={v=>updSR(r.id,"value",v)} style={{fontFamily:"Cinzel",background:"rgba(255,255,255,0.6)",border:"1px solid #b8a070",color:"#2a2a3a",fontSize:13,textAlign:"center",width:"100%",outline:"none",borderRadius:2,padding:"1px 0",fontWeight:600}}/>
           <button onClick={()=>delSR(r.id)} style={{background:"none",border:"none",color:"#bbb",cursor:"pointer",fontSize:8,marginTop:1,padding:0}}>✕</button></>
         :<><div style={{fontFamily:"Cinzel",color:"#555",fontSize:7,letterSpacing:"0.04em",textTransform:"uppercase",marginBottom:2}}>{r.label}</div>
-          <div style={{fontFamily:"Cinzel",color:"#2a2a3a",fontSize:14,fontWeight:600}}>{r.value||(r.label==="PASSIVE PERCEPTION"?10+getSkBonus("Perception","wis"):"—")}</div></>}
+          <div style={{fontFamily:"Cinzel",color:"#2a2a3a",fontSize:14,fontWeight:600}}>{r.value||(r.label==="PASSIVE PERCEPTION"?10+getSkBonus("Perception","wis")-pen:"—")}</div></>}
       </div>)}
       {editMode&&<button onClick={addSR} style={{alignSelf:"center",fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.4)",border:"1px dashed #b8a070",color:"#888",borderRadius:3,padding:"3px 7px",fontSize:10,cursor:"pointer"}}>+ Stat</button>}
     </div>
@@ -1646,7 +1714,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
                 {editMode?<ShNumInput value={score} onCommit={v=>commitNum(ab,v)} style={{fontFamily:"Cinzel",background:"rgba(255,255,255,0.5)",border:"1px solid #b8a070",color:"#2a2a3a",fontSize:22,width:"100%",textAlign:"center",outline:"none",borderRadius:3,fontWeight:700}}/>
                   :<div style={{fontSize:22,fontFamily:"Cinzel",color:"#2a2a3a",fontWeight:700}}>{score}</div>}
                 <div style={{fontSize:8,color:"#777",marginBottom:1,fontFamily:"Cinzel"}}>SCORE</div>
-                <div style={{fontSize:16,fontFamily:"Cinzel",color:"#2a2a3a",fontWeight:700}}>{fmtMod(m)}</div>
+                <div title={pen?`${fmtMod(m)} −${pen} from death marks`:undefined} style={{fontSize:16,fontFamily:"Cinzel",color:pen?"#a3241e":"#2a2a3a",fontWeight:700}}>{fmtMod(m-pen)}</div>
                 <div style={{fontSize:7,color:"#777",fontFamily:"Cinzel"}}>MODIFIER</div>
               </div>
               <div className="sh" style={{padding:"4px 5px"}}>
@@ -1665,7 +1733,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
                   <div style={{display:"flex",alignItems:"center",gap:3,marginBottom:1}}>
                     <span title={d.exp?"Expertise (double proficiency)":d.prof?"Proficient":"Not proficient"} className={`prof-dot${d.prof?" filled":""}`} onClick={()=>editMode&&toggleSkillProf(sk)} style={{cursor:editMode?"pointer":"default",boxShadow:d.exp?"0 0 0 2px #f0ebe0, 0 0 0 3.5px #2a2a3a":"none"}}/>
                     <span style={{fontSize:10,color:"#2a2a3a",flex:1,lineHeight:1.2}}>{sk}</span>
-                    <span style={{fontSize:10,fontFamily:"Cinzel",color:"#2a2a3a",fontWeight:600}}>{fmtMod(b)}</span>
+                    <span title={pen?`${fmtMod(b)} −${pen} from death marks`:undefined} style={{fontSize:10,fontFamily:"Cinzel",color:pen?"#a3241e":"#2a2a3a",fontWeight:600}}>{fmtMod(b-pen)}</span>
                   </div>
                   {editMode&&<div style={{display:"flex",gap:3,alignItems:"center",marginLeft:14}}>
                     <button title={hasOv(d.override)?"Remove override":"Override this number"} onClick={()=>setSkillOverride(sk,hasOv(d.override)?"":String(autoSk(sk,ab)))} style={{fontSize:8,fontFamily:"Cinzel",border:"1px solid #b8a070",background:hasOv(d.override)?"#7a5a14":"rgba(255,255,255,0.5)",color:hasOv(d.override)?"white":"#7a5a14",borderRadius:2,padding:"0 3px",cursor:"pointer"}}>OVERRIDE</button>
@@ -1680,12 +1748,13 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
       {/* Weapons */}
       <div className="sh">
         <div className="sh-section">WEAPONS & DAMAGE CANTRIPS</div>
+        {pen>0&&<div style={{fontSize:11.5,color:"#a3241e",fontWeight:600,marginBottom:4}}>☠ Attack −{pen} from {marks.length} death mark{marks.length===1?"":"s"} (damage unchanged)</div>}
         <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 2fr auto",gap:4,marginBottom:3,paddingBottom:2,borderBottom:"1px solid #b8a070"}}>
           {["NAME","ATK","DAMAGE","NOTES",""].map((h,i)=><div key={i} className="sh-label">{h}</div>)}
         </div>
         {(L.weapons||[]).map(w=><div key={w.id} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 2fr auto",gap:4,marginBottom:4,alignItems:"center"}}>
           {editMode?(<><ShInput value={w.name||""} onCommit={v=>updW(w.id,"name",v)} placeholder="Weapon"/><ShInput value={w.attackBonus||""} onCommit={v=>updW(w.id,"attackBonus",v)} placeholder="+5"/><ShInput value={w.damage||""} onCommit={v=>updW(w.id,"damage",v)} placeholder="1d8"/><ShInput value={w.notes||""} onCommit={v=>updW(w.id,"notes",v)} placeholder="Notes"/><button onClick={()=>commit("weapons",(L.weapons||[]).filter(x=>x.id!==w.id))} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:12}}>✕</button></>)
-          :(<><div style={{fontSize:12,color:"#2a2a3a"}}>{w.name||"—"}</div><div style={{fontSize:12,fontFamily:"Cinzel",color:"#2a2a3a",fontWeight:600}}>{w.attackBonus||"—"}</div><div style={{fontSize:12,color:"#2a2a3a"}}>{w.damage||"—"}</div><div style={{fontSize:11,color:"#555"}}>{w.notes||""}</div><div/></>)}
+          :(<><div style={{fontSize:12,color:"#2a2a3a"}}>{w.name||"—"}</div><div title={pen&&w.attackBonus?`${w.attackBonus} −${pen} from death marks`:undefined} style={{fontSize:12,fontFamily:"Cinzel",color:pen&&w.attackBonus?"#a3241e":"#2a2a3a",fontWeight:600}}>{(()=>{const a=w.attackBonus;if(!a)return"—";const n=parseInt(String(a).replace(/\s/g,""));return pen&&!isNaN(n)?fmtMod(n-pen):a;})()}</div><div style={{fontSize:12,color:"#2a2a3a"}}>{w.damage||"—"}</div><div style={{fontSize:11,color:"#555"}}>{w.notes||""}</div><div/></>)}
         </div>)}
         {editMode&&<button onClick={addW} style={{fontFamily:"Crimson Pro,serif",background:"rgba(255,255,255,0.4)",border:"1px dashed #b8a070",color:"#888",borderRadius:3,padding:"3px 8px",fontSize:11,cursor:"pointer",marginTop:2}}>+ Add Weapon</button>}
       </div>
@@ -1771,6 +1840,20 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
             <span style={{fontSize:10,fontFamily:"Cinzel",color:"#777",width:48}}>{l}</span>
             <QuickNum value={(L.currency&&L.currency[k])||0} onCommit={v=>setCurr(k,v)} style={{fontFamily:"Cinzel",color:"#2a2a3a",fontSize:14,fontWeight:600,flex:1,borderBottomColor:"#b8a070",width:"100%"}}/>
           </div>)}
+          <div className="sh-label" style={{marginTop:5}}>SUPERIOR HEALING POTIONS</div>
+          <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:3}}>
+            <button className="btn" onClick={sellPotion} disabled={!(L.superiorPotions>0)} title="One less (gives 50 gp back)" style={{fontSize:12,padding:"0 7px"}}>−</button>
+            <span style={{fontFamily:"Cinzel",fontSize:16,fontWeight:700,color:"#2a2a3a",minWidth:22,textAlign:"center"}}>{L.superiorPotions||0}</span>
+            <button className="btn" onClick={buyPotion} title="Buy one (50 gp)" style={{fontSize:12,padding:"0 7px"}}>+</button>
+            <button className="btn" onClick={usePotion} disabled={!(L.superiorPotions>0)} title="Drink one: removes a death mark" style={{fontSize:10.5,padding:"1px 9px",marginLeft:"auto",fontFamily:"Cinzel",fontWeight:600}}>USE</button>
+          </div>
+          {potMsg&&<div style={{fontSize:10.5,color:"#a3241e",marginBottom:3}}>{potMsg}</div>}
+          {potionRoll!==null&&<div style={{background:"rgba(196,154,48,0.15)",border:"1px solid #b8a070",borderRadius:4,padding:"5px 6px",marginBottom:4,fontSize:11,color:"#2a2a3a"}}>
+            Roll <strong>2d4 + 2</strong> — how much did you heal?
+            <div style={{display:"flex",gap:4,marginTop:3}}><input type="number" autoFocus value={potionRoll} onChange={e=>setPotionRoll(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&parseInt(potionRoll)){commit("hpCurrent",Math.min(hpCap(),(L.hpCurrent||0)+parseInt(potionRoll)));setPotionRoll(null);}}} className="sh-input-box" style={{width:50,fontSize:12}}/>
+              <button className="btn" onClick={()=>{const n=parseInt(potionRoll)||0;if(n)commit("hpCurrent",Math.min(hpCap(),(L.hpCurrent||0)+n));setPotionRoll(null);}} style={{fontSize:10.5,padding:"1px 8px"}}>Heal</button>
+              <button className="btn" onClick={()=>setPotionRoll(null)} style={{fontSize:10.5,padding:"1px 6px"}}>✕</button></div>
+          </div>}
           <div className="sh-label" style={{marginTop:5}}>ATTUNEMENTS</div>
           {(L.magicAttunements||["","",""]).map((v,i)=><div key={i} style={{display:"flex",gap:4,marginBottom:3}}>
             <span style={{fontSize:10,color:"#aaa"}}>◇</span>
@@ -1781,7 +1864,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
         </div>
         <div className="sh" style={{gridColumn:3,gridRow:"1 / span 2",display:"flex",flexDirection:"column"}}>
           <div className="sh-section">INVENTORY</div>
-          <ShTextarea value={L.inventory||""} onCommit={v=>commit("inventory",v)} className="sh-input-box" style={{resize:"vertical",minHeight:420,flex:1,fontSize:12,lineHeight:1.7}} placeholder="Click to add items…"/>
+          <MentionTextarea value={L.inventory||""} onCommit={v=>commit("inventory",v)} className="sh-input-box" style={{minHeight:420,flex:1,fontSize:12,lineHeight:1.7,padding:"6px 8px"}} placeholder="Click to add items… @ to link one"/>
         </div>
       {/* Appearance (sits under Equipment + Coins) */}
       <div className="sh" style={{gridColumn:"1 / span 2",gridRow:2}}>
@@ -1811,6 +1894,89 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
       </div>
     </div>}
     <div style={{height:30}}/>
+  </div>);
+}
+
+/* ════ ARMOUR, DATE & DEATH MARK RULES ════ */
+const ARMOUR=[
+  {k:"none",name:"No armour",type:"none",base:10},
+  {k:"padded",name:"Padded",type:"light",base:11,stealth:true},{k:"leather",name:"Leather",type:"light",base:11},{k:"studded",name:"Studded leather",type:"light",base:12},
+  {k:"hide",name:"Hide",type:"medium",base:12},{k:"chainshirt",name:"Chain shirt",type:"medium",base:13},{k:"scale",name:"Scale mail",type:"medium",base:14,stealth:true},{k:"breastplate",name:"Breastplate",type:"medium",base:14},{k:"halfplate",name:"Half plate",type:"medium",base:15,stealth:true},
+  {k:"ring",name:"Ring mail",type:"heavy",base:14,stealth:true},{k:"chainmail",name:"Chain mail",type:"heavy",base:16,str:13,stealth:true},{k:"splint",name:"Splint",type:"heavy",base:17,str:15,stealth:true},{k:"plate",name:"Plate",type:"heavy",base:18,str:15,stealth:true}];
+const ARMOUR_TYPES={none:"No armour",light:"Light",medium:"Medium",heavy:"Heavy"};
+const findArmour=(ch,k)=>ARMOUR.find(a=>a.k===k)||((ch&&ch.myArmour)||[]).find(a=>a.k===k)||null;
+const abMod=v=>Math.floor(((parseInt(v)||10)-10)/2);
+// AC = armour (with the Dex rules for its type) + its magic bonus + any gear that's switched on
+const calcAC=ch=>{const a=findArmour(ch,ch&&ch.armourKey);if(!a)return null;const dx=abMod(ch.dex);
+  const fromDex=a.type==="heavy"?0:a.type==="medium"?Math.min(dx,2):dx;
+  const gear=((ch.acItems)||[]).reduce((t,g)=>t+(g.on===false?0:(parseInt(g.bonus)||0)),0);
+  return(parseInt(a.base)||10)+fromDex+(parseInt(a.bonus)||0)+gear;};
+const dieValue=d=>parseInt(String(d||"d8").replace(/[^0-9]/g,""))||8;
+const restHeal=ch=>Math.max(0,dieValue(ch.hitDieMax)+abMod(ch.con));
+const MARK_DAYS=7,MAX_MARKS=4;
+const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DEFAULT_CLOCK={dayNo:0,month:4,day:20,year:""};
+const clockOf=d=>({...DEFAULT_CLOCK,...((d&&d.clock)||{})});
+const addDays=(c,n)=>{const dt=new Date(2001,(c.month||4)-1,(c.day||20)+n);return{...c,dayNo:(c.dayNo||0)+n,month:dt.getMonth()+1,day:dt.getDate()};};
+const fmtDate=c=>{const d=c.day||1;const sfx=(d%10===1&&d!==11)?"st":(d%10===2&&d!==12)?"nd":(d%10===3&&d!==13)?"rd":"th";return`${d}${sfx} ${MONTHS[(c.month||1)-1]}${c.year?" "+c.year:""}`;};
+
+/* ════ CAMPAIGN DATE (top bar) ════ */
+// Moves the shared date on. Each day: 1 gp expenses for whoever's with the party (gold can go negative),
+// death marks older than 7 days fade, and a time skip can count as rest days (one hit die + Con per day).
+function advanceDays(d,n,resters){
+  const c=clockOf(d);const nc=addDays(c,n);
+  const snap={clock:{dayNo:c.dayNo,month:c.month,day:c.day,year:c.year},chars:(d.characters||[]).map(ch=>({id:ch.id,gp:(ch.currency&&ch.currency.gp)||0,hpCurrent:ch.hpCurrent,marks:ch.marks,restDay:ch.restDay}))};
+  const chars=(d.characters||[]).map(ch=>{
+    let u={...ch};const rests=resters.includes(String(ch.id));
+    if((ch.name||"").trim())u.currency={...(ch.currency||{}),gp:((ch.currency&&ch.currency.gp)||0)-n};
+    if(rests){const max=ch.hpMax||0;const cur=ch.hpCurrent||0;u.hpCurrent=max>0?Math.min(max,Math.max(cur,cur+n*restHeal(ch))):cur+n*restHeal(ch);u.restDay=nc.dayNo;}
+    if(ch.marks)u.marks=ch.marks.filter(m=>nc.dayNo-(m.day||0)<MARK_DAYS);
+    return u;});
+  return{...d,characters:chars,clock:{...nc,history:[snap,...(c.history||[])].slice(0,10)}};
+}
+function undoDay(d){
+  const c=clockOf(d);const h=(c.history||[]);if(!h.length)return d;const snap=h[0];
+  const chars=(d.characters||[]).map(ch=>{const o=snap.chars.find(x=>String(x.id)===String(ch.id));if(!o)return ch;return{...ch,currency:{...(ch.currency||{}),gp:o.gp},hpCurrent:o.hpCurrent,marks:o.marks,restDay:o.restDay};});
+  return{...d,characters:chars,clock:{...c,...snap.clock,history:h.slice(1)}};
+}
+function GameClock({data,setData}){
+  const c=clockOf(data);const chars=(data.characters||[]).filter(ch=>(ch.name||"").trim());
+  const [dlg,setDlg]=useState(null);
+  const open=kind=>setDlg({kind,days:kind==="next"?1:3,rest:[],year:c.year||"",month:c.month,day:c.day});
+  const go=()=>{const n=Math.max(1,Math.min(365,parseInt(dlg.days)||1));setData(d=>advanceDays(d,n,dlg.kind==="skip"?dlg.rest:[]));setDlg(null);};
+  const btn={fontFamily:"Cinzel",fontSize:10,padding:"3px 8px",borderRadius:4,border:"1px solid var(--border2)",background:"rgba(255,240,200,0.08)",color:"var(--gold3)",cursor:"pointer",whiteSpace:"nowrap"};
+  const target=dlg?addDays(c,Math.max(1,parseInt(dlg.days)||1)):null;
+  return(<div className="sf-clock" style={{display:"flex",alignItems:"center",gap:5}}>
+    <span title="In-game date" style={{fontFamily:"Cinzel",fontSize:12,color:"var(--gold3)",whiteSpace:"nowrap"}}>{fmtDate(c)}</span>
+    <button onClick={()=>open("next")} style={btn} title="Move on one day (1 gp expenses each)">Next day ▸</button>
+    <button onClick={()=>open("skip")} style={btn} title="Skip several days">Time skip</button>
+    {(c.history||[]).length>0&&<button onClick={()=>{if(window.confirm(`Go back to ${fmtDate(c.history[0].clock)}? This puts gold, HP and death marks back how they were.`))setData(d=>undoDay(d));}} style={btn} title="Undo the last day / time skip">↶ Back</button>}
+    {dlg&&<div onClick={()=>setDlg(null)} style={{position:"fixed",inset:0,zIndex:4000,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:8,padding:20,width:380,maxWidth:"100%",color:"var(--ink)",fontFamily:"Crimson Pro,serif"}}>
+        <h3 style={{fontFamily:"Cinzel",fontSize:15,color:"var(--gold)",marginBottom:10}}>{dlg.kind==="next"?"Next day":"Time skip"}</h3>
+        {dlg.kind==="skip"&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,fontSize:14}}>Skip <input type="number" min={1} max={365} value={dlg.days} onChange={e=>setDlg({...dlg,days:e.target.value})} style={{width:60,fontSize:14,padding:"2px 6px"}}/> days</div>}
+        <div style={{fontSize:14,marginBottom:10}}>{fmtDate(c)} → <strong>{fmtDate(target)}</strong></div>
+        {dlg.kind==="skip"&&<div style={{marginBottom:10}}>
+          <div style={{fontFamily:"Cinzel",fontSize:11,color:"var(--ink2)",marginBottom:4}}>REST DAYS — WHO'S RESTING?</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{chars.map(ch=>{const on=dlg.rest.includes(String(ch.id));return(
+            <button key={ch.id} className="btn" onClick={()=>setDlg({...dlg,rest:on?dlg.rest.filter(x=>x!==String(ch.id)):[...dlg.rest,String(ch.id)]})}
+              style={{fontSize:12.5,padding:"3px 10px",...(on?{background:"var(--gold2)",color:"var(--dark)",fontWeight:600,borderColor:"var(--gold)"}:{})}}>{on?"✓ ":""}{ch.name}</button>);})}</div>
+          <div style={{fontSize:12,color:"var(--ink3)",marginTop:4}}>Anyone resting heals one hit die + Con for each day, up to their max HP.</div>
+        </div>}
+        <div style={{fontSize:12.5,color:"var(--ink3)",marginBottom:10,lineHeight:1.5}}>Everyone pays <strong>{Math.max(1,parseInt(dlg.days)||1)} gp</strong> expenses (gold can go into debt). Death marks older than 7 days fade.</div>
+        <div style={{fontFamily:"Cinzel",fontSize:13,color:"var(--gold)",marginBottom:12,textAlign:"center"}}>Is the party together?</div>
+        <div style={{borderTop:"1px solid var(--border)",paddingTop:8,marginBottom:10,display:"flex",gap:6,alignItems:"center",fontSize:12,color:"var(--ink3)",flexWrap:"wrap"}}>
+          Fix the date: <select value={dlg.month} onChange={e=>setDlg({...dlg,month:parseInt(e.target.value)})} style={{fontSize:12}}>{MONTHS.map((m,i)=><option key={m} value={i+1}>{m}</option>)}</select>
+          <input type="number" min={1} max={31} value={dlg.day} onChange={e=>setDlg({...dlg,day:e.target.value})} style={{width:44,fontSize:12}}/>
+          year <input value={dlg.year} onChange={e=>setDlg({...dlg,year:e.target.value})} placeholder="—" style={{width:60,fontSize:12}}/>
+          <button className="btn" onClick={()=>{setData(d=>({...d,clock:{...clockOf(d),month:dlg.month,day:Math.max(1,Math.min(31,parseInt(dlg.day)||1)),year:dlg.year.trim()}}));setDlg(null);}} style={{fontSize:11,padding:"1px 8px"}}>Set</button>
+        </div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <button className="btn" onClick={()=>setDlg(null)}>Cancel</button>
+          <button className="btn" onClick={go} style={{background:"var(--gold2)",color:"var(--dark)",fontWeight:600,borderColor:"var(--gold)"}}>Yes — {dlg.kind==="next"?"next day":"skip time"}</button>
+        </div>
+      </div>
+    </div>}
   </div>);
 }
 
@@ -2246,6 +2412,7 @@ function App(){
         {data.characters.map((c,i)=><button key={c.id} onClick={()=>setCharIdx(i)} className={`btn${charIdx===i?" act":""}`} style={{padding:"3px 10px",fontSize:11,fontFamily:"Cinzel"}}>{c.name||`Player ${i+1}`}</button>)}
       </div>}
       <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
+        <GameClock data={data} setData={setData}/>
         <GlobalSearch lore={data.lore||{}} can={linkCtxVal.can} full={isDM} onOpen={openLore}/>
         <span title={syncTitle} style={{fontSize:9,color:syncColor,fontFamily:"Cinzel",letterSpacing:"0.06em",transition:"color .3s",minWidth:60,textAlign:"right",cursor:"default"}}>{syncLabel}</span>
         <button onClick={()=>setShowTheme(t=>!t)} className={`btn${showTheme?" act":""}`} style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel"}}>🎨</button>
@@ -2259,7 +2426,7 @@ function App(){
     <main style={{flex:1,minHeight:0,overflow:"hidden",padding:8,background:"var(--dark)"}}>
       {visited.map&&<div style={{height:"100%",display:page==="map"?"block":"none"}}><MapExplorer data={data} isDM={isDM} onOpenLore={openLore}/></div>}
       {visited.lore&&<div style={{height:"100%",display:page==="lore"?"block":"none"}}><LorePanel lore={data.lore} setLore={setLore} characters={data.characters} readOnly={false} dmMode={false} onOpenChar={openChar} openTarget={loreTarget} myPast={myPast}/></div>}
-      {visited.chars&&<div style={{height:"100%",display:page==="chars"?"block":"none"}}><CharSheet char={data.characters[charIdx]} onChange={c=>updateChar(charIdx,c)} lore={data.lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={openLore} isDM={isDM}/></div>}
+      {visited.chars&&<div style={{height:"100%",display:page==="chars"?"block":"none"}}><CharSheet char={data.characters[charIdx]} clock={clockOf(data)} onChange={c=>updateChar(charIdx,c)} lore={data.lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={openLore} isDM={isDM}/></div>}
       {visited.tales&&<div style={{height:"100%",display:page==="tales"?"block":"none"}}><TalesPanel/></div>}
       {visited.dm&&<div style={{height:"100%",display:page==="dm"?"block":"none"}}><DMTab data={data} setData={setData} lore={data.lore} setLore={setLore} onAuth={setIsDM} characters={data.characters}/></div>}
     </main>
@@ -2515,6 +2682,7 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
   .sf-nav .btn{padding:5px 7px!important;font-size:10.5px!important}
   .sf-map-panel{left:8px!important;right:8px!important;bottom:8px!important;width:auto!important;max-width:none!important}
 }
+@media (max-width:700px){.sf-sheet-head{padding-right:18px!important;padding-top:40px!important}}
 @media (max-width:420px){
   .sf-abil{grid-template-columns:repeat(2,1fr)!important}
 }
