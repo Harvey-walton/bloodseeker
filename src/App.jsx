@@ -2766,7 +2766,6 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 .sf-piece:hover,.sf-piece.sel{filter:drop-shadow(0 0 6px rgba(255,220,120,1)) drop-shadow(0 3px 3px rgba(0,0,0,.65))}
 .sf-piece img{display:block;pointer-events:none;position:relative;z-index:1}
 .sf-piece-shadow{position:absolute;left:8%;right:8%;bottom:-3px;height:9px;border-radius:50%;background:rgba(0,0,0,.5);filter:blur(2px)}
-.sf-piece-mark{animation:sfbob 1.4s ease-in-out infinite}
 .sf-piece-mark svg{display:block}
 .sf-piece-mark b{position:absolute;left:0;right:0;top:3px;text-align:center;font-family:Cinzel,serif;font-size:11px;line-height:12px;color:#ffd75e;pointer-events:none}
 .sf-piece-arrow{text-align:center;color:#ffd75e;font-size:13px;line-height:16px;text-shadow:0 0 3px #000,0 0 6px #000;animation:sfbob 1.4s ease-in-out infinite}
