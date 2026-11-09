@@ -650,12 +650,18 @@ const RevealTextField=memo(({label,text,spans,field})=>{
 });
 
 /* ════ IMAGE PROMPT for ChatGPT (copy → paste into ChatGPT → upload the picture) ════ */
-function buildImagePrompt(e,person,canSee,extra){
+function buildImagePrompt(e,person,canSee,extra,sessionNotes){
   const v=f=>(canSee(f)&&(e[f]||"").trim())?plainLinks(e[f]).trim():"";
   const clean=t=>plainLinks(t||"").replace(/\s+/g," ").trim();
   // short-page answers count too (who they are, what they do, anything else written about them)
   const quick=[["q_who",""],["q_do","What they do: "],["q_want","What they want: "],["q_other",""]].map(([f,pre])=>clean(e[f])?pre+clean(e[f]).replace(/[.\s]*$/,"."):"").filter(Boolean).join(" ");
-  const desc=[quick,clean(e.description)].filter(Boolean).join(" ").slice(0,600);
+  const desc=[quick,clean(e.description)].filter(Boolean).join(" ");
+  // a session: hand ChatGPT everyone's notes and let it choose the moment to paint
+  if(sessionNotes){
+    return[`Fantasy illustration, wide landscape format, for ${e.name||"a session"} of our Dungeons & Dragons campaign.`,
+      "Below are the players' notes from the session. Read all of them, pick the single most dramatic or memorable moment, and paint that one scene — not a collage of everything. Leave out dice rolls, rules and bookkeeping; only show people who are actually in that moment.",
+      `NOTES:\n${sessionNotes}`,extra.trim(),"Hand-painted medieval fantasy style, rich detail, no text or lettering."].filter(Boolean).join("\n\n");
+  }
   if(person){
     const bits=[];
     const who=[v("age")&&`${v("age")}-year-old`,v("raceSp")].filter(Boolean).join(" ");
@@ -672,9 +678,9 @@ function buildImagePrompt(e,person,canSee,extra){
   }
   return[`Fantasy illustration, wide landscape format: ${e.name||"a place"}.`,desc&&`Notes: ${desc}`,extra.trim(),"Hand-painted medieval fantasy style, rich detail, no text or lettering."].filter(Boolean).join(" ");
 }
-function ImagePromptBox({entry,person,canSee,onClose}){
+function ImagePromptBox({entry,person,canSee,onClose,sessionNotes}){
   const [extra,setExtra]=useState("");const [copied,setCopied]=useState(false);
-  const prompt=buildImagePrompt(entry,person,canSee,extra);
+  const prompt=buildImagePrompt(entry,person,canSee,extra,sessionNotes);
   const copy=async()=>{try{await navigator.clipboard.writeText(prompt);setCopied(true);setTimeout(()=>setCopied(false),2000);}catch(e){const t=document.getElementById("sf-prompt-text");if(t){t.select();document.execCommand("copy");setCopied(true);}}};
   return(<div style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
     <div onClick={e=>e.stopPropagation()} style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:10,padding:22,width:"min(560px,100%)",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
@@ -1017,7 +1023,13 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
     open:(sec,id)=>{if(sec==="char"){onOpenChar&&onOpenChar(id);return;}if(!lore[sec])return;goEntry(sec,(lore[sec].find(x=>String(x.id)===String(id))||{}).id);},
     can:(sec,id)=>{if(sec==="char")return !!onOpenChar&&(characters||[]).some(c=>String(c.id)===String(id));const e=(lore[sec]||[]).find(x=>String(x.id)===String(id));if(!e)return false;if(readOnly||seeAll(sec))return true;return sec==="regions"?placeVisible(getPlaces(lore),e,false):entryVisible(e);}};
   return(<LinkCtx.Provider value={innerLinks}><div className={`sf-lore${local?" has-sel":""}`} style={{display:"flex",height:"100%",background:"var(--dark)"}}>
-    {promptOpen&&local&&<ImagePromptBox entry={local} person={hasPhys(sel.s)} canSee={f=>!isControlled(local)||privView||fieldVisible(local,f)} onClose={()=>setPromptOpen(false)}/>}
+    {promptOpen&&local&&<ImagePromptBox entry={local} person={hasPhys(sel.s)} canSee={f=>!isControlled(local)||privView||fieldVisible(local,f)} onClose={()=>setPromptOpen(false)}
+      sessionNotes={kindOf(sel.s)==="session"?(()=>{
+        // every notes box (labelled with whose notes they are), then anything in the session's own boxes
+        const clean=t=>plainLinks(t||"").replace(/[ \t]+/g," ").replace(/\n{3,}/g,"\n\n").trim();
+        const parts=(lore.sessionNotes||[]).filter(n=>String(n.sessionId)===String(local.id)&&(n.text||"").trim()).map(n=>{const c=characters.find(x=>String(x.id)===String(n.charId));return`${c&&c.name?possessive(c.name)+" notes":"Notes"}: ${clean(n.text)}`;});
+        SESSION_OTHER_FIELDS.forEach(f=>{if((local[f]||"").trim())parts.push(clean(local[f]));});
+        return parts.join("\n\n")||null;})():null}/>}
     {delT&&!readOnly&&<DelModal name={delT.label} onOk={confirmDel} onNo={()=>setDelT(null)}/>}
     {shortAsk&&local&&<TypeConfirmModal title="Clear these boxes?" word="override" okLabel="Clear them" onOk={doShort} onNo={()=>setShortAsk(null)}>
       This <strong>deletes</strong> the writing in these boxes on <strong>{local.name||"this page"}</strong>:
