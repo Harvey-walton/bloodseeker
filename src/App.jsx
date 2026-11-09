@@ -1727,11 +1727,8 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,
           <button title="-1 HP" onClick={()=>commit("hpCurrent",Math.max(0,(L.hpCurrent||0)-1))} style={{width:22,height:22,borderRadius:3,border:"1px solid rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.08)",color:"white",cursor:"pointer",fontSize:14,lineHeight:1}}>−</button>
           <button title="+1 HP" onClick={()=>commit("hpCurrent",Math.min(hpCap(),(L.hpCurrent||0)+1))} style={{width:22,height:22,borderRadius:3,border:"1px solid rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.08)",color:"white",cursor:"pointer",fontSize:14,lineHeight:1}}>+</button>
           <input type="number" value={hpAmt} onChange={e=>setHpAmt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")damage();}} placeholder="amt" style={{width:44,fontFamily:"Cinzel",fontSize:12,background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.3)",color:"white",borderRadius:3,padding:"2px 4px",outline:"none"}}/>
-          <button onClick={damage} style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(255,120,120,0.6)",background:"rgba(160,30,30,0.5)",color:"#ffd0d0",cursor:"pointer"}}>DAMAGE</button>
-          <button onClick={heal} style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(120,220,120,0.6)",background:"rgba(30,110,30,0.5)",color:"#d0ffd0",cursor:"pointer"}}>HEAL</button>
-          <button className="sf-rest" onClick={restDay} disabled={restedToday} title={restedToday?"Already rested today — wait for the next day":`A day of rest heals ${L.hitDieMax||"d8"} + Con = ${restHeal(L)} HP`}
-            style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",borderRadius:3,border:"1px solid rgba(160,200,255,0.5)",background:restedToday?"rgba(255,255,255,0.05)":"rgba(40,70,130,0.55)",color:restedToday?"rgba(255,255,255,0.35)":"#dbe7ff",cursor:restedToday?"default":"pointer",whiteSpace:"nowrap"}}>
-            {restedToday?"RESTED":`REST +${restHeal(L)}`}</button>
+          <button onClick={damage} style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",height:22,borderRadius:3,border:"1px solid rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.08)",color:"white",cursor:"pointer"}}>DAMAGE</button>
+          <button onClick={heal} style={{fontFamily:"Cinzel",fontSize:9,padding:"3px 6px",height:22,borderRadius:3,border:"1px solid rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.08)",color:"white",cursor:"pointer"}}>HEAL</button>
         </div>}
 
         <div style={{display:"flex",gap:7,gridRow:2,gridColumn:2,borderLeft:"1px solid rgba(255,255,255,0.15)",paddingLeft:10,alignSelf:"center"}}>
@@ -1958,7 +1955,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,
       </div>
     </div>
     {/* Characters from your past */}
-    <div style={{padding:"0 14px"}}><PastSection char={L} commit={commit} lore={lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={onOpenLore} isDM={isDM}/><MapPieceSection char={L} commit={commit} lore={lore} myPast={myPast} isDM={isDM} onFind={onFindOnMap}/><LogsSection char={L} commit={commit} myPast={myPast} isDM={isDM}/></div>
+    <div style={{padding:"0 14px"}}><PastSection char={L} commit={commit} lore={lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={onOpenLore} isDM={isDM}/>{editMode&&<MapPieceSection char={L} commit={commit} lore={lore} myPast={myPast} isDM={isDM} onFind={onFindOnMap}/>}<LogsSection char={L} commit={commit} myPast={myPast} isDM={isDM}/></div>
     {lvlPop&&<div style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setLvlPop(null)}>
       <div onClick={e=>e.stopPropagation()} style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:10,padding:24,width:"min(420px,100%)",textAlign:"center",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
         <div style={{fontSize:32}}>⚔</div>
@@ -2028,7 +2025,7 @@ function movePieceData(d,charId,pos){
   const old=ch.pos||null;const sets=(d.lore&&d.lore.settlements)||[];
   const ref=at=>{if(at==null)return null;const x=sets.find(q=>String(q.id)===String(at));return x?{id:x.id,name:x.name||"somewhere"}:null;};
   const from=old?ref(old.at):null,to=ref(pos&&pos.at);
-  const trail=[...(ch.trail||[]),...(old?[{m:old.mapId,x:old.x,y:old.y}]:[])].slice(-12);
+  const trail=[...(ch.trail||[]),...(old?[{m:old.mapId,x:old.x,y:old.y}]:[])].slice(-10);
   const lore=old&&String(old.at||"")!==String((pos&&pos.at)||"")?addTravel(d.lore||{},charId,from,to,clockOf(d)):d.lore;
   return{...d,lore,characters:chars.map(c=>c===ch?{...c,pos:pos?{...pos}:null,trail}:c)};
 }
@@ -2519,6 +2516,7 @@ function App(){
   const [mapCmd,setMapCmd]=useState(null);
   const findOnMap=id=>{setPage("map");setMapCmd({charId:id,n:Date.now()});};
   const movePiece=useCallback((id,pos)=>setData(d=>movePieceData(d,id,pos)),[]);
+  const clearTrail=useCallback(id=>setData(d=>({...d,characters:(d.characters||[]).map(c=>String(c.id)===String(id)?{...c,trail:[]}:c)})),[]);
   const openChar=id=>{const i=((data&&data.characters)||[]).findIndex(c=>String(c.id)===String(id));if(i>=0){setCharIdx(i);setPage("chars");}};
   useEffect(()=>{setVisited(v=>v[page]?v:{...v,[page]:true});},[page]);
   const linkCtxVal=useMemo(()=>{
@@ -2568,7 +2566,7 @@ function App(){
 
     {/* Main */}
     <main style={{flex:1,minHeight:0,overflow:"hidden",padding:8,background:"var(--dark)"}}>
-      {visited.map&&<div style={{height:"100%",display:page==="map"?"block":"none"}}><MapExplorer data={data} isDM={isDM} onOpenLore={openLore} setLore={setLore} myPast={myPast} onMovePiece={movePiece} mapCmd={mapCmd} onOpenChar={openChar}/></div>}
+      {visited.map&&<div style={{height:"100%",display:page==="map"?"block":"none"}}><MapExplorer data={data} isDM={isDM} onOpenLore={openLore} setLore={setLore} myPast={myPast} onMovePiece={movePiece} onClearTrail={clearTrail} mapCmd={mapCmd} onOpenChar={openChar}/></div>}
       {visited.lore&&<div style={{height:"100%",display:page==="lore"?"block":"none"}}><LorePanel lore={data.lore} setLore={setLore} characters={data.characters} readOnly={false} dmMode={false} onOpenChar={openChar} openTarget={loreTarget} myPast={myPast}/></div>}
       {visited.chars&&<div style={{height:"100%",display:page==="chars"?"block":"none"}}><CharSheet char={data.characters[charIdx]} clock={clockOf(data)} onChange={c=>updateChar(charIdx,c)} lore={data.lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={openLore} isDM={isDM} onFindOnMap={findOnMap}/></div>}
       {visited.tales&&<div style={{height:"100%",display:page==="tales"?"block":"none"}}><TalesPanel/></div>}
@@ -2768,6 +2766,9 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 .sf-piece:hover,.sf-piece.sel{filter:drop-shadow(0 0 6px rgba(255,220,120,1)) drop-shadow(0 3px 3px rgba(0,0,0,.65))}
 .sf-piece img{display:block;pointer-events:none;position:relative;z-index:1}
 .sf-piece-shadow{position:absolute;left:8%;right:8%;bottom:-3px;height:9px;border-radius:50%;background:rgba(0,0,0,.5);filter:blur(2px)}
+.sf-piece-mark{animation:sfbob 1.4s ease-in-out infinite}
+.sf-piece-mark svg{display:block}
+.sf-piece-mark b{position:absolute;left:0;right:0;top:3px;text-align:center;font-family:Cinzel,serif;font-size:11px;line-height:12px;color:#ffd75e;pointer-events:none}
 .sf-piece-arrow{text-align:center;color:#ffd75e;font-size:13px;line-height:16px;text-shadow:0 0 3px #000,0 0 6px #000;animation:sfbob 1.4s ease-in-out infinite}
 @keyframes sfbob{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
 .sf-pin-hidden{opacity:0.62}
@@ -3117,8 +3118,9 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
     // the characters' chess pieces — same size on screen at any zoom, standing on their spot
     (pieces||[]).forEach(p=>{
       if(p.lat==null||p.lng==null)return;
-      const h=p.slotted?62:88,w=Math.max(18,Math.round(h/(p.aspect||2))),ah=p.slotted?16:0;
-      const html=`<div class="sf-piece${p.selected?" sel":""}" style="width:${w}px;height:${h+ah}px"><img src="${p.img}" style="width:${w}px;height:${h}px"/>${p.slotted?'<div class="sf-piece-arrow">▼</div>':'<div class="sf-piece-shadow"></div>'}</div>`;
+      const h=p.slotted?0:88,w=p.slotted?22:Math.max(18,Math.round(h/(p.aspect||2))),ah=p.slotted?26:0;
+      const html=p.slotted?`<div class="sf-piece sf-piece-mark${p.selected?" sel":""}" style="width:${w}px;height:${ah}px"><svg viewBox="0 0 22 26" width="22" height="26"><path d="M2 2h18v12l-9 10-9-10z" fill="#111" stroke="#e8c860" stroke-width="1.5" stroke-linejoin="round"/></svg><b>${escHtml(((p.name||"?").trim()[0]||"?").toUpperCase())}</b></div>`
+        :`<div class="sf-piece${p.selected?" sel":""}" style="width:${w}px;height:${h}px"><img src="${p.img}" style="width:${w}px;height:${h}px"/><div class="sf-piece-shadow"></div></div>`;
       const m=L.marker([p.lat,p.lng],{icon:L.divIcon({html,className:"",iconSize:[w,h+ah],iconAnchor:[w/2-(p.dx||0),h+ah]}),draggable:!!p.draggable&&!drawing,keyboard:false,interactive:!drawing,zIndexOffset:3000+(p.selected?500:0)}).addTo(layer);
       if(!p.selected)m.bindTooltip(escHtml(p.name||""),{direction:"top",offset:[p.dx||0,-(h+ah)],className:"sf-pin-tip"});
       m.on("click",e=>{L.DomEvent.stopPropagation(e);cb.current.onPieceClick&&cb.current.onPieceClick(p.id);});
@@ -3153,7 +3155,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
 }
 
 /* ════ MAP EXPLORER (the Map tab) ════ */
-function MapExplorer({data,isDM,onOpenLore,setLore,myPast,onMovePiece,mapCmd,onOpenChar}){
+function MapExplorer({data,isDM,onOpenLore,setLore,myPast,onMovePiece,onClearTrail,mapCmd,onOpenChar}){
   useCleanIcons();
   const lctx=useContext(LinkCtx);
   const lore=data.lore||{};
@@ -3230,8 +3232,8 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast,onMovePiece,mapCmd,onO
   const pieces=here.map(c=>{
     const st=slotOf(c);
     if(st){const mates=here.filter(o=>{const x=slotOf(o);return x&&String(x.id)===String(st.id);});const i=mates.indexOf(c);
-      return{id:c.id,name:c.name,img:pieceImg(c),aspect:pieceAspect(c),slotted:true,dx:Math.round((i-(mates.length-1)/2)*34),
-        lat:st.mapY+(st.iconSize||90)*(st.iconAspect||0.75)*0.42,lng:st.mapX,selected:sel&&sel.kind==="piece"&&String(sel.id)===String(c.id),draggable:canMovePiece(c,myPast,isDM)};}
+      return{id:c.id,name:c.name,img:pieceImg(c),aspect:pieceAspect(c),slotted:true,dx:Math.round((i-(mates.length-1)/2)*26),
+        lat:st.mapY+(st.iconSize||90)*(st.iconAspect||0.75)*0.12,lng:st.mapX,selected:sel&&sel.kind==="piece"&&String(sel.id)===String(c.id),draggable:canMovePiece(c,myPast,isDM)};}
     return{id:c.id,name:c.name,img:pieceImg(c),aspect:pieceAspect(c),lat:c.pos.y,lng:c.pos.x,selected:sel&&sel.kind==="piece"&&String(sel.id)===String(c.id),draggable:canMovePiece(c,myPast,isDM)};
   });
   const trails=here.map(c=>{const pts=[];[...(c.trail||[]),{m:c.pos.mapId,x:c.pos.x,y:c.pos.y}].forEach(t=>{if(String(t.m)===String(cur.id)&&t.x!=null)pts.push([t.y,t.x]);else pts.length=0;});return pts;}).filter(t=>t.length>1);
@@ -3316,6 +3318,7 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast,onMovePiece,mapCmd,onO
         </div>
         :<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           {can&&<button className="btn act" style={{fontSize:12}} onClick={()=>setTravelPick(c.id)}>🧭 Travel to another map</button>}
+          {can&&(c.trail||[]).length>0&&<button className="btn" style={{fontSize:12,color:"#e8d2a8"}} onClick={()=>onClearTrail&&onClearTrail(c.id)}>🧹 Delete lines</button>}
           <button className="btn" style={{fontSize:12,color:"#e8d2a8"}} onClick={()=>onOpenChar&&onOpenChar(c.id)}>📜 Character sheet</button>
         </div>}
         {can&&travelPick!==c.id&&<div style={{fontSize:11,color:"#9a8060",fontStyle:"italic",marginTop:6}}>Drag the piece to move. Drop it on a settlement to go inside.</div>}
