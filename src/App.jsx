@@ -411,7 +411,8 @@ function linkEntries(lore){
 const charEntries=chars=>(chars||[]).filter(c=>(c.name||"").trim()).map(c=>({name:c.name.replace(/[\[\]]/g,""),sec:"char",id:c.id}));
 const sectionIcon=sec=>({char:"🛡️",regions:"🌍",allies:"🤝",enemies:"💀",people_general:"👤",factions:"⚔️",items:"💎",settlements:"🏰",history:"📖",sessions:"📋",terrain:"🗺"}[sec]||"📌");
 // the four quick choices when you @ a new name
-const QUICK_TYPES=[[["people_general","allies"],"👤","Person"],[["factions"],"⚔️","Faction"],[["items",/^items?$/i],"💎","Item"],[["settlements"],"📍","Place"]];
+const QUICK_TYPES=[[["people_general","allies"],"👤","Person"],[["factions"],"⚔️","Faction"],[["items",/^items?$/i],"🗝️","Item"],[["settlements"],"📍","Place"]];
+const tabIcon=x=>x&&/^\s*items?\s*$/i.test(x.label||"")?"🗝️":x&&/plant|herb/i.test(x.label||"")?"🌿":(x&&x.icon);
 // built-in tabs people can delete (they're just hidden, so nothing else breaks)
 const REMOVABLE_DEFAULTS=["people_general","items","allies","enemies","factions","history","terrain"];
 const hiddenSecs=lore=>{const h=((lore&&lore.__sectionOrder&&lore.__sectionOrder.__hidden)||[]).slice();if(!((lore&&lore.people_general)||[]).length&&!h.includes("people_general"))h.push("people_general");return h;};
@@ -451,6 +452,8 @@ function MentionTextarea({value,onCommit,style,className,placeholder,autoFocus,g
   const [q,setQ]=useState(null);const [hi,setHi]=useState(0);const [empty,setEmpty]=useState(!(value||"").trim());
   const [chipMenu,setChipMenu]=useState(null);const [moreOpen,setMoreOpen]=useState(false);
   const liveT=useRef(null);const last=useRef(value||"");const qRef=useRef(null);qRef.current=q;
+  const autoSp=useRef(null); // the space we just put after a gold name
+
   const all=((ctx&&ctx.entries)||[]).filter(e=>!ctx.can||ctx.can(e.sec,e.id));
   const matches=q?all.filter(e=>e.name.toLowerCase().includes(q.query.toLowerCase())).slice(0,8):[];
   const canMake=!!(ctx&&ctx.create&&q&&q.query.trim().length>1&&!all.some(e=>e.name.toLowerCase()===q.query.trim().toLowerCase()));
@@ -480,17 +483,32 @@ function MentionTextarea({value,onCommit,style,className,placeholder,autoFocus,g
   };
   useEffect(()=>{const h=()=>{if(document.activeElement===ref.current)check();};document.addEventListener("selectionchange",h);return()=>document.removeEventListener("selectionchange",h);},[]);
   // Enter = a plain line break everywhere (phones included); paste = plain text
-  useEffect(()=>{const el=ref.current;if(!el)return;const bi=e=>{if(e.inputType==="insertParagraph"||e.inputType==="insertLineBreak"){if(qRef.current&&(e.inputType==="insertParagraph"))return;e.preventDefault();newLine();}};
+  useEffect(()=>{const el=ref.current;if(!el)return;const bi=e=>{
+      // typing 's , . ! ? straight after a gold name: drop the automatic space so it sticks to the name
+      const sp=autoSp.current;
+      // typing your own space straight after it: keep just the one
+      if(sp&&e.inputType==="insertText"&&e.data===" "){const sel=getSelection();if(sel.rangeCount&&sel.anchorNode===sp&&sel.anchorOffset===1&&sp.nodeValue===" "){e.preventDefault();autoSp.current=null;return;}}
+      if(sp&&e.inputType==="insertText"&&typeof e.data==="string"&&/^['’s.,!?;:)]/.test(e.data)){const sel=getSelection();
+        if(sel.rangeCount&&sel.anchorNode===sp&&sel.anchorOffset===1&&sp.nodeValue===" "){e.preventDefault();sp.nodeValue=e.data;const r=document.createRange();r.setStart(sp,e.data.length);r.collapse(true);sel.removeAllRanges();sel.addRange(r);autoSp.current=null;changed();return;}}
+      if(e.inputType&&e.inputType.indexOf("insert")===0||e.inputType&&e.inputType.indexOf("delete")===0)autoSp.current=null;
+      if(e.inputType==="insertParagraph"||e.inputType==="insertLineBreak"){if(qRef.current&&(e.inputType==="insertParagraph"))return;e.preventDefault();newLine();}};
     el.addEventListener("beforeinput",bi);return()=>el.removeEventListener("beforeinput",bi);},[]);
   const choose=e=>{
     const el=ref.current;const cq=qRef.current;if(!el||!cq)return;
     const r=document.createRange();r.setStart(cq.node,cq.start);r.setEnd(cq.node,cq.end);r.deleteContents();
-    const chip=chipEl({name:e.name,sec:e.sec,id:e.id},ctx);r.insertNode(chip);const zw=document.createTextNode(ZW);chip.after(zw);
-    const sel=getSelection();const r2=document.createRange();r2.setStart(zw,1);r2.collapse(true);sel.removeAllRanges();sel.addRange(r2);
+    const chip=chipEl({name:e.name,sec:e.sec,id:e.id},ctx);r.insertNode(chip);
+    // a space after the name so you can keep typing — unless the next character is already a space
+    let nx=chip.nextSibling;while(nx&&nx.nodeType===3&&nx.nodeValue.replace(/\u200b/g,"")===""&&nx.nextSibling){const z=nx;nx=nx.nextSibling;z.remove();}
+    const nextCh=nx&&nx.nodeType===3?nx.nodeValue.replace(/\u200b/g,"").charAt(0):"";
+    const sel=getSelection();const r2=document.createRange();
+    if(nextCh&&/[\s\u00a0.,!?;:)'’]/.test(nextCh)){r2.setStart(nx,/[\s\u00a0]/.test(nextCh)?1:0);autoSp.current=null;}
+    else{const sp=document.createTextNode(" ");chip.after(sp);autoSp.current=sp;r2.setStart(sp,1);}
+    r2.collapse(true);sel.removeAllRanges();sel.addRange(r2);
     el.focus();setQ(null);setMoreOpen(false);ensureTail();changed();
   };
   const make=sec=>{const cq=qRef.current;if(!cq)return;const name=cq.query.trim().replace(/[\[\]()]/g,"");const id=ctx.create(sec,name);if(id!=null)choose({name,sec,id});};
   const onKey=e=>{
+    if(q&&matches.length&&/^[1-9]$/.test(e.key)&&!e.ctrlKey&&!e.metaKey&&!e.altKey){const m=matches[parseInt(e.key)-1];if(m){e.preventDefault();choose(m);return;}}
     if(q&&matches.length){
       if(e.key==="ArrowDown"){e.preventDefault();setHi(h=>(h+1)%matches.length);return;}
       if(e.key==="ArrowUp"){e.preventDefault();setHi(h=>(h-1+matches.length)%matches.length);return;}
@@ -512,7 +530,8 @@ function MentionTextarea({value,onCommit,style,className,placeholder,autoFocus,g
     {empty&&placeholder&&<div style={{position:"absolute",top:0,left:0,right:0,pointerEvents:"none",padding:(style&&style.padding)||"6px 9px",paddingTop:(style&&style.paddingTop)||undefined,fontFamily:style&&style.fontFamily,fontSize:style&&style.fontSize,lineHeight:style&&style.lineHeight,color:"var(--ink3)",fontStyle:"italic",opacity:.6}}>{placeholder}</div>}
     {q&&(matches.length>0||canMake)&&<div className="sf-mention-list" style={{top:q.y+2,marginTop:0,left:q.x,maxWidth:"calc(100% - 8px)"}}>
       {matches.length>0&&<div style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".08em",color:"var(--ink3)",padding:"4px 8px"}}>LINK TO…</div>}
-      {matches.map((e,i)=><div key={e.sec+e.id} onMouseDown={ev=>{ev.preventDefault();choose(e);}} onMouseEnter={()=>setHi(i)} className={`sf-mention-item${i===hi?" on":""}`}>{sectionIcon(e.sec)} {e.name}</div>)}
+      {matches.map((e,i)=><div key={e.sec+e.id} onMouseDown={ev=>{ev.preventDefault();choose(e);}} onMouseEnter={()=>setHi(i)} className={`sf-mention-item${i===hi?" on":""}`} style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontFamily:"Cinzel",fontSize:10,color:"var(--ink3)",width:12,textAlign:"right",flexShrink:0}}>{i+1}</span><span>{sectionIcon(e.sec)} {e.name}</span></div>)}
       {canMake&&<div style={{borderTop:matches.length?"1px solid var(--border)":"none",padding:"5px 8px 7px"}}>
           <div style={{fontSize:9,fontFamily:"Cinzel",letterSpacing:".08em",color:"var(--ink3)",marginBottom:5}}>{matches.length?"OR ":""}NEW: “{q.query.trim().toUpperCase()}” IS A…</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
@@ -1031,7 +1050,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
           return(<div key={s.id} style={{borderBottom:"1px solid var(--border)"}}>
             <div style={{display:"flex",alignItems:"center",background:isO?"var(--parch3)":"var(--parch2)",borderLeft:isO?"3px solid var(--gold2)":"3px solid transparent"}}>
               <div onClick={()=>{if(isO)closeSection(s.id);else setOpenSection(s.id);setSearch("");setListEditMode(false);}} style={{flex:1,minWidth:0,padding:`${depth?8:10}px 6px ${depth?8:10}px ${11+depth*16}px`,cursor:"pointer",fontSize:12,fontFamily:"Cinzel",letterSpacing:"0.04em",color:isO?"var(--gold)":"var(--ink2)",display:"flex",alignItems:"center",gap:7,userSelect:"none"}}>
-                <span>{s.icon}</span><span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.label}</span>
+                <span>{tabIcon(s)}</span><span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.label}</span>
                 {items.length>0&&<span style={{fontSize:9,background:"var(--gold2)",color:"var(--dark)",borderRadius:10,padding:"0 5px",fontFamily:"Cinzel"}}>{items.length}</span>}
                 <span style={{fontSize:9,color:"var(--ink3)",transform:isO?"rotate(180deg)":"none",display:"inline-block",transition:"transform .2s"}}>▼</span>
               </div>
@@ -1326,8 +1345,8 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
             </select>:local.linkedCharId?<p style={{fontSize:14,color:"var(--ink)"}}>{(characters.find(c=>String(c.id)===String(local.linkedCharId))||{}).name||"Unknown"}</p>:null}
           </div>
         </>}
-        {!readOnly&&!editMode&&(()=>{
-          const src=mentions[sel.s+":"+local.id]||[];if(!src.length)return null;
+        {!readOnly&&(()=>{
+          const src=mentions[sel.s+":"+local.id]||[];
           const seenLink=(e,sec,f,pos)=>{if(dmView)return true;const sp=((e.reveal||{}).spans||{})[f];const inSp=!!(sp&&sp.some(([a,b])=>pos>=a&&pos<b));
             if(f.indexOf("dm_")===0)return inSp;if(isControlled(e)&&secOwner(sec)&&!seeAll(sec))return inSp;if(isControlled(e)&&(f==="hoverLore"||f==="tags")&&!seeAll(sec))return fieldVisible(e,f);return true;};
           const sess=new Map(),other=new Map();
@@ -1335,12 +1354,32 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
             if(r.sec==="sessionNotes"){const n=(lore.sessionNotes||[]).find(x=>String(x.id)===String(r.id));if(!n)return;const se=(lore.sessions||[]).find(x=>String(x.id)===String(n.sessionId));if(!se||!innerLinks.can("sessions",se.id))return;sess.set(String(se.id),se);return;}
             const e=(lore[r.sec]||[]).find(x=>String(x.id)===String(r.id));if(!e||!innerLinks.can(r.sec,e.id)||!seenLink(e,r.sec,r.f,r.pos))return;
             if(r.sec==="sessions")sess.set(String(e.id),e);else other.set(r.sec+":"+e.id,{sec:r.sec,e});});
-          const S2=[...sess.values()].sort((a,b)=>sessionNum(a)-sessionNum(b));const O=[...other.values()];
-          if(!S2.length&&!O.length)return null;
+          const allSess=(lore.sessions||[]).filter(x=>innerLinks.can("sessions",x.id)).sort((a,b)=>sessionNum(a)-sessionNum(b));
+          // automatic sessions, minus any you've hidden, plus any you've added by hand
+          const hid=(local.appearsHide||[]).map(String),added=(local.appearsAdd||[]).map(String);
+          const S2=allSess.filter(x=>(sess.has(String(x.id))&&!hid.includes(String(x.id)))||added.includes(String(x.id)));const O=[...other.values()];
+          const firstMet=(local.metSession&&allSess.find(x=>String(x.id)===String(local.metSession)))||S2[0]||null;
+          const isAuto=id=>sess.has(String(id));
+          if(editMode&&canEdit&&sel.s!=="sessions"){
+            const lab={fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",minWidth:96};
+            return(<div className="sf-backlinks" style={{marginTop:10}}><Ornament/>
+              <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}><span style={lab}>FIRST MET</span>
+                <select value={local.metSession||""} onChange={e=>commitField("metSession",e.target.value||undefined)} style={{fontFamily:"Crimson Pro,serif",fontSize:14,background:"var(--parch)",border:"1px solid var(--border2)",borderRadius:4,padding:"3px 6px"}}>
+                  <option value="">Automatic{S2[0]&&!local.metSession?` (${S2[0].name})`:""}</option>
+                  {allSess.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></div>
+              <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}><span style={lab}>APPEARS IN</span>
+                {S2.map(x=><span key={x.id} style={{display:"inline-flex",alignItems:"center",gap:4,background:"rgba(196,154,48,0.14)",border:"1px solid var(--border2)",borderRadius:12,padding:"1px 4px 1px 10px",fontSize:13.5}}>{x.name}
+                  <button title={isAuto(x.id)?"Hide this one":"Remove"} onClick={()=>{if(added.includes(String(x.id)))commitField("appearsAdd",added.filter(i=>i!==String(x.id)));else commitField("appearsHide",[...hid,String(x.id)]);}} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:12,padding:"0 3px"}}>✕</button></span>)}
+                {allSess.some(x=>!S2.includes(x))&&<select value="" onChange={e=>{const id=e.target.value;if(!id)return;if(hid.includes(id))commitField("appearsHide",hid.filter(i=>i!==id));else commitField("appearsAdd",[...added,id]);}} style={{fontFamily:"Crimson Pro,serif",fontSize:13,background:"var(--parch)",border:"1px dashed var(--border2)",borderRadius:4,padding:"2px 6px"}}>
+                  <option value="">+ Add session</option>{allSess.filter(x=>!S2.includes(x)).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select>}
+              </div></div>);
+          }
+          if(editMode)return null;
+          if(!S2.length&&!O.length&&!firstMet)return null;
           const chip=(sec,e)=><a key={sec+":"+e.id} className="sf-link" onClick={ev=>{ev.preventDefault();goEntry(sec,e.id);}} style={{cursor:"pointer"}}>{e.name||"Unnamed"}</a>;
           const row=(lab,items)=><div style={{display:"flex",gap:10,alignItems:"baseline",marginBottom:6,flexWrap:"wrap"}}><span style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",minWidth:96}}>{lab}</span><span style={{flex:1,fontSize:14.5,fontFamily:"Crimson Pro",lineHeight:1.6}}>{items.map((x,i)=><React.Fragment key={i}>{i?<span style={{color:"var(--ink3)"}}> · </span>:null}{x}</React.Fragment>)}</span></div>;
           return(<div className="sf-backlinks" style={{marginTop:10}}><Ornament/>
-            {S2.length>0&&sel.s!=="sessions"&&row("FIRST MET",[chip("sessions",S2[0])])}
+            {firstMet&&sel.s!=="sessions"&&row("FIRST MET",[chip("sessions",firstMet)])}
             {S2.length>0&&row(sel.s==="sessions"?"MENTIONED IN":"APPEARS IN",S2.map(e=>chip("sessions",e)))}
             {O.length>0&&row("MENTIONED IN",O.map(o=>chip(o.sec,o.e)))}
           </div>);})()}
@@ -1993,7 +2032,7 @@ function GameClock({data,setData}){
 function LogsSection({char,commit,myPast,isDM}){
   const owner=char.pastOwner||null;const mine=!!owner&&myPast===owner;
   const logs=char.logs||{tabs:[]};const tabs=logs.tabs||[];
-  const [tab,setTab]=useState(null);const [open,setOpen]=useState({});const [renaming,setRenaming]=useState(null);const [addingTab,setAddingTab]=useState(false);const [tabName,setTabName]=useState("");const [del,setDel]=useState(null);
+  const [tab,setTab]=useState(null);const [open,setOpen]=useState({});const [editing,setEditing]=useState({});const [renaming,setRenaming]=useState(null);const [addingTab,setAddingTab]=useState(false);const [tabName,setTabName]=useState("");const [del,setDel]=useState(null);
   if(!(mine||isDM))return null;
   const cur=tabs.find(t=>t.id===tab)||tabs[0]||null;
   const save=nt=>commit("logs",{...logs,tabs:nt});
@@ -2002,7 +2041,7 @@ function LogsSection({char,commit,myPast,isDM}){
   const shown=cur?(newest?[...(cur.entries||[])].reverse():(cur.entries||[])):[];
   const move=(i,d)=>{const j=i+d;if(!cur||j<0||j>=shown.length)return;const arr=[...shown];[arr[i],arr[j]]=[arr[j],arr[i]];updTab(cur.id,t=>({...t,entries:newest?arr.reverse():arr}));};
   const updEntry=(eid,f,v)=>updTab(cur.id,t=>({...t,entries:(t.entries||[]).map(e=>e.id===eid?{...e,[f]:v}:e)}));
-  const addEntry=()=>{if(!cur)return;const e={id:"e"+Date.now(),title:"",when:"",text:""};updTab(cur.id,t=>({...t,entries:[...(t.entries||[]),e]}));setOpen(o=>({...o,[e.id]:"new"}));};
+  const addEntry=()=>{if(!cur)return;const e={id:"e"+Date.now(),title:"",when:"",text:""};updTab(cur.id,t=>({...t,entries:[...(t.entries||[]),e]}));setOpen(o=>({...o,[e.id]:"new"}));setEditing(x=>({...x,[e.id]:true}));};
   const addTab=()=>{const n=tabName.trim();if(!n)return;const t={id:"t"+Date.now(),name:n,entries:[]};save([...tabs,t]);setTab(t.id);setAddingTab(false);setTabName("");};
   const ink="#2a2a3a",soft="#6a5a40";
   const small={fontSize:11,color:ink};
@@ -2039,14 +2078,19 @@ function LogsSection({char,commit,myPast,isDM}){
               <button className="btn" disabled={i===shown.length-1} onClick={()=>move(i,1)} title="Move down" style={{...small,padding:"1px 7px",opacity:i===shown.length-1?.35:1}}>▼</button></span>}
           </div>
           {isOpen&&<div style={{padding:"0 12px 10px 30px"}}>
-            {mine?<>
+            {mine&&editing[e.id]?<>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:6}}>
                 <ShInput value={e.title} onCommit={v=>updEntry(e.id,"title",v)} placeholder="Title — e.g. Letter #2 to Brother Aldric" style={{flex:"2 1 200px",fontSize:13}}/>
                 <ShInput value={e.when} onCommit={v=>updEntry(e.id,"when",v)} placeholder="When — e.g. Session 4" style={{flex:"1 1 120px",fontSize:13}}/>
               </div>
               <MentionTextarea value={e.text} onCommit={v=>updEntry(e.id,"text",v)} grow live placeholder="Write the letter or note… @ to link a person or place" className="sh-input-box" style={{width:"100%",minHeight:120,fontSize:14,lineHeight:1.6,fontFamily:"Crimson Pro,serif",resize:"none",overflow:"hidden"}}/>
-              <div style={{textAlign:"right",marginTop:4}}><button className="btn" onClick={()=>setDel({kind:"entry",id:e.id,label:e.title||"this entry"})} style={{...small,color:"#a3241e"}}>🗑 Delete entry</button></div>
-            </>:<LogText text={e.text}/>}
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+                <button className="btn" onClick={()=>setDel({kind:"entry",id:e.id,label:e.title||"this entry"})} style={{...small,color:"#a3241e"}}>🗑 Delete entry</button>
+                <button className="btn" onClick={()=>setEditing(x=>({...x,[e.id]:false}))} style={{...small,fontWeight:600,background:"#c49a30",color:"#1a1206",borderColor:"#9a7020"}}>✓ Done</button></div>
+            </>:<>
+              <LogText text={e.text}/>
+              {mine&&<div style={{textAlign:"right",marginTop:6}}><button className="btn" onClick={()=>setEditing(x=>({...x,[e.id]:true}))} style={small}>✏️ Edit</button></div>}
+            </>}
           </div>}
         </div>);})}
     </>}
@@ -2413,16 +2457,14 @@ function App(){
       <div style={{width:1,height:20,background:"var(--border2)"}}/>
       <nav className="sf-nav">
         {NAV.map(n=><button key={n.id} onClick={()=>setPage(n.id)} className={`btn${page===n.id?" act":""}`} style={{padding:"4px 12px",fontSize:11,fontFamily:"Cinzel",letterSpacing:"0.04em"}}>{n.icon} {n.label}</button>)}
-        {/* Tales tab */}
-        <button onClick={()=>setPage("tales")} className={`btn${page==="tales"?" act":""}`} style={{padding:"4px 12px",fontSize:11,fontFamily:"Cinzel",letterSpacing:"0.04em",borderColor:"rgba(139,26,26,0.5)",color:page==="tales"?"var(--gold3)":"rgba(200,120,100,0.7)"}}>📖 Tales</button>
         <button onClick={()=>setPage("dm")} className={`btn${page==="dm"?" act":""}`} style={{padding:"4px 12px",fontSize:11,fontFamily:"Cinzel",letterSpacing:"0.04em",borderColor:"rgba(80,0,0,0.6)",color:page==="dm"?"#ff9999":"rgba(200,80,80,0.5)"}}>⚔ DM</button>
       </nav>
       {page==="chars"&&<div style={{display:"flex",gap:3,marginLeft:4}}>
         {data.characters.map((c,i)=><button key={c.id} onClick={()=>setCharIdx(i)} className={`btn${charIdx===i?" act":""}`} style={{padding:"3px 10px",fontSize:11,fontFamily:"Cinzel"}}>{c.name||`Player ${i+1}`}</button>)}
       </div>}
+      <div style={{marginLeft:page==="chars"?8:4}}><GameClock data={data} setData={setData}/></div>
       <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
-        <GameClock data={data} setData={setData}/>
-        <GlobalSearch lore={data.lore||{}} can={linkCtxVal.can} full={isDM} onOpen={openLore}/>
+        {page==="lore"&&<GlobalSearch lore={data.lore||{}} can={linkCtxVal.can} full={isDM} onOpen={openLore}/>}
         <span title={syncTitle} style={{fontSize:9,color:syncColor,fontFamily:"Cinzel",letterSpacing:"0.06em",transition:"color .3s",minWidth:60,textAlign:"right",cursor:"default"}}>{syncLabel}</span>
         <button onClick={()=>setShowTheme(t=>!t)} className={`btn${showTheme?" act":""}`} style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel"}}>🎨</button>
         <button onClick={()=>{if(confirm("Change DB settings?\\nThis will reload.")){localStorage.removeItem(SB_KEY);window.location.reload();}}} className="btn" style={{fontSize:10,padding:"3px 8px",fontFamily:"Cinzel"}}>⚙</button>
@@ -2655,7 +2697,7 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 .sf-mention-list{position:absolute;z-index:50;left:0;top:100%;margin-top:2px;min-width:240px;max-width:100%;background:var(--parch);border:1px solid var(--gold2);border-radius:5px;box-shadow:0 6px 20px rgba(0,0,0,0.35);overflow:hidden}
 .sf-mention-item{padding:6px 10px;font-family:'Crimson Pro',serif;font-size:14px;color:var(--ink);cursor:pointer}
 .sf-mention-item.on{background:var(--parch3);color:var(--gold)}
-.sf-chip{color:#a87a10;font-weight:600;background:rgba(196,154,48,0.16);border-radius:4px;padding:0 3px;margin:0 1px;cursor:pointer;white-space:nowrap;border-bottom:1px solid rgba(168,122,16,0.35);user-select:all;-webkit-user-select:all}
+.sf-chip{color:#a87a10;font-weight:600;background:rgba(196,154,48,0.16);border-radius:4px;padding:0 2px;margin:0;cursor:pointer;white-space:nowrap;border-bottom:1px solid rgba(168,122,16,0.35);user-select:all;-webkit-user-select:all}
 .sf-chip.off{color:var(--ink2);font-weight:400;background:rgba(0,0,0,0.06);border-bottom-color:transparent}
 .sf-me:empty:before{content:"\\200b"}
 .sf-me:focus{outline:none;box-shadow:0 0 0 2px rgba(196,154,48,0.35)}
