@@ -568,6 +568,7 @@ function NotebookBox({label,value,onCommit,canEdit}){
   </div>);
 }
 const nbId=(sid,cid)=>`${sid}__${cid}`;
+const SESSION_OTHER_FIELDS=["description","q_who","q_do","q_want","q_other","keyEvents","lore"];
 
 /* ════ WHO LINKS TO WHOM — powers "First met", "Appears in" and "Mentioned in" ════ */
 function buildMentions(lore){
@@ -907,7 +908,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
   const mentions=useMemo(()=>buildMentions(lore),[lore]);
   // Session notebooks: write in the boxes at the table, read it back as one clean page
   const [nbWrite,setNbWrite]=useState(false);
-  useEffect(()=>{if(sel.s!=="sessions"){setNbWrite(false);return;}const any=(lore.sessionNotes||[]).some(n=>String(n.sessionId)===String(sel.id)&&(n.text||"").trim());setNbWrite(!any);},[sel.s,sel.id]);
+  useEffect(()=>{if(sel.s!=="sessions"){setNbWrite(false);return;}const se=(lore.sessions||[]).find(x=>String(x.id)===String(sel.id));const any=(lore.sessionNotes||[]).some(n=>String(n.sessionId)===String(sel.id)&&(n.text||"").trim())||!!(se&&SESSION_OTHER_FIELDS.some(f=>(se[f]||"").trim()));setNbWrite(!any);},[sel.s,sel.id]);
   const confirmDel=()=>{
     setLore(prev=>({...prev,[sel.s]:prev[sel.s].filter(i=>i.id!==sel.id).map(i=>String(i.underId)===String(sel.id)?{...i,underId:(selItem&&selItem.underId!=null)?selItem.underId:null,_ts:Date.now()}:i)}));
     setSel({s:null,id:null});setLocal(null);setDelT(null);setEditMode(false);
@@ -1256,7 +1257,11 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
             const notes=(lore.sessionNotes||[]).filter(n=>String(n.sessionId)===String(local.id));
             const boxes=characters.map((c,i)=>({cid:c.id,label:`${possessive(c.name||`Player ${i+1}`)} notes`}));
             notes.forEach(n=>{if(!boxes.some(b=>String(b.cid)===String(n.charId))&&(n.text||"").trim())boxes.push({cid:n.charId,label:"Older notes"});});
-            const filled=boxes.map(b=>({...b,n:notes.find(x=>String(x.charId)===String(b.cid))})).filter(b=>b.n&&(b.n.text||"").trim());
+            // anything written in the session's own boxes (not a character's notebook) — shown as "Other notes" so it's never lost
+            const otherTxt=SESSION_OTHER_FIELDS.map(f=>(local[f]||"").trim()).filter(Boolean).join("\n\n");
+            const saveOther=v=>{commitField("description",v);SESSION_OTHER_FIELDS.forEach(f=>{if(f!=="description"&&(local[f]||"").trim())commitField(f,"");});};
+            const filled=[...boxes.map(b=>({...b,n:notes.find(x=>String(x.charId)===String(b.cid))})).filter(b=>b.n&&(b.n.text||"").trim()),
+              ...(otherTxt?[{cid:"__other",label:"Other notes",n:{text:otherTxt}}]:[])];
             if(!nbWrite&&filled.length)return(<div style={{marginBottom:18}}>
               {canEdit&&<div style={{display:"flex",justifyContent:"flex-end",margin:"-6px 0 6px"}}><button className="btn" onClick={()=>setNbWrite(true)} style={{fontSize:11.5,padding:"4px 12px"}}>✒️ Write notes</button></div>}
               {filled.map((b,i)=><div key={b.cid} style={{marginBottom:14}}>
@@ -1269,6 +1274,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
               {canEdit&&filled.length>0&&<div style={{display:"flex",justifyContent:"flex-end",margin:"-6px 0 8px"}}><button className="btn" onClick={()=>setNbWrite(false)} style={{fontSize:11.5,padding:"4px 12px",background:"var(--gold2)",color:"var(--dark)",borderColor:"var(--gold)",fontWeight:600}}>✓ Done writing</button></div>}
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(300px,100%),1fr))",gap:16}}>
               {boxes.map(b=>{const n=notes.find(x=>String(x.charId)===String(b.cid));return <NotebookBox key={b.cid} label={b.label} value={n?n.text:""} canEdit={canEdit} onCommit={v=>saveNote(local.id,b.cid,v)}/>;})}
+              {otherTxt&&<NotebookBox key="__other" label="Other notes" value={otherTxt} canEdit={canEdit} onCommit={saveOther}/>}
               {!boxes.length&&<div style={{color:"var(--ink3)",fontStyle:"italic"}}>Make a character sheet first — each character gets their own page here.</div>}
             </div></div>);
           }
@@ -1301,7 +1307,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
         })()}
         
         {sel.s==="settlements"&&editMode&&canEdit&&(()=>{
-          const places=getPlaces(lore);const baronies=places.filter(p=>placeType(p)==="barony");const pl=placeById(places,local.placeId);
+          const places=getPlaces(lore);const baronies=places.filter(p=>["barony","citystate","district"].includes(placeType(p)));const pl=placeById(places,local.placeId);
           return(<div style={{marginBottom:12}}>
             <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>TYPE OF PLACE</div>
             {editMode&&canEdit?<select value={local.placeKind||"settlement"} onChange={e=>commitField("placeKind",e.target.value)} style={{fontFamily:"Crimson Pro,serif",background:"var(--parch)",border:"1px solid var(--border2)",color:"var(--ink)",borderRadius:4,padding:"6px 8px",fontSize:14,outline:"none",marginBottom:10}}>{PLACE_KINDS.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select>
@@ -2475,7 +2481,7 @@ function App(){
 
     {/* Main */}
     <main style={{flex:1,minHeight:0,overflow:"hidden",padding:8,background:"var(--dark)"}}>
-      {visited.map&&<div style={{height:"100%",display:page==="map"?"block":"none"}}><MapExplorer data={data} isDM={isDM} onOpenLore={openLore}/></div>}
+      {visited.map&&<div style={{height:"100%",display:page==="map"?"block":"none"}}><MapExplorer data={data} isDM={isDM} onOpenLore={openLore} setLore={setLore} myPast={myPast}/></div>}
       {visited.lore&&<div style={{height:"100%",display:page==="lore"?"block":"none"}}><LorePanel lore={data.lore} setLore={setLore} characters={data.characters} readOnly={false} dmMode={false} onOpenChar={openChar} openTarget={loreTarget} myPast={myPast}/></div>}
       {visited.chars&&<div style={{height:"100%",display:page==="chars"?"block":"none"}}><CharSheet char={data.characters[charIdx]} clock={clockOf(data)} onChange={c=>updateChar(charIdx,c)} lore={data.lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={openLore} isDM={isDM}/></div>}
       {visited.tales&&<div style={{height:"100%",display:page==="tales"?"block":"none"}}><TalesPanel/></div>}
@@ -2712,6 +2718,7 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
   .sf-hide-narrow{display:none!important}
 }
 .sf-map-panel{max-height:calc(100% - 70px);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.sf-map-panel .sf-input{font-family:'Crimson Pro',serif;background:rgba(0,0,0,0.35);border:1px solid var(--border2);color:var(--gold3);border-radius:4px;outline:none;min-width:0}
 .sf-phone-only{display:none!important}
 @media (max-width:700px){
   .sf-lore-detail{padding:14px 14px 20px!important}
@@ -2765,7 +2772,17 @@ const PLACE_TYPES={
   kingdom:{label:"Duchy",icon:"👑",child:"region"},
   region:{label:"Region",icon:"🗺",child:"barony"},
   barony:{label:"Barony",icon:"🏰",child:null},
+  citystate:{label:"City State",icon:"🏛",child:"district"},
+  district:{label:"District",icon:"🏘",child:null},
 };
+// places that have their own picture (everything inside is drawn on it) / places you zoom into on their parent's picture
+const isCanvasType=t=>t==="kingdom"||t==="citystate";
+const isZoomType=t=>t==="region"||t==="district";
+// who made something on the map (players can only move/delete their own)
+const DEVICE_ID=(()=>{try{let d=localStorage.getItem("sf_dev");if(!d){d="d"+Math.random().toString(36).slice(2,10)+Date.now().toString(36);localStorage.setItem("sf_dev",d);}return d;}catch(e){return "d"+CLIENT_ID;}})();
+const madeBy=who=>({dev:DEVICE_ID,who:who||null});
+const isMine=(e,who)=>!!(e&&e.createdBy&&(e.createdBy.dev===DEVICE_ID||(who&&e.createdBy.who===who)));
+function pointInRing(pt,ring){const[y,x]=pt;let ins=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const[yi,xi]=ring[i],[yj,xj]=ring[j];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/((yj-yi)||1e-9)+xi))ins=!ins;}return ins;}
 const placeType=p=>(p&&p.placeType)||((p&&(p.id==="oghill_barony"||p.mapId==="barony"))?"barony":"kingdom");
 const getPlaces=lore=>((lore&&lore.regions)||[]);
 const placeById=(places,id)=>id==null?null:(places.find(p=>String(p.id)===String(id))||null);
@@ -2773,7 +2790,7 @@ const sameParent=(p,pid)=>(pid==null?p.parentId==null:String(p.parentId)===Strin
 const hasRing=p=>!!(p&&p.polyCoords&&p.polyCoords.length>2);
 function ancestorsOf(places,p){const out=[];let cur=p,guard=0;while(cur&&cur.parentId!=null&&guard++<10){cur=placeById(places,cur.parentId);if(cur)out.unshift(cur);}return out;}
 // the map a place's border is drawn on: its nearest kingdom ancestor, or the world map (null)
-function canvasOf(places,p){const anc=ancestorsOf(places,p);for(let i=anc.length-1;i>=0;i--)if(placeType(anc[i])==="kingdom")return anc[i];return null;}
+function canvasOf(places,p){const anc=ancestorsOf(places,p);for(let i=anc.length-1;i>=0;i--)if(isCanvasType(placeType(anc[i])))return anc[i];return null;}
 function canvasInfo(place){
   if(!place)return{img:WORLD_MAP_IMG,W:1400,H:1000,key:"world"};
   const own=imgSrc(place.mapImage);
@@ -2815,7 +2832,9 @@ function startCleanIcons(){
   });
 }
 function useCleanIcons(){const [,set]=useState(0);useEffect(()=>{const f=()=>set(x=>x+1);cleanIconListeners.add(f);startCleanIcons();return()=>cleanIconListeners.delete(f);},[]);}
-const PLACE_KINDS=[["settlement","Settlement"],["castle","Castle / Keep"],["forest","Forest / Woods"],["hills","Hills / Mountains"],["water","Lake / River / Coast"],["ruins","Ruins"],["landmark","Landmark"],["other","Other"]];
+// pins you put on a city map (an emoji shows when there's no picture)
+const CITY_PIN_KINDS=[["tavern","Tavern"],["inn","Inn"],["temple","Temple"],["shop","Shop"],["market","Market"],["smithy","Smithy"],["guild","Guild Hall"],["gate","Gate"],["house","House"]];
+const PLACE_KINDS=[["settlement","Settlement"],["castle","Castle / Keep"],["forest","Forest / Woods"],["hills","Hills / Mountains"],["water","Lake / River / Coast"],["ruins","Ruins"],["landmark","Landmark"],...CITY_PIN_KINDS,["other","Other"]];
 // "Within the Duchy of Illia, in the region of the Windswept Coast, lies the Barony of Tollenhiem — and at its heart, the settlement of Tollenhiem."
 const placeSentence=(name,kind,chain)=>{
   const nm=n=>{n=(n||"").trim()||"an unnamed place";return /^the\s/i.test(n)?"the "+n.slice(4):n;};
@@ -2850,9 +2869,9 @@ function clipRing(ring,{rect,within,avoid}){
 // Where a child of parentId is drawn, what it must stay inside, and what it must avoid
 function drawContext(places,parentId,excludeId){
   const par=placeById(places,parentId);
-  const cv=par?(placeType(par)==="kingdom"?par:canvasOf(places,par)):null;
+  const cv=par?(isCanvasType(placeType(par))?par:canvasOf(places,par)):null;
   const info=canvasInfo(cv);
-  const within=par&&placeType(par)!=="kingdom"&&hasRing(par)?par.polyCoords:null;
+  const within=par&&!isCanvasType(placeType(par))&&hasRing(par)?par.polyCoords:null;
   const sibs=places.filter(p=>sameParent(p,parentId)&&String(p.id)!==String(excludeId)&&hasRing(p));
   return{cv,info,within,sibs};
 }
@@ -3026,7 +3045,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
 }
 
 /* ════ MAP EXPLORER (the Map tab) ════ */
-function MapExplorer({data,isDM,onOpenLore}){
+function MapExplorer({data,isDM,onOpenLore,setLore,myPast}){
   useCleanIcons();
   const lctx=useContext(LinkCtx);
   const lore=data.lore||{};
@@ -3037,6 +3056,7 @@ function MapExplorer({data,isDM,onOpenLore}){
   const [sel,setSel]=useState(null);
   const [fade,setFade]=useState(false);
   const cur=placeById(places,view.mapId);
+  const [editing,setEditing]=useState(false);   // ✏️ Draw: the map tools (everyone changes only what they added)
   const focus=placeById(places,view.focusId);
 
   // if what we're looking at gets hidden or deleted, step back out
@@ -3047,7 +3067,9 @@ function MapExplorer({data,isDM,onOpenLore}){
 
   const canvas=canvasInfo(cur);
   const isBarony=cur&&placeType(cur)==="barony";
-  const kids=isBarony?[]:places.filter(p=>vis(p)&&hasRing(p)&&(focus?sameParent(p,focus.id):cur?sameParent(p,cur.id):p.parentId==null));
+  const isCity=cur&&placeType(cur)==="citystate";
+  const kidParent=focus?(placeType(focus)==="district"?cur.id:focus.id):cur?cur.id:null;
+  const kids=isBarony?[]:places.filter(p=>vis(p)&&hasRing(p)&&sameParent(p,kidParent));
 
   const go=(next,withFade)=>{
     setSel(null);
@@ -3057,7 +3079,7 @@ function MapExplorer({data,isDM,onOpenLore}){
   };
   const enter=p=>{
     if(canvasInfo(p)){go({mapId:p.id,focusId:null},true);return true;}
-    if(placeType(p)!=="barony"&&placeType(p)!=="kingdom"&&hasRing(p)){go({mapId:view.mapId,focusId:p.id},false);return true;}
+    if(isZoomType(placeType(p))&&hasRing(p)){go({mapId:view.mapId,focusId:p.id},false);return true;}
     return false;
   };
   const back=()=>{
@@ -3065,7 +3087,7 @@ function MapExplorer({data,isDM,onOpenLore}){
     if(!cur)return;
     const cv=canvasOf(places,cur);
     const par=placeById(places,cur.parentId);
-    go({mapId:cv?cv.id:null,focusId:par&&placeType(par)==="region"&&hasRing(par)?par.id:null},true);
+    go({mapId:cv?cv.id:null,focusId:par&&isZoomType(placeType(par))&&hasRing(par)?par.id:null},true);
   };
   const wrapRef=useRef(null);
   useEffect(()=>{const k=e=>{if(!wrapRef.current||!wrapRef.current.offsetParent)return;if(e.key==="Escape"){if(sel)setSel(null);else back();}};window.addEventListener("keydown",k);return()=>window.removeEventListener("keydown",k);});
@@ -3075,7 +3097,7 @@ function MapExplorer({data,isDM,onOpenLore}){
   const chain=[...(cur?[...ancestorsOf(places,cur),cur]:[]),...(focus?[focus]:[])];
   chain.forEach(p=>{
     if(canvasInfo(p))crumbs.push({label:p.name,to:{mapId:p.id,focusId:null},fade:String(view.mapId)!==String(p.id)});
-    else if(placeType(p)==="region"){const cv=canvasOf(places,p);crumbs.push({label:p.name,to:{mapId:cv?cv.id:null,focusId:p.id},fade:String(view.mapId)!==String(cv?cv.id:null)});}
+    else if(isZoomType(placeType(p))){const cv=canvasOf(places,p);crumbs.push({label:p.name,to:{mapId:cv?cv.id:null,focusId:p.id},fade:String(view.mapId)!==String(cv?cv.id:null)});}
     else crumbs.push({label:p.name,to:null});
   });
 
@@ -3083,11 +3105,12 @@ function MapExplorer({data,isDM,onOpenLore}){
     state:sel&&sel.kind==="place"&&String(sel.id)===String(p.id)?"selected":(!placeVisible(places,p,false)?"hidden":"normal"),
     shield:!cur&&!focus?(imgSrc(p.heraldry)||PLACE_TYPES[placeType(p)].icon):(imgSrc(p.heraldry)||null)}));
 
-  const pins=isBarony?sets.filter(s=>sameParent({parentId:s.placeId},cur.id)&&s.mapX!=null&&(isDM||entryVisible(s))).map(s=>{
+  const pinIds=isBarony?[String(cur.id)]:isCity?[String(cur.id),...places.filter(p=>sameParent(p,cur.id)&&vis(p)).map(p=>String(p.id))]:[];
+  const pins=sets.filter(s=>s.placeId!=null&&pinIds.includes(String(s.placeId))&&s.mapX!=null&&(isDM||entryVisible(s))).map(s=>{
     const ic=settlementIcon(s);const hl=plainLinks(shownText(s,"hoverLore",isDM));
-    return{id:"s:"+s.id,lat:s.mapY,lng:s.mapX,img:ic.img,size:s.iconSize||90,aspect:s.iconAspect||0.75,label:!ic.img&&(s.placeKind||"settlement")!=="settlement"?s.name:null,hidden:!entryVisible(s),selected:sel&&sel.id==="s:"+s.id,
+    return{id:"s:"+s.id,lat:s.mapY,lng:s.mapX,img:ic.img,size:s.iconSize||90,aspect:s.iconAspect||0.75,label:!ic.img?(s.name||"Unnamed"):null,hidden:!entryVisible(s),selected:sel&&sel.id==="s:"+s.id,
       tip:null};
-  }):[];
+  });
   const zones=isBarony&&cur.mapId==="barony"&&!imgSrc(cur.mapImage)?BARONY_TERRAIN.map(t=>({id:"t:"+t.id,lat:1050-t.iy,lng:t.ix,label:t.name})):[];
 
   const onShapeClick=id=>{
@@ -3101,7 +3124,7 @@ function MapExplorer({data,isDM,onOpenLore}){
   if(sel&&sel.kind==="place"){
     const p=placeById(places,sel.id);
     if(p){
-      const t=placeType(p);const canEnter=!!canvasInfo(p)||(t==="region"&&hasRing(p));
+      const t=placeType(p);const canEnter=!!canvasInfo(p)||(isZoomType(t)&&hasRing(p));
       const desc=shownText(p,"description",isDM);
       popup=(<>
         <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:6}}>
@@ -3110,9 +3133,9 @@ function MapExplorer({data,isDM,onOpenLore}){
           <div style={{fontFamily:"Cinzel",fontSize:9,color:"#b89a68",letterSpacing:".08em"}}>{PLACE_TYPES[t].label.toUpperCase()}{isDM&&!placeVisible(places,p,false)&&<span style={{color:"#ff8a7a"}}> · HIDDEN FROM PLAYERS</span>}</div></div>
         </div>
         {desc&&<p style={{fontSize:13.5,lineHeight:1.55,marginBottom:10,whiteSpace:"pre-wrap",maxHeight:160,overflowY:"auto"}}>{richNodes(desc,lctx)}</p>}
-        {sel.noMap&&<p style={{fontSize:12,color:"#e0a070",fontStyle:"italic",marginBottom:8}}>{isDM?"No map uploaded for this yet — add one in DM → Map Control.":"This place hasn't been mapped yet."}</p>}
+        {sel.noMap&&<p style={{fontSize:12,color:"#e0a070",fontStyle:"italic",marginBottom:8}}>{isMine(p,myPast)?"No map uploaded yet — use ✏️ Draw to add one.":"This place hasn't been mapped yet."}</p>}
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {canEnter&&<button className="btn act" onClick={()=>enter(p)} style={{fontSize:12,fontFamily:"Cinzel"}}>{t==="region"?"Explore":"Enter"} {p.name} ▶</button>}
+          {canEnter&&<button className="btn act" onClick={()=>enter(p)} style={{fontSize:12,fontFamily:"Cinzel"}}>{isZoomType(t)?"Explore":"Enter"} {p.name} ▶</button>}
           <button className="btn" onClick={()=>onOpenLore&&onOpenLore("regions",p.id)} style={{fontSize:12,color:"#e8d2a8"}}>📜 Lore</button>
         </div>
         {canEnter&&<div style={{fontSize:11,color:"#9a8060",fontStyle:"italic",marginTop:6}}>Tip: click it again on the map to go in</div>}
@@ -3133,6 +3156,10 @@ function MapExplorer({data,isDM,onOpenLore}){
     if(t)popup=(<><div style={{fontFamily:"Cinzel",fontSize:15,color:"var(--gold3)",marginBottom:2}}>{t.name}</div><div style={{fontFamily:"Cinzel",fontSize:9,color:"#b89a68",letterSpacing:".08em",marginBottom:8}}>TERRAIN</div><p style={{fontSize:13.5,lineHeight:1.55}}>{t.desc}</p></>);
   }
 
+  if(editing)return(<div style={{width:"100%",height:"100%",padding:4}}>
+    <MapControl lore={lore} setLore={setLore} mode="player" isDM={isDM} myPast={myPast} startId={focus?focus.id:cur?cur.id:null}
+      onOpenOverview={(sec,id)=>onOpenLore&&onOpenLore(sec,id)} onDone={()=>setEditing(false)}/>
+  </div>);
   return(<div ref={wrapRef} style={{position:"relative",width:"100%",height:"100%"}}>
     <PlaceMap canvas={canvas} shapes={shapes} focusRing={focus?focus.polyCoords:null} pins={pins} zones={zones}
       onShapeClick={onShapeClick} onPinClick={onPinClick} onMapClick={()=>setSel(null)}/>
@@ -3145,6 +3172,7 @@ function MapExplorer({data,isDM,onOpenLore}){
       </React.Fragment>);})}
       {isDM&&<span style={{fontFamily:"Cinzel",fontSize:10,color:"#ff9999",background:"rgba(80,0,0,0.85)",padding:"3px 8px",borderRadius:3,border:"1px solid rgba(255,100,100,0.4)"}}>⚔ DM VIEW — red dashed = hidden from players</span>}
     </div>
+    {!popup&&<button className="btn act" onClick={()=>setEditing(true)} style={{position:"absolute",right:14,bottom:14,zIndex:1100,fontSize:12,fontFamily:"Cinzel",background:"rgba(20,12,4,0.92)",padding:"7px 14px"}}>✏️ Draw</button>}
     {popup&&<div className="sf-panel sf-map-panel" style={{position:"absolute",right:14,bottom:14,zIndex:1100,width:300,maxWidth:"calc(100% - 28px)"}}>
       <button onClick={()=>setSel(null)} style={{position:"absolute",top:8,right:10,background:"none",border:"none",color:"#b89a68",cursor:"pointer",fontSize:16}}>✕</button>
       {popup}
@@ -3309,11 +3337,18 @@ function IconSheetTool({barony,settlements,onSave,onClose}){
 }
 
 /* ════ DM: MAP CONTROL ════ */
-function MapControl({lore,setLore,onOpenOverview}){
+function MapControl({lore,setLore,onOpenOverview,mode="dm",isDM=true,myPast=null,startId=null,onDone}){
   useCleanIcons();
-  const places=getPlaces(lore);
-  const sets=lore.settlements||[];
-  const [selId,setSelId]=useState(null);
+  // mode "dm": Josh's Map Control (sees and changes everything, can hide things)
+  // mode "player": the same tools on the Map tab — everyone sees only what's revealed and changes only what they added
+  const player=mode!=="dm";
+  const allPlaces=getPlaces(lore);
+  const places=player?allPlaces.filter(p=>placeVisible(allPlaces,p,isDM)):allPlaces;
+  const sets=(lore.settlements||[]).filter(s=>!player||isDM||entryVisible(s));
+  const canChange=e=>!player||isDM||isMine(e,myPast);
+  const stamp=()=>({createdBy:madeBy(myPast),...(player?{}:{})});
+  const [selId,setSelId]=useState(()=>placeById(places,startId)?startId:null);
+  const [setting,setSetting]=useState(()=>{const p=placeById(allPlaces,startId);return p&&[p,...ancestorsOf(allPlaces,p)].some(x=>placeType(x)==="citystate")?"city":"normal";});
   const [tab,setTab]=useState("map");
   const [draw,setDraw]=useState(null);      // {mode:"new",parentId} | {mode:"border",id}
   const [pendingRing,setPendingRing]=useState(null);
@@ -3327,7 +3362,7 @@ function MapControl({lore,setLore,onOpenOverview}){
   const P=placeById(places,selId);
   useEffect(()=>{if(selId!=null&&!P)setSelId(null);},[P,selId]);
   useEffect(()=>{setDraw(null);setPendingRing(null);setPlacing(null);setNote("");setAddingSet(false);},[selId]);
-  useEffect(()=>{if(P&&typeOf(P)!=="barony"&&tab==="sets")setTab("map");},[selId]);
+  useEffect(()=>{if(P&&!hasSets(typeOf(P))&&tab==="sets")setTab("map");if(P&&tab==="lore"&&!canChange(P))setTab("map");},[selId]);
   useEffect(()=>{if(!note)return;const t=setTimeout(()=>setNote(""),6000);return()=>clearTimeout(t);},[note]);
 
   const updEntry=(sec,id,fn)=>setLore(prev=>({...prev,[sec]:(prev[sec]||[]).map(e=>String(e.id)===String(id)?fn(e):e)}));
@@ -3335,6 +3370,13 @@ function MapControl({lore,setLore,onOpenOverview}){
   const updSet=(id,patch)=>updEntry("settlements",id,e=>({...e,...patch,_ts:Date.now()}));
   const childrenOf=pid=>places.filter(p=>sameParent(p,pid));
   const typeOf=placeType;
+  const hasSets=t=>t==="barony"||t==="citystate";
+  // the places whose icons sit on this place's picture (a city's icons can be inside its districts)
+  const setPlaceIds=p=>!p?[]:typeOf(p)==="citystate"?[String(p.id),...allPlaces.filter(x=>sameParent(x,p.id)).map(x=>String(x.id))]:[String(p.id)];
+  const setsOf=p=>{const ids=setPlaceIds(p);return sets.filter(s=>s.placeId!=null&&ids.includes(String(s.placeId)));};
+  const cityOf=p=>p&&typeOf(p)==="citystate"?p:p&&typeOf(p)==="district"?placeById(allPlaces,p.parentId):null;
+  const districtAt=(city,ll)=>city?allPlaces.find(x=>typeOf(x)==="district"&&sameParent(x,city.id)&&hasRing(x)&&pointInRing(ll,x.polyCoords)):null;
+  const spotPatch=(city,ll)=>{const pt={mapY:Math.round(ll[0]),mapX:Math.round(ll[1])};if(city){const d=districtAt(city,[pt.mapY,pt.mapX]);pt.placeId=d?d.id:city.id;}return pt;};
 
   /* ── tree (folds open/closed; settlements sit under their barony) ── */
   const [open,setOpen]=useState(()=>new Set());
@@ -3342,7 +3384,7 @@ function MapControl({lore,setLore,onOpenOverview}){
   useEffect(()=>{if(!P)return;const keys=[String(P.id),...ancestorsOf(places,P).map(a=>String(a.id))];setOpen(prev=>new Set([...prev,...keys]));},[selId]);
   const renderNode=(p,depth)=>{
     const on=String(selId)===String(p.id);const hidden=!placeVisible(places,p,false);
-    const kids=childrenOf(p.id);const mySets=typeOf(p)==="barony"?sets.filter(x=>sameParent({parentId:x.placeId},p.id)):[];
+    const kids=childrenOf(p.id);const mySets=hasSets(typeOf(p))?setsOf(p):[];
     const n=kids.length+mySets.length;const isOpen=open.has(String(p.id));
     return(<React.Fragment key={p.id}>
       <div onClick={()=>setSelId(p.id)} style={{padding:"6px 8px 6px 0",cursor:"pointer",display:"flex",alignItems:"center",gap:5,fontSize:12.5,fontFamily:"Crimson Pro",
@@ -3351,13 +3393,14 @@ function MapControl({lore,setLore,onOpenOverview}){
         {imgSrc(p.heraldry)&&<img src={imgSrc(p.heraldry)} alt="" style={{width:20,height:20,objectFit:"contain",flexShrink:0}}/>}
         <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||"Unnamed"}</span>
         {!hasRing(p)&&<span title="No border drawn yet" style={{fontSize:10,opacity:.7}}>✏</span>}
-        <span title={hidden?"Hidden from players":"Visible to players"} style={{color:hidden?"#ff8a7a":"#9fd89f"}}><Eye open={!hidden} size={12}/></span>
+        {!player?<span title={hidden?"Hidden from players":"Visible to players"} style={{color:hidden?"#ff8a7a":"#9fd89f"}}><Eye open={!hidden} size={12}/></span>
+          :canChange(p)&&!isDM?<span title="You added this" style={{fontSize:10,opacity:.75}}>★</span>:null}
       </div>
       {isOpen&&kids.map(c=>renderNode(c,depth+1))}
       {isOpen&&mySets.map(x=>{const sv=entryVisible(x);const son=String(openSet)===String(x.id)&&on&&tab==="sets";return(
         <div key={"s"+x.id} onClick={()=>{setSelId(p.id);setTab("sets");setOpenSet(x.id);}} style={{padding:`5px 8px 5px ${22+(depth+1)*16+5}px`,cursor:"pointer",display:"flex",alignItems:"center",gap:5,fontSize:12,fontFamily:"Crimson Pro",color:sv?"#f0d0d0":"#ff9a8a",background:son?"rgba(139,26,26,0.35)":"transparent"}}>
           {(()=>{const im=settlementIcon(x).img;return im?<img src={im} alt="" style={{width:20,height:20,objectFit:"contain",flexShrink:0}}/>:null;})()}<span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{x.name||"Unnamed"}</span>
-          <span style={{color:sv?"#9fd89f":"#ff8a7a"}}><Eye open={sv} size={11}/></span>
+          {!player?<span style={{color:sv?"#9fd89f":"#ff8a7a"}}><Eye open={sv} size={11}/></span>:canChange(x)&&!isDM?<span title="You added this" style={{fontSize:10,opacity:.75}}>★</span>:null}
         </div>);})}
     </React.Fragment>);
   };
@@ -3369,6 +3412,7 @@ function MapControl({lore,setLore,onOpenOverview}){
     if(d.mode==="new")return drawContext(places,d.parentId,null);
     const X=placeById(places,d.id);return X?drawContext(places,X.parentId,X.id):null;
   };
+  const worldType=setting==="city"?"citystate":"kingdom";
   const dctx=ctxFor(draw);
   const snap=ring=>{
     const r=clipRing(ring,{rect:dctx.info,within:dctx.within,avoid:dctx.sibs.map(s=>s.polyCoords)});
@@ -3384,14 +3428,16 @@ function MapControl({lore,setLore,onOpenOverview}){
   const createPlace=()=>{
     if(!pendingRing||!newName.trim())return;
     const par=placeById(places,draw.parentId);
-    const type=par?(PLACE_TYPES[typeOf(par)].child||"barony"):"kingdom";
-    const e={...EMPTY_ENTRY(),id:"place_"+Date.now(),name:newName.trim(),placeType:type,parentId:par?par.id:null,polyCoords:pendingRing,
-      reveal:{entry:false,fields:{heraldry:true},spans:{}},_ts:Date.now()};
+    const type=par?(PLACE_TYPES[typeOf(par)].child||"barony"):(draw.ptype||"kingdom");
+    const e={...EMPTY_ENTRY(),id:"place_"+Date.now(),name:newName.trim(),placeType:type,parentId:par?par.id:null,polyCoords:pendingRing,createdBy:madeBy(myPast),
+      ...(player?{}:{reveal:{entry:false,fields:{heraldry:true},spans:{}}}),_ts:Date.now()};
     setLore(prev=>({...prev,regions:[...(prev.regions||[]),e]}));
     setDraw(null);setPendingRing(null);setNewName("");
-    setNote(`${PLACE_TYPES[type].label} "${e.name}" created — it's hidden from players until you reveal it.`);
+    setNote(player?`${PLACE_TYPES[type].label} "${e.name}" created — everyone can see it.`:`${PLACE_TYPES[type].label} "${e.name}" created — it's hidden from players until you reveal it.`);
+    if(player)setSelId(e.id);
   };
 
+  const pinOf=s=>{const ic=settlementIcon(s);const hl=shownText(s,"hoverLore",!player||isDM);return{id:s.id,lat:s.mapY,lng:s.mapX,img:ic.img,size:s.iconSize||90,aspect:s.iconAspect||0.75,label:!ic.img?(s.name||"Unnamed"):null,hidden:!entryVisible(s),selected:String(openSet)===String(s.id),draggable:canChange(s),tip:`<b>${escHtml(s.name)}</b>${hl?"<br/>"+escHtml(plainLinks(hl).slice(0,160)):""}`};};
   /* ── which map to show ── */
   let spec;
   if(draw&&dctx){
@@ -3404,21 +3450,27 @@ function MapControl({lore,setLore,onOpenOverview}){
       draw:!pendingRing};
   }else if(!P){
     spec={canvas:canvasInfo(null),shapes:childrenOf(null).filter(hasRing).map(p=>({id:p.id,ring:p.polyCoords,label:p.name,state:placeVisible(places,p,false)?"normal":"hidden",shield:imgSrc(p.heraldry)||PLACE_TYPES[typeOf(p)].icon}))};
+  }else if(cityOf(P)&&canvasInfo(cityOf(P))){
+    const C=cityOf(P);
+    spec={canvas:canvasInfo(C),focus:typeOf(P)==="district"&&hasRing(P)?P.polyCoords:null,barony:true,
+      shapes:childrenOf(C.id).filter(hasRing).map(p=>({id:p.id,ring:p.polyCoords,label:p.name,state:String(p.id)===String(P.id)?"selected":placeVisible(places,p,false)?"normal":"hidden"})),
+      pins:setsOf(C).filter(s=>s.mapX!=null).map(s=>pinOf(s))};
   }else{
     const t=typeOf(P);
-    if(t==="kingdom")spec={canvas:canvasInfo(P),shapes:childrenOf(P.id).filter(hasRing).map(p=>({id:p.id,ring:p.polyCoords,label:p.name,state:placeVisible(places,p,false)?"normal":"hidden"}))};
-    else if(t==="region"){const cv=canvasOf(places,P);spec={canvas:canvasInfo(cv),focus:hasRing(P)?P.polyCoords:null,shapes:childrenOf(P.id).filter(hasRing).map(p=>({id:p.id,ring:p.polyCoords,label:p.name,state:placeVisible(places,p,false)?"normal":"hidden"}))};}
+    if(isCanvasType(t))spec={canvas:canvasInfo(P),shapes:childrenOf(P.id).filter(hasRing).map(p=>({id:p.id,ring:p.polyCoords,label:p.name,state:placeVisible(places,p,false)?"normal":"hidden"}))};
+    else if(isZoomType(t)){const cv=canvasOf(places,P);spec={canvas:canvasInfo(cv),focus:hasRing(P)?P.polyCoords:null,shapes:childrenOf(P.id).filter(hasRing).map(p=>({id:p.id,ring:p.polyCoords,label:p.name,state:placeVisible(places,p,false)?"normal":"hidden"}))};}
     else{
       const mine=sets.filter(s=>sameParent({parentId:s.placeId},P.id));
       spec={canvas:canvasInfo(P),barony:true,
-        pins:mine.filter(s=>s.mapX!=null).map(s=>{const ic=settlementIcon(s);return{id:s.id,lat:s.mapY,lng:s.mapX,img:ic.img,size:s.iconSize||90,aspect:s.iconAspect||0.75,label:!ic.img&&(s.placeKind||"settlement")!=="settlement"?s.name:null,hidden:!entryVisible(s),selected:String(openSet)===String(s.id),draggable:true,tip:`<b>${escHtml(s.name)}</b>${s.hoverLore?"<br/>"+escHtml(s.hoverLore.slice(0,160)):""}`};}),
+        pins:mine.filter(s=>s.mapX!=null).map(s=>pinOf(s)),
         zones:P.mapId==="barony"&&!imgSrc(P.mapImage)?BARONY_TERRAIN.map(z=>({id:"t:"+z.id,lat:1050-z.iy,lng:z.ix,label:z.name})):[]};
     }
   }
 
+  if(placing!=null&&spec&&spec.shapes)spec.shapes=spec.shapes.map(x=>({...x,clickable:false})); // taps go to the map while placing an icon
   const onShapeClick=id=>{if(!draw)setSelId(id);};
   const onMapClick=ll=>{
-    if(placing!=null){updSet(placing,{mapY:Math.round(ll[0]),mapX:Math.round(ll[1])});setPlacing(null);setNote("Placed. Drag the icon to fine-tune.");}
+    if(placing!=null){updSet(placing,spotPatch(cityOf(P),ll));setPlacing(null);setNote("Placed. Drag the icon to fine-tune.");}
   };
   const uploadMap=async(e,id)=>{
     const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
@@ -3436,9 +3488,9 @@ function MapControl({lore,setLore,onOpenOverview}){
     setLore(prev=>{
       let list=[...(prev.settlements||[])];
       items.forEach((it,i)=>{
-        if(it.assign==="new"){list.push({...EMPTY_ENTRY(),id:"set_"+Date.now()+"_"+i,name:(it.name||"").trim()||"Unnamed settlement",placeId:P.id,iconImg:it.url,iconAspect:it.aspect||0.75,mapX:null,mapY:null,hoverLore:"",
-          reveal:{entry:false,fields:{hoverLore:true,portrait:true},spans:{}},_ts:Date.now()});}
-        else list=list.map(s=>String(s.id)===it.assign?{...s,iconImg:it.url,iconKey:null,iconAspect:it.aspect||0.75,_ts:Date.now()}:s);
+        if(it.assign==="new"){list.push({...EMPTY_ENTRY(),id:"set_"+Date.now()+"_"+i,name:(it.name||"").trim()||"Unnamed settlement",placeId:P.id,iconImg:it.url,iconAspect:it.aspect||0.75,mapX:null,mapY:null,hoverLore:"",createdBy:madeBy(myPast),
+          ...(player?{}:{reveal:{entry:false,fields:{hoverLore:true,portrait:true},spans:{}}}),_ts:Date.now()});}
+        else list=list.map(s=>String(s.id)===it.assign&&canChange(s)?{...s,iconImg:it.url,iconKey:null,iconAspect:it.aspect||0.75,_ts:Date.now()}:s);
       });
       return{...prev,settlements:list};
     });
@@ -3446,13 +3498,14 @@ function MapControl({lore,setLore,onOpenOverview}){
   };
   const addSettlement=()=>{
     if(!newSetName.trim())return;
-    const e={...EMPTY_ENTRY(),id:"set_"+Date.now(),name:newSetName.trim(),placeKind:newSetKind,placeId:P.id,mapX:null,mapY:null,hoverLore:"",reveal:{entry:false,fields:{hoverLore:true,portrait:true},spans:{}},_ts:Date.now()};
+    const e={...EMPTY_ENTRY(),id:"set_"+Date.now(),name:newSetName.trim(),placeKind:newSetKind,placeId:P.id,mapX:null,mapY:null,hoverLore:"",createdBy:madeBy(myPast),
+      ...(player?{}:{reveal:{entry:false,fields:{hoverLore:true,portrait:true},spans:{}}}),_ts:Date.now()};
     setLore(prev=>({...prev,settlements:[...(prev.settlements||[]),e]}));
     setNewSetName("");setAddingSet(false);setOpenSet(e.id);
   };
   const [ask,setAsk]=useState(null);
   const delPlace=()=>{
-    if(childrenOf(P.id).length){alert("Move or delete what's inside this first.");return;}
+    if(allPlaces.some(p=>sameParent(p,P.id))||(player&&setsOf(P).length)){setNote("Delete what's inside this first.");return;}
     setAsk({name:P.name,run:()=>doDelPlace(P)});
   };
   const doDelPlace=P=>{
@@ -3462,7 +3515,7 @@ function MapControl({lore,setLore,onOpenOverview}){
   const delSet=s=>setAsk({name:s.name||"this settlement",run:()=>{setLore(prev=>({...prev,settlements:(prev.settlements||[]).filter(x=>String(x.id)!==String(s.id))}));if(String(openSet)===String(s.id))setOpenSet(null);if(String(looseSel)===String(s.id))setLooseSel(null);}});
   const [looseOpen,setLooseOpen]=useState(false);const [looseSel,setLooseSel]=useState(null);
   const baronies=places.filter(p=>placeType(p)==="barony");
-  const loose=sets.filter(x=>x.placeId==null||!places.some(p=>String(p.id)===String(x.placeId)));
+  const loose=player?[]:sets.filter(x=>x.placeId==null||!places.some(p=>String(p.id)===String(x.placeId)));
 
   /* ── panel bits ── */
   const lbl={fontFamily:"Cinzel",fontSize:10,color:"rgba(255,170,170,0.65)",letterSpacing:".07em",marginBottom:4};
@@ -3471,23 +3524,31 @@ function MapControl({lore,setLore,onOpenOverview}){
   const parentOptions=P?places.filter(x=>{
     if(String(x.id)===String(P.id))return false;
     if(ancestorsOf(places,x).some(a=>String(a.id)===String(P.id)))return false;
-    const xt=typeOf(x);return t==="region"?xt==="kingdom":t==="barony"?(xt==="region"||xt==="kingdom"):false;
+    const xt=typeOf(x);return t==="region"?xt==="kingdom":t==="district"?xt==="citystate":t==="barony"?(xt==="region"||xt==="kingdom"):false;
   }):[];
-  const mapNeedsUpload=P&&(t==="kingdom"||t==="barony")&&!canvasInfo(P);
-  const mine=P&&t==="barony"?sets.filter(s=>sameParent({parentId:s.placeId},P.id)):[];
+  const mapNeedsUpload=P&&(isCanvasType(t)||t==="barony")&&!canvasInfo(P);
+  const mine=P&&hasSets(t)?setsOf(P):[];
+  const myOwn=mine.filter(canChange);
+  const canP=P&&canChange(P);
 
   const drawButtons=!draw&&<>
-    {(!P||(t!=="barony"&&!mapNeedsUpload&&(t!=="region"||hasRing(P))))&&<button className="sf-dm-btn" onClick={()=>startNew(P?P.id:null)}>✏ Draw a new {PLACE_TYPES[childType].label.toLowerCase()}</button>}
-    {P&&<button className="sf-dm-btn" onClick={()=>{if(!drawContext(places,P.parentId,P.id).info){setNote("The map this border goes on hasn't been uploaded yet.");return;}setDraw({mode:"border",id:P.id});}}>✏ {hasRing(P)?"Redraw":"Draw"} {P.name}'s border</button>}
+    {!P&&!player&&<button className="sf-dm-btn" onClick={()=>setDraw({mode:"new",parentId:null,ptype:"kingdom"})}>✏ Draw a new duchy</button>}
+    {!P&&<button className="sf-dm-btn" onClick={()=>setDraw({mode:"new",parentId:null,ptype:player?worldType:"citystate"})}>✏ Draw a new {player&&setting==="normal"?"duchy":"city state"}</button>}
+    {P&&(childType&&!mapNeedsUpload&&(!isZoomType(t)||hasRing(P)))&&<button className="sf-dm-btn" onClick={()=>startNew(P.id)}>✏ Draw a new {PLACE_TYPES[childType].label.toLowerCase()}</button>}
+    {P&&canP&&<button className="sf-dm-btn" onClick={()=>{if(!drawContext(places,P.parentId,P.id).info){setNote("The map this border goes on hasn't been uploaded yet.");return;}setDraw({mode:"border",id:P.id});}}>✏ {hasRing(P)?"Redraw":"Draw"} {P.name}'s border</button>}
   </>;
 
-  return(<div style={{display:"flex",height:"100%",gap:12,flexWrap:"wrap"}}>
-    {sheet&&P&&<IconSheetTool barony={P} settlements={mine} onSave={saveSheet} onClose={()=>setSheet(false)}/>}
+  const topLevel=childrenOf(null).filter(p=>!player||(setting==="city")===(typeOf(p)==="citystate"));
+  return(<div className={player?"sf-mc-player":""} style={{display:"flex",height:"100%",gap:12,flexWrap:"wrap",overflowY:player?"auto":undefined}}>
+    {sheet&&P&&<IconSheetTool barony={P} settlements={myOwn} onSave={saveSheet} onClose={()=>setSheet(false)}/>}
     {/* tree */}
     <div style={{width:230,flex:"0 0 230px",background:"rgba(60,0,0,0.3)",border:"1px solid rgba(200,50,50,0.25)",borderRadius:6,overflowY:"auto",maxHeight:"100%"}}>
-      <div style={{...lbl,padding:"10px 12px 4px"}}>THE REALM</div>
+      {player&&<div style={{display:"flex",gap:4,padding:"10px 10px 4px"}}>
+        {[["normal","🗺 Normal"],["city","🏛 City State"]].map(([k,l])=><button key={k} className={`sf-dm-btn${setting===k?" go":""}`} style={{flex:1,padding:"5px 4px"}} onClick={()=>{setSetting(k);setSelId(null);}}>{l}</button>)}
+      </div>}
+      <div style={{...lbl,padding:"10px 12px 4px"}}>{player?(setting==="city"?"CITY STATES":"DUCHIES, REGIONS & BARONIES"):"THE REALM"}</div>
       <div onClick={()=>{setSelId(null);setLooseSel(null);}} style={{padding:"8px 10px",cursor:"pointer",fontSize:13,display:"flex",gap:6,background:selId==null&&looseSel==null?"rgba(139,26,26,0.55)":"transparent",borderLeft:selId==null?"3px solid #ff7a7a":"3px solid transparent",color:"#ffd8d8",fontFamily:"Cinzel",letterSpacing:".03em"}}>🌍 World Map</div>
-      {childrenOf(null).map(p=>renderNode(p,1))}
+      {topLevel.map(p=>renderNode(p,1))}
       {loose.length>0&&<>
         <div onClick={()=>setLooseOpen(o=>!o)} style={{padding:"7px 8px 7px 0",cursor:"pointer",display:"flex",alignItems:"center",gap:5,fontSize:12,fontStyle:"italic",color:"rgba(255,190,190,0.6)",userSelect:"none"}}>
           <span style={{width:38,textAlign:"right",fontSize:16,fontStyle:"normal"}}>{looseOpen?"▾":"▸"}</span><span style={{flex:1}}>Not in a barony ({loose.length})</span>
@@ -3499,7 +3560,8 @@ function MapControl({lore,setLore,onOpenOverview}){
             <span style={{color:sv?"#9fd89f":"#ff8a7a"}}><Eye open={sv} size={11}/></span>
           </div>);})}
       </>}
-      <div style={{fontSize:11,color:"rgba(255,170,170,0.45)",padding:"10px 12px",lineHeight:1.5}}><Eye open size={11}/> visible · <Eye open={false} size={11}/> hidden · ✏ no border yet</div>
+      {player?<div style={{fontSize:11,color:"rgba(255,170,170,0.45)",padding:"10px 12px",lineHeight:1.5}}>{!isDM&&<>★ you added this · </>}✏ no border yet<br/>You can add things anywhere, but only change what you added.</div>
+        :<div style={{fontSize:11,color:"rgba(255,170,170,0.45)",padding:"10px 12px",lineHeight:1.5}}><Eye open size={11}/> visible · <Eye open={false} size={11}/> hidden · ✏ no border yet</div>}
     </div>
 
     {ask&&<DelModal name={ask.name} onOk={()=>{ask.run();setAsk(null);}} onNo={()=>setAsk(null)}/>}
@@ -3531,21 +3593,23 @@ function MapControl({lore,setLore,onOpenOverview}){
       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         {P?<>
           <span style={{fontSize:20}}>{PLACE_TYPES[t].icon}</span>
-          <ShInput value={P.name} onCommit={v=>v.trim()&&updPlace(P.id,{name:v.trim()})} className="" style={{fontFamily:"Cinzel",fontSize:18,color:"#ffb4b4",background:"transparent",border:"none",borderBottom:"1px solid rgba(255,120,120,0.4)",outline:"none",minWidth:120,flex:"1 1 160px",padding:"2px 0"}}/>
-          <span style={{fontFamily:"Cinzel",fontSize:10,color:"rgba(255,170,170,0.6)",letterSpacing:".08em"}}>{PLACE_TYPES[t].label.toUpperCase()}</span>
-          <button className={`sf-dm-btn${entryVisible(P)?" go":""}`} onClick={()=>updEntry("regions",P.id,toggleEntryVisible)}><Eye open={entryVisible(P)} size={12}/> {entryVisible(P)?"Revealed to players":"Hidden — click to reveal"}</button>
-          <button className="sf-dm-btn" onClick={delPlace} title="Delete">🗑</button>
+          {canP?<ShInput value={P.name} onCommit={v=>v.trim()&&updPlace(P.id,{name:v.trim()})} className="" style={{fontFamily:"Cinzel",fontSize:18,color:"#ffb4b4",background:"transparent",border:"none",borderBottom:"1px solid rgba(255,120,120,0.4)",outline:"none",minWidth:120,flex:"1 1 160px",padding:"2px 0"}}/>
+            :<span style={{fontFamily:"Cinzel",fontSize:18,color:"#ffb4b4",flex:"1 1 160px"}}>{P.name}</span>}
+          <span style={{fontFamily:"Cinzel",fontSize:10,color:"rgba(255,170,170,0.6)",letterSpacing:".08em"}}>{PLACE_TYPES[t].label.toUpperCase()}{player&&!canP?" · NOT YOURS — YOU CAN ADD TO IT":""}</span>
+          {!player&&<button className={`sf-dm-btn${entryVisible(P)?" go":""}`} onClick={()=>updEntry("regions",P.id,toggleEntryVisible)}><Eye open={entryVisible(P)} size={12}/> {entryVisible(P)?"Revealed to players":"Hidden — click to reveal"}</button>}
+          {canP&&<button className="sf-dm-btn" onClick={delPlace} title="Delete">🗑</button>}
         </>:<>
           <span style={{fontSize:20}}>🌍</span>
           <span style={{fontFamily:"Cinzel",fontSize:18,color:"#ffb4b4",flex:1}}>World Map</span>
         </>}
+        {player&&<button className="sf-dm-btn go" onClick={onDone}>✓ Done</button>}
       </div>
-      {P&&entryVisible(P)&&!placeVisible(places,P,false)&&<div style={{fontSize:12,color:"#ffb08a"}}>Players still can't see this — something it's inside is hidden.</div>}
+      {!player&&P&&entryVisible(P)&&!placeVisible(places,P,false)&&<div style={{fontSize:12,color:"#ffb08a"}}>Players still can't see this — something it's inside is hidden.</div>}
       {/* tabs */}
       {P&&<div style={{display:"flex",borderBottom:"1px solid rgba(200,50,50,0.3)",flexWrap:"wrap"}}>
         <button className={`sf-tab${tab==="map"?" on":""}`} onClick={()=>setTab("map")}>Map</button>
-        {t==="barony"&&<button className={`sf-tab${tab==="sets"?" on":""}`} onClick={()=>setTab("sets")}>Places ({mine.length})</button>}
-        <button className={`sf-tab${tab==="lore"?" on":""}`} onClick={()=>setTab("lore")}>Lore</button>
+        {hasSets(t)&&<button className={`sf-tab${tab==="sets"?" on":""}`} onClick={()=>setTab("sets")}>{t==="citystate"?"Icons":"Places"} ({mine.length})</button>}
+        {canP&&<button className={`sf-tab${tab==="lore"?" on":""}`} onClick={()=>setTab("lore")}>Lore</button>}
       </div>}
       {(note||busy)&&<div style={{fontSize:12.5,color:busy?"#ffe0a0":"#b8f0b8",background:"rgba(0,0,0,0.3)",padding:"5px 10px",borderRadius:4}}>{busy||note}</div>}
 
@@ -3553,8 +3617,8 @@ function MapControl({lore,setLore,onOpenOverview}){
       {(!P||tab==="map")&&<>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
           {drawButtons}
-          {P&&(t==="kingdom"||t==="barony")&&canvasInfo(P)&&!draw&&<label className="sf-dm-btn">🖼 Replace {PLACE_TYPES[t].label.toLowerCase()} map<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadMap(e,P.id)}/></label>}
-          {P&&t==="barony"&&canvasInfo(P)&&!draw&&<button className="sf-dm-btn" onClick={()=>setSheet(true)}>⬆ Upload icon sheet</button>}
+          {P&&canP&&(isCanvasType(t)||t==="barony")&&canvasInfo(P)&&!draw&&<label className="sf-dm-btn">🖼 Replace {PLACE_TYPES[t].label.toLowerCase()} map<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadMap(e,P.id)}/></label>}
+          {P&&hasSets(t)&&canvasInfo(P)&&!draw&&<button className="sf-dm-btn" onClick={()=>setSheet(true)}>⬆ Upload icon sheet</button>}
           {placing!=null&&<span style={{fontSize:12.5,color:"#bfe9ff"}}>Click the map where {(sets.find(s=>String(s.id)===String(placing))||{}).name} goes… <button className="sf-dm-btn" onClick={()=>setPlacing(null)}>Cancel</button></span>}
         </div>
         {pendingRing&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",background:"rgba(10,20,30,0.6)",border:"1px solid #7fd4ff",borderRadius:6,padding:"8px 10px"}}>
@@ -3564,19 +3628,20 @@ function MapControl({lore,setLore,onOpenOverview}){
           <button className="sf-dm-btn" onClick={()=>{setPendingRing(null);}}>↺ Redraw</button>
           <button className="sf-dm-btn" onClick={()=>{setPendingRing(null);setDraw(null);}}>✕ Cancel</button>
         </div>}
-        {mapNeedsUpload&&!draw?<div style={{flex:1,minHeight:280,border:"2px dashed rgba(220,90,90,0.4)",borderRadius:8,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,padding:20,textAlign:"center"}}>
+        {mapNeedsUpload&&!draw&&!canP?<div style={{flex:1,minHeight:200,display:"flex",alignItems:"center",justifyContent:"center",color:"rgba(255,200,200,0.6)",fontStyle:"italic",textAlign:"center",padding:20}}>No map for {P.name} yet — only whoever added it can upload one.</div>
+        :mapNeedsUpload&&!draw?<div style={{flex:1,minHeight:280,border:"2px dashed rgba(220,90,90,0.4)",borderRadius:8,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,padding:20,textAlign:"center"}}>
           <div style={{fontFamily:"Cinzel",color:"#ffb4b4",fontSize:14}}>Upload the {PLACE_TYPES[t].label.toLowerCase()} map for {P.name}</div>
-          <div style={{fontSize:13,color:"rgba(255,200,200,0.6)",maxWidth:420}}>{t==="kingdom"?"After uploading you can draw this duchy's regions on it.":"After uploading you can place this barony's settlement icons on it."}</div>
+          <div style={{fontSize:13,color:"rgba(255,200,200,0.6)",maxWidth:420}}>{t==="kingdom"?"After uploading you can draw this duchy's regions on it.":t==="citystate"?"After uploading you can draw this city's districts on it.":"After uploading you can place this barony's settlement icons on it."}</div>
           <label className="sf-dm-btn go" style={{fontSize:13,padding:"9px 18px"}}>📥 Upload map<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadMap(e,P.id)}/></label>
         </div>
-        :P&&t==="region"&&!draw&&!spec.canvas?<div style={{padding:20,color:"#ffb4b4"}}>Upload a map for the duchy this region is in first.</div>
+        :P&&isZoomType(t)&&!draw&&!spec.canvas?<div style={{padding:20,color:"#ffb4b4"}}>Upload a map for the {t==="district"?"city":"duchy"} this {t} is in first.</div>
         :<div style={{flex:"1 1 360px",minHeight:320,position:"relative"}}>
           <PlaceMap canvas={spec.canvas} shapes={spec.shapes} focusRing={spec.focus} pins={spec.pins} zones={spec.zones}
-            onShapeClick={onShapeClick} onPinClick={id=>{if(!String(id).startsWith("t:"))setOpenSet(id);}} onPinMove={(id,ll)=>updSet(id,{mapY:ll[0],mapX:ll[1]})}
+            onShapeClick={onShapeClick} onPinClick={id=>{if(!String(id).startsWith("t:"))setOpenSet(id);}} onPinMove={(id,ll)=>{const x=sets.find(q=>String(q.id)===String(id));if(x&&canChange(x))updSet(id,spotPatch(cityOf(P),ll));}}
             onMapClick={onMapClick} cursor={placing!=null}
             draw={spec.draw} onDrawDone={onDrawDone} onDrawCancel={()=>{setDraw(null);setPendingRing(null);}}
             drawHint={draw?(draw.mode==="border"?"Click around the edge to redraw the border — it snaps inside its parent and against neighbours":"Click around the edge — it snaps inside its parent and against neighbours"):""}/>
-          {P&&t==="barony"&&!draw&&(()=>{const x=mine.find(m=>String(m.id)===String(openSet)&&m.mapX!=null);if(!x)return null;const vis=entryVisible(x);
+          {P&&hasSets(t)&&!draw&&(()=>{const x=mine.find(m=>String(m.id)===String(openSet)&&m.mapX!=null);if(!x||!canChange(x))return null;const vis=entryVisible(x);
             return(<div style={{position:"absolute",left:12,bottom:12,zIndex:1100,background:"rgba(30,6,6,0.94)",border:"1px solid rgba(255,120,120,0.45)",borderRadius:6,padding:"10px 12px",width:270,maxWidth:"calc(100% - 24px)"}}>
               <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
                 <span style={{fontFamily:"Cinzel",fontSize:13,color:"#ffd0d0",flex:1}}>{x.name}</span>
@@ -3584,20 +3649,20 @@ function MapControl({lore,setLore,onOpenOverview}){
               <div style={{...lbl,display:"flex",justifyContent:"space-between"}}><span>ICON SIZE</span><span>{x.iconSize||90}</span></div>
               <input type="range" min="20" max="1400" step="5" value={x.iconSize||90} onChange={e=>updSet(x.id,{iconSize:+e.target.value})} style={{width:"100%",accentColor:"#ff7a7a"}}/>
               <div style={{display:"flex",gap:5,marginTop:8,flexWrap:"wrap"}}>
-                <button className={`sf-dm-btn${vis?" go":""}`} onClick={()=>updEntry("settlements",x.id,toggleEntryVisible)}><Eye open={vis} size={12}/> {vis?"Revealed":"Hidden"}</button>
+                {!player&&<button className={`sf-dm-btn${vis?" go":""}`} onClick={()=>updEntry("settlements",x.id,toggleEntryVisible)}><Eye open={vis} size={12}/> {vis?"Revealed":"Hidden"}</button>}
                 <button className="sf-dm-btn" onClick={()=>setTab("sets")}>▾ Lore</button>
               </div>
               <div style={{fontSize:11,color:"rgba(255,190,190,0.55)",marginTop:6}}>Drag the icon to move it.</div>
             </div>);})()}
         </div>}
-        {P&&t==="barony"&&canvasInfo(P)&&!draw&&mine.some(s=>s.mapX==null)&&<div style={{fontSize:12.5,color:"rgba(255,200,200,0.75)"}}>
-          Not on the map yet: {mine.filter(s=>s.mapX==null).map(s=><button key={s.id} className="sf-dm-btn" style={{margin:"2px 4px",padding:"3px 8px"}} onClick={()=>setPlacing(s.id)}>📍 {s.name}</button>)}
+        {P&&hasSets(t)&&canvasInfo(P)&&!draw&&myOwn.some(s=>s.mapX==null)&&<div style={{fontSize:12.5,color:"rgba(255,200,200,0.75)"}}>
+          Not on the map yet: {myOwn.filter(s=>s.mapX==null).map(s=><button key={s.id} className="sf-dm-btn" style={{margin:"2px 4px",padding:"3px 8px"}} onClick={()=>setPlacing(s.id)}>📍 {s.name}</button>)}
         </div>}
-        {!P&&<div style={{fontSize:12.5,color:"rgba(255,200,200,0.6)"}}>Draw each duchy's border on the world map, then pick it in the list to upload its map and draw its regions.</div>}
+        {!P&&<div style={{fontSize:12.5,color:"rgba(255,200,200,0.6)"}}>{player&&setting==="city"?"Draw a City State on the world map, then pick it in the list to upload its city map, draw districts and add icons.":"Draw each duchy's border on the world map, then pick it in the list to upload its map and draw its regions."}</div>}
       </>}
 
       {/* SETTLEMENTS TAB */}
-      {P&&t==="barony"&&tab==="sets"&&<div style={{overflowY:"auto",display:"flex",flexDirection:"column",gap:6,paddingBottom:20}}>
+      {P&&hasSets(t)&&tab==="sets"&&<div style={{overflowY:"auto",display:"flex",flexDirection:"column",gap:6,paddingBottom:20}}>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           {addingSet?<><input autoFocus value={newSetName} onChange={e=>setNewSetName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addSettlement();if(e.key==="Escape")setAddingSet(false);}} className="sf-dm-input" style={{width:220}} placeholder="Name (town, forest, ruins…)"/>
             <select className="sf-dm-input" value={newSetKind} onChange={e=>setNewSetKind(e.target.value)} style={{width:"auto"}}>{PLACE_KINDS.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select>
@@ -3606,22 +3671,24 @@ function MapControl({lore,setLore,onOpenOverview}){
           <button className="sf-dm-btn" onClick={()=>setSheet(true)}>⬆ Upload icon sheet</button>
         </div>
         {mine.length===0&&<div style={{color:"rgba(255,180,180,0.5)",fontStyle:"italic",padding:10}}>No places yet — towns, castles, forests, ruins…</div>}
-        {mine.map(s=>{const ic=settlementIcon(s);const open=String(openSet)===String(s.id);const vis=entryVisible(s);
+        {mine.map(s=>{const ic=settlementIcon(s);const open=String(openSet)===String(s.id)&&canChange(s);const vis=entryVisible(s);const own=canChange(s);
           return(<div key={s.id} style={{background:"rgba(60,0,0,0.3)",border:`1px solid ${open?"rgba(255,120,120,0.5)":"rgba(200,50,50,0.2)"}`,borderRadius:6}}>
             <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",flexWrap:"wrap"}}>
               <div style={{...checker,width:48,height:36,borderRadius:3,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{ic.img?<img src={ic.img} alt="" style={{maxWidth:46,maxHeight:34,mixBlendMode:ic.blend?"multiply":"normal"}}/>:<span>🏠</span>}</div>
               <span style={{flex:"1 1 120px",fontFamily:"Cinzel",fontSize:12.5,color:vis?"#ffe0e0":"#ff9a8a",letterSpacing:".03em"}}>{s.name||"Unnamed"} <span style={{fontFamily:"Crimson Pro",fontSize:11,opacity:.6}}>· {kindLabel(s.placeKind)}</span></span>
+              {own?<>
               <select className="sf-dm-input" title="Type of place" value={s.placeKind||"settlement"} onChange={e=>updSet(s.id,{placeKind:e.target.value})} style={{width:"auto",fontSize:11,padding:"3px 5px"}}>{PLACE_KINDS.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select>
-              <button className={`sf-dm-btn${vis?" go":""}`} onClick={()=>updEntry("settlements",s.id,toggleEntryVisible)}><Eye open={vis} size={12}/> {vis?"Revealed":"Hidden"}</button>
+              {!player&&<button className={`sf-dm-btn${vis?" go":""}`} onClick={()=>updEntry("settlements",s.id,toggleEntryVisible)}><Eye open={vis} size={12}/> {vis?"Revealed":"Hidden"}</button>}
               <button className="sf-dm-btn" onClick={()=>{setPlacing(s.id);setTab("map");}}>📍 {s.mapX==null?"Place":"Move"}</button>
               <button className="sf-dm-btn" onClick={()=>setOpenSet(open?null:s.id)}>{open?"▴":"▾"} Lore</button>
               <button className="sf-dm-btn" title="Delete settlement" onClick={()=>delSet(s)}>🗑</button>
+              </>:<span style={{fontSize:11,color:"rgba(255,190,190,0.5)",fontStyle:"italic"}}>added by someone else</span>}
             </div>
             {open&&<div style={{padding:"4px 12px 12px",display:"flex",flexDirection:"column",gap:8}}>
               <div>
                 <div style={{...lbl,display:"flex",alignItems:"center",gap:6}}>SHOWN WHEN YOU HOVER OVER IT ON THE MAP
-                  <button className="sf-dm-btn" style={{padding:"1px 6px",fontSize:10}} onClick={()=>updEntry("settlements",s.id,e=>({...e,reveal:{...(e.reveal||{entry:true,spans:{}}),fields:{...((e.reveal||{}).fields||{}),hoverLore:!fieldVisible(e,"hoverLore")}},_ts:Date.now()}))}>
-                    <Eye open={fieldVisible(s,"hoverLore")} size={11}/> {fieldVisible(s,"hoverLore")?"players can read it":"hidden from players"}</button></div>
+                  {!player&&<button className="sf-dm-btn" style={{padding:"1px 6px",fontSize:10}} onClick={()=>updEntry("settlements",s.id,e=>({...e,reveal:{...(e.reveal||{entry:true,spans:{}}),fields:{...((e.reveal||{}).fields||{}),hoverLore:!fieldVisible(e,"hoverLore")}},_ts:Date.now()}))}>
+                    <Eye open={fieldVisible(s,"hoverLore")} size={11}/> {fieldVisible(s,"hoverLore")?"players can read it":"hidden from players"}</button>}</div>
                 <MentionTextarea value={s.hoverLore||""} onCommit={v=>updEntry("settlements",s.id,e=>applyEntryField(e,"hoverLore",v))} className="sf-dm-input" style={{minHeight:70,resize:"vertical",lineHeight:1.5}} placeholder="A line or two players see when hovering the icon…"/>
               </div>
               <div><div style={{...lbl,display:"flex",justifyContent:"space-between",maxWidth:320}}><span>ICON SIZE ON THE MAP</span><span>{s.iconSize||90}</span></div>
@@ -3630,7 +3697,7 @@ function MapControl({lore,setLore,onOpenOverview}){
                 <label className="sf-dm-btn">🖼 Change icon<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadSetIcon(e,s.id)}/></label>
                 {(s.iconImg||s.iconKey)&&<button className="sf-dm-btn" onClick={()=>updSet(s.id,{iconImg:null,iconKey:null})}>Remove icon</button>}
                 {s.mapX!=null&&<button className="sf-dm-btn" onClick={()=>updSet(s.id,{mapX:null,mapY:null})}>Take off map</button>}
-                <button className="sf-dm-btn" onClick={()=>onOpenOverview&&onOpenOverview("settlements",s.id)}>📜 Full lore & reveals in Overview</button>
+                <button className="sf-dm-btn" onClick={()=>onOpenOverview&&onOpenOverview("settlements",s.id)}>📜 {player?"Open in Lore":"Full lore & reveals in Overview"}</button>
                 <button className="sf-dm-btn" onClick={()=>delSet(s)}>🗑 Delete</button>
               </div>
             </div>}
@@ -3638,7 +3705,7 @@ function MapControl({lore,setLore,onOpenOverview}){
       </div>}
 
       {/* LORE TAB */}
-      {P&&tab==="lore"&&<div style={{overflowY:"auto",display:"flex",flexDirection:"column",gap:12,paddingBottom:20}}>
+      {P&&canP&&tab==="lore"&&<div style={{overflowY:"auto",display:"flex",flexDirection:"column",gap:12,paddingBottom:20}}>
         <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
           <div>
             <div style={lbl}>HERALDRY</div>
@@ -3651,7 +3718,7 @@ function MapControl({lore,setLore,onOpenOverview}){
           <div style={{flex:"1 1 220px",display:"flex",flexDirection:"column",gap:8}}>
             <div><div style={lbl}>TYPE</div>
               <select className="sf-dm-input" value={t} onChange={e=>updPlace(P.id,{placeType:e.target.value})}>{Object.entries(PLACE_TYPES).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}</select></div>
-            {t!=="kingdom"&&<div><div style={lbl}>BELONGS TO</div>
+            {!isCanvasType(t)&&<div><div style={lbl}>BELONGS TO</div>
               <select className="sf-dm-input" value={P.parentId==null?"":String(P.parentId)} onChange={e=>updPlace(P.id,{parentId:e.target.value===""?null:(placeById(places,e.target.value)||{}).id})}>
                 <option value="">— Nothing (drawn on the world map) —</option>
                 {parentOptions.map(o=><option key={o.id} value={String(o.id)}>{PLACE_TYPES[typeOf(o)].icon} {o.name}</option>)}
@@ -3663,12 +3730,13 @@ function MapControl({lore,setLore,onOpenOverview}){
           <MentionTextarea value={P.description||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"description",v))} className="sf-dm-input" style={{minHeight:100,resize:"vertical",lineHeight:1.55}} placeholder="What players know — shown in the map popup once revealed…"/></div>
         <div><div style={lbl}>FURTHER LORE</div>
           <MentionTextarea value={P.lore||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"lore",v))} className="sf-dm-input" style={{minHeight:140,resize:"vertical",lineHeight:1.55}} placeholder="History, rulers, rumours…"/></div>
-        <div><div style={lbl}>DESCRIPTION — DM VERSION (ONLY YOU SEE THIS)</div>
+        {!player&&<><div><div style={lbl}>DESCRIPTION — DM VERSION (ONLY YOU SEE THIS)</div>
           <MentionTextarea value={P.dm_description||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"dm_description",v))} className="sf-dm-input" style={{minHeight:90,resize:"vertical",lineHeight:1.55}} placeholder="Secrets about this place…"/></div>
         <div><div style={lbl}>FURTHER LORE — DM VERSION (ONLY YOU SEE THIS)</div>
           <MentionTextarea value={P.dm_lore||""} onCommit={v=>updEntry("regions",P.id,e=>applyEntryField(e,"dm_lore",v))} className="sf-dm-input" style={{minHeight:90,resize:"vertical",lineHeight:1.55}} placeholder="Hidden history, true rulers…"/></div>
-        <div style={{fontSize:12.5,color:"rgba(255,200,200,0.7)"}}>Description and Further Lore are visible to players once this place is revealed. The DM versions stay hidden until you reveal parts of them in Overview.
-          <button className="sf-dm-btn" style={{marginLeft:8}} onClick={()=>onOpenOverview&&onOpenOverview("regions",P.id)}>📜 Open in Overview</button></div>
+        </>}
+        <div style={{fontSize:12.5,color:"rgba(255,200,200,0.7)"}}>{player?"Everyone can read this.":"Description and Further Lore are visible to players once this place is revealed. The DM versions stay hidden until you reveal parts of them in Overview."}
+          <button className="sf-dm-btn" style={{marginLeft:8}} onClick={()=>onOpenOverview&&onOpenOverview("regions",P.id)}>📜 Open in {player?"Lore":"Overview"}</button></div>
       </div>}
     </div>}
   </div>);
