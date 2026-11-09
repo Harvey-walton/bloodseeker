@@ -1262,6 +1262,20 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
             const saveOther=v=>{commitField("description",v);SESSION_OTHER_FIELDS.forEach(f=>{if(f!=="description"&&(local[f]||"").trim())commitField(f,"");});};
             const filled=[...boxes.map(b=>({...b,n:notes.find(x=>String(x.charId)===String(b.cid))})).filter(b=>b.n&&(b.n.text||"").trim()),
               ...(otherTxt?[{cid:"__other",label:"Other notes",n:{text:otherTxt}}]:[])];
+            // 🧭 travel: filled in automatically when the pieces leave or arrive at settlements on the map
+            const trav=local.travel||[];
+            const setName=x=>{if(!x)return null;const st=(lore.settlements||[]).find(q=>String(q.id)===String(x.id));if(st&&!privView&&!entryVisible(st))return"somewhere unknown";return(st&&st.name)||x.name||"somewhere";};
+            const travelEl=trav.length?<div style={{marginTop:6,marginBottom:14}}>
+              <Ornament/>
+              <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:4}}>🧭 TRAVEL</div>
+              {trav.map(t=>{const who=(t.who||[]).map(id=>{const c=characters.find(x=>String(x.id)===String(id));return c?c.name:null;}).filter(Boolean).join(", ");
+                const f=setName(t.from),to=setName(t.to);
+                return(<div key={t.id} style={{display:"flex",gap:8,alignItems:"baseline",fontSize:14.5,fontFamily:"Crimson Pro",color:"var(--ink)",lineHeight:1.6}}>
+                  <span style={{fontFamily:"Cinzel",fontSize:11,color:"var(--ink3)",whiteSpace:"nowrap"}}>{t.date||""}</span>
+                  <span style={{flex:1}}><b>{who||"Someone"}</b>: {f&&to?<>{f} → {to}</>:f?<>set out from {f}</>:<>arrived at {to}</>}</span>
+                  {canEdit&&<button title="Remove this line" onClick={()=>setLore(prev=>({...prev,sessions:(prev.sessions||[]).map(x=>String(x.id)===String(local.id)?{...x,travel:(x.travel||[]).filter(q=>q.id!==t.id),_ts:Date.now()}:x)}))} style={{background:"none",border:"none",color:"var(--ink3)",cursor:"pointer",fontSize:12,opacity:.6}}>✕</button>}
+                </div>);})}
+            </div>:null;
             if(!nbWrite&&filled.length)return(<div style={{marginBottom:18}}>
               {canEdit&&<div style={{display:"flex",justifyContent:"flex-end",margin:"-6px 0 6px"}}><button className="btn" onClick={()=>setNbWrite(true)} style={{fontSize:11.5,padding:"4px 12px"}}>✒️ Write notes</button></div>}
               {filled.map((b,i)=><div key={b.cid} style={{marginBottom:14}}>
@@ -1269,6 +1283,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
                 <div style={{fontSize:9,fontFamily:"Cinzel",color:"var(--ink3)",letterSpacing:"0.08em",marginBottom:3}}>{b.label.toUpperCase()}</div>
                 <div style={{fontSize:15,color:"var(--ink)",lineHeight:1.7,fontFamily:"Crimson Pro",whiteSpace:"pre-wrap"}}>{richNodes(b.n.text,innerLinks)}</div>
               </div>)}
+              {travelEl}
             </div>);
             return(<div style={{marginBottom:18}}>
               {canEdit&&filled.length>0&&<div style={{display:"flex",justifyContent:"flex-end",margin:"-6px 0 8px"}}><button className="btn" onClick={()=>setNbWrite(false)} style={{fontSize:11.5,padding:"4px 12px",background:"var(--gold2)",color:"var(--dark)",borderColor:"var(--gold)",fontWeight:600}}>✓ Done writing</button></div>}
@@ -1276,7 +1291,7 @@ function LorePanel({lore,setLore,characters,readOnly,dmMode,openTarget,myPast,on
               {boxes.map(b=>{const n=notes.find(x=>String(x.charId)===String(b.cid));return <NotebookBox key={b.cid} label={b.label} value={n?n.text:""} canEdit={canEdit} onCommit={v=>saveNote(local.id,b.cid,v)}/>;})}
               {otherTxt&&<NotebookBox key="__other" label="Other notes" value={otherTxt} canEdit={canEdit} onCommit={saveOther}/>}
               {!boxes.length&&<div style={{color:"var(--ink3)",fontStyle:"italic"}}>Make a character sheet first — each character gets their own page here.</div>}
-            </div></div>);
+            </div>{travelEl}</div>);
           }
           const QF={ally:[["Who are they?","q_who",70],["Where did we meet them?","q_met",60],["What do they do?","q_do",60],["What do they want?","q_want",60],["Other","q_other",80]],
             faction:[["Who are they?","q_who",70],["What do they want?","q_want",60],["Other","q_other",80]]};
@@ -1526,7 +1541,7 @@ const defaultBoxes=L=>{
   ];
 };
 
-function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,clock}){
+function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,clock,onFindOnMap}){
   const today=(clock||DEFAULT_CLOCK).dayNo||0;
   const [editMode,setEditMode]=useState(false);
   const [L,setL]=useState({...char});
@@ -1943,7 +1958,7 @@ function CharSheet({char,onChange,lore,setLore,myPast,setMyPast,onOpenLore,isDM,
       </div>
     </div>
     {/* Characters from your past */}
-    <div style={{padding:"0 14px"}}><PastSection char={L} commit={commit} lore={lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={onOpenLore} isDM={isDM}/><LogsSection char={L} commit={commit} myPast={myPast} isDM={isDM}/></div>
+    <div style={{padding:"0 14px"}}><PastSection char={L} commit={commit} lore={lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={onOpenLore} isDM={isDM}/><MapPieceSection char={L} commit={commit} lore={lore} myPast={myPast} isDM={isDM} onFind={onFindOnMap}/><LogsSection char={L} commit={commit} myPast={myPast} isDM={isDM}/></div>
     {lvlPop&&<div style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setLvlPop(null)}>
       <div onClick={e=>e.stopPropagation()} style={{background:"var(--parch)",border:"2px solid var(--gold2)",borderRadius:10,padding:24,width:"min(420px,100%)",textAlign:"center",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
         <div style={{fontSize:32}}>⚔</div>
@@ -1979,6 +1994,44 @@ const DEFAULT_CLOCK={dayNo:0,month:4,day:20,year:""};
 const clockOf=d=>({...DEFAULT_CLOCK,...((d&&d.clock)||{})});
 const addDays=(c,n)=>{const dt=new Date(2001,(c.month||4)-1,(c.day||20)+n);return{...c,dayNo:(c.dayNo||0)+n,month:dt.getMonth()+1,day:dt.getDate()};};
 const fmtDate=c=>{const d=c.day||1;const sfx=(d%10===1&&d!==11)?"st":(d%10===2&&d!==12)?"nd":(d%10===3&&d!==13)?"rd":"th";return`${d}${sfx} ${MONTHS[(c.month||1)-1]}${c.year?" "+c.year:""}`;};
+
+/* ════ MAP PIECES: each character's chess piece on the map, and the travel log in Session Details ════ */
+// char.piece = picture (white background removed), char.pieceAspect = height/width
+// char.pos = {mapId, x, y, at}  (at = the settlement it's slotted into, or null on the open road)
+// char.trail = the last few spots it stood, for the dotted line on the map
+const canMovePiece=(c,myPast,isDM)=>!!c&&(isDM||(!!myPast&&c.pastOwner===myPast));
+const newestSession=lore=>{const ss=(lore&&lore.sessions)||[];if(!ss.length)return null;return ss.reduce((a,b)=>((parseFloat(b.sessionNumber)||0)>=(parseFloat(a.sessionNumber)||0)?b:a));};
+const PAWN_SVG="data:image/svg+xml;utf8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 80"><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#5a4a36"/><stop offset=".45" stop-color="#b9a688"/><stop offset="1" stop-color="#4a3c2a"/></linearGradient></defs><circle cx="20" cy="14" r="10" fill="url(#g)"/><path d="M13 26h14l-3 6 4 28H12l4-28z" fill="url(#g)"/><rect x="6" y="60" width="28" height="7" rx="2" fill="url(#g)"/><rect x="3" y="67" width="34" height="9" rx="3" fill="url(#g)"/></svg>');
+const pieceImg=c=>imgSrc(c&&c.piece)||PAWN_SVG;
+const pieceAspect=c=>(c&&c.piece&&c.pieceAspect)||2;
+// travel log: only leaving and arriving at settlements. "Set out from A" then "arrived at B" the same day becomes one line "A → B",
+// and people making the same trip on the same day share a line.
+function addTravel(lore,charId,from,to,clock){
+  const s=newestSession(lore);if(!s)return lore;
+  const day=clock.dayNo||0,date=fmtDate(clock),cid=String(charId);
+  const key=x=>x?String(x.id):"";
+  let log=[...(s.travel||[])];
+  if(to&&!from){
+    let i=-1;log.forEach((e,k)=>{if(e.day===day&&!e.to&&(e.who||[]).includes(cid))i=k;});
+    if(i>=0){from=log[i].from;const w=log[i].who.filter(x=>x!==cid);if(w.length)log[i]={...log[i],who:w};else log.splice(i,1);}
+  }
+  if(key(from)===key(to)){if(log.length===(s.travel||[]).length)return lore;}
+  else{
+    const j=log.findIndex(e=>e.day===day&&key(e.from)===key(from)&&key(e.to)===key(to));
+    if(j>=0){if(!log[j].who.includes(cid))log[j]={...log[j],who:[...log[j].who,cid]};}
+    else log.push({id:"tr"+Date.now()+Math.random().toString(36).slice(2,6),day,date,from,to,who:[cid]});
+  }
+  return{...lore,sessions:(lore.sessions||[]).map(x=>x===s?{...x,travel:log,_ts:Date.now()}:x)};
+}
+function movePieceData(d,charId,pos){
+  const chars=d.characters||[];const ch=chars.find(c=>String(c.id)===String(charId));if(!ch)return d;
+  const old=ch.pos||null;const sets=(d.lore&&d.lore.settlements)||[];
+  const ref=at=>{if(at==null)return null;const x=sets.find(q=>String(q.id)===String(at));return x?{id:x.id,name:x.name||"somewhere"}:null;};
+  const from=old?ref(old.at):null,to=ref(pos&&pos.at);
+  const trail=[...(ch.trail||[]),...(old?[{m:old.mapId,x:old.x,y:old.y}]:[])].slice(-12);
+  const lore=old&&String(old.at||"")!==String((pos&&pos.at)||"")?addTravel(d.lore||{},charId,from,to,clockOf(d)):d.lore;
+  return{...d,lore,characters:chars.map(c=>c===ch?{...c,pos:pos?{...pos}:null,trail}:c)};
+}
 
 /* ════ CAMPAIGN DATE (top bar) ════ */
 // Moves the shared date on. Each day: 1 gp expenses for whoever's with the party (gold can go negative),
@@ -2195,6 +2248,37 @@ function PastSection({char,commit,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
       {err&&<span style={{fontSize:11,color:"#a3241e"}}>{err}</span>}
       {!owner&&<span style={{fontSize:11,color:"#777",fontStyle:"italic"}}>Unlock to start writing your backstory characters.</span>}
     </div>}
+  </div>);
+}
+
+/* ════ MAP PIECE (bottom of the sheet, under Characters From Your Past) ════ */
+function MapPieceSection({char,commit,lore,myPast,isDM,onFind}){
+  const [busy,setBusy]=useState(false);
+  const can=canMovePiece(char,myPast,isDM);
+  const pic=imgSrc(char.piece);
+  if(!pic&&!can)return null;
+  const sets=(lore&&lore.settlements)||[];const places=getPlaces(lore||{});
+  const pos=char.pos;const st=pos&&pos.at!=null?sets.find(x=>String(x.id)===String(pos.at)):null;const m=pos?placeById(places,pos.mapId):null;
+  const stOk=st&&(isDM||entryVisible(st));const mOk=m&&placeVisible(places,m,isDM);
+  const where=!pos?"Not on the map yet":stOk?`In ${st.name}`:mOk?`On the road in ${m.name}`:"Somewhere unknown";
+  const up=async e=>{const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;setBusy(true);const url=await cutoutFile(f,420).catch(()=>null);if(url){const a=await imgAspect(url);commit("piece",url);setTimeout(()=>commit("pieceAspect",a),10);}setBusy(false);};
+  return(<div className="sh" style={{marginTop:2}}>
+    <div className="sh-section">MAP PIECE</div>
+    <div style={{display:"flex",gap:14,alignItems:"center",flexWrap:"wrap"}}>
+      <div style={{width:56,height:96,display:"flex",alignItems:"flex-end",justifyContent:"center",flexShrink:0}}>
+        {pic?<img src={pic} alt="" style={{maxWidth:56,maxHeight:96,objectFit:"contain",filter:"drop-shadow(0 3px 3px rgba(0,0,0,.4))"}}/>
+          :<div style={{fontSize:11,color:"#888",fontStyle:"italic",textAlign:"center"}}>No piece yet</div>}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:6,minWidth:0}}>
+        <div style={{fontSize:13,color:"#3a2a10"}}>📍 {where}</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {(pos||can)&&<button className="btn" onClick={()=>onFind&&onFind(char.id)} style={{fontSize:11,color:"#2a2a3a"}}>{pos?"🗺 Show on map":"🗺 Put on the map"}</button>}
+          {can&&<label className="btn" style={{fontSize:11,color:"#2a2a3a",cursor:"pointer"}}>{busy?"Removing background…":pic?"🖼 Change piece":"🖼 Upload piece"}<input type="file" accept="image/*" style={{display:"none"}} onChange={up}/></label>}
+          {can&&pic&&<button className="btn" onClick={()=>commit("piece","")} style={{fontSize:11,color:"#2a2a3a"}}>Remove picture</button>}
+        </div>
+        {can&&!pic&&<div style={{fontSize:11,color:"#777",fontStyle:"italic"}}>Use a picture on a plain white background — the white is cut away.</div>}
+      </div>
+    </div>
   </div>);
 }
 
@@ -2432,6 +2516,9 @@ function App(){
   // One-time upgrade to the kingdom/region/barony layout
   useEffect(()=>{if(!ready||!data)return;const m=migratePlaces(data);if(m){setData(m);return;}const m2=migrateDmDescriptions(data);if(m2){setData(m2);return;}const m3=migrateDmVersions(data);if(m3)setData(m3);},[ready,data&&data.placesV2,data&&data.dmDescV2,data&&data.dmVersionsV3]);
   const openLore=(sec,id)=>{setLoreTarget({s:sec,id,n:Date.now()});setPage("lore");};
+  const [mapCmd,setMapCmd]=useState(null);
+  const findOnMap=id=>{setPage("map");setMapCmd({charId:id,n:Date.now()});};
+  const movePiece=useCallback((id,pos)=>setData(d=>movePieceData(d,id,pos)),[]);
   const openChar=id=>{const i=((data&&data.characters)||[]).findIndex(c=>String(c.id)===String(id));if(i>=0){setCharIdx(i);setPage("chars");}};
   useEffect(()=>{setVisited(v=>v[page]?v:{...v,[page]:true});},[page]);
   const linkCtxVal=useMemo(()=>{
@@ -2466,7 +2553,7 @@ function App(){
         <button onClick={()=>setPage("dm")} className={`btn${page==="dm"?" act":""}`} style={{padding:"4px 12px",fontSize:11,fontFamily:"Cinzel",letterSpacing:"0.04em",borderColor:"rgba(80,0,0,0.6)",color:page==="dm"?"#ff9999":"rgba(200,80,80,0.5)"}}>⚔ DM</button>
       </nav>
       {page==="chars"&&<div style={{display:"flex",gap:3,marginLeft:4}}>
-        {data.characters.map((c,i)=><button key={c.id} onClick={()=>setCharIdx(i)} className={`btn${charIdx===i?" act":""}`} style={{padding:"3px 10px",fontSize:11,fontFamily:"Cinzel"}}>{c.name||`Player ${i+1}`}</button>)}
+        {data.characters.map((c,i)=><button key={c.id} onClick={()=>{if(charIdx===i&&(c.name||"").trim())findOnMap(c.id);else setCharIdx(i);}} title={charIdx===i?"Tap again to find them on the map":""} className={`btn${charIdx===i?" act":""}`} style={{padding:"3px 10px",fontSize:11,fontFamily:"Cinzel"}}>{c.name||`Player ${i+1}`}</button>)}
       </div>}
       <div style={{marginLeft:page==="chars"?8:4}}><GameClock data={data} setData={setData}/></div>
       <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
@@ -2481,9 +2568,9 @@ function App(){
 
     {/* Main */}
     <main style={{flex:1,minHeight:0,overflow:"hidden",padding:8,background:"var(--dark)"}}>
-      {visited.map&&<div style={{height:"100%",display:page==="map"?"block":"none"}}><MapExplorer data={data} isDM={isDM} onOpenLore={openLore} setLore={setLore} myPast={myPast}/></div>}
+      {visited.map&&<div style={{height:"100%",display:page==="map"?"block":"none"}}><MapExplorer data={data} isDM={isDM} onOpenLore={openLore} setLore={setLore} myPast={myPast} onMovePiece={movePiece} mapCmd={mapCmd} onOpenChar={openChar}/></div>}
       {visited.lore&&<div style={{height:"100%",display:page==="lore"?"block":"none"}}><LorePanel lore={data.lore} setLore={setLore} characters={data.characters} readOnly={false} dmMode={false} onOpenChar={openChar} openTarget={loreTarget} myPast={myPast}/></div>}
-      {visited.chars&&<div style={{height:"100%",display:page==="chars"?"block":"none"}}><CharSheet char={data.characters[charIdx]} clock={clockOf(data)} onChange={c=>updateChar(charIdx,c)} lore={data.lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={openLore} isDM={isDM}/></div>}
+      {visited.chars&&<div style={{height:"100%",display:page==="chars"?"block":"none"}}><CharSheet char={data.characters[charIdx]} clock={clockOf(data)} onChange={c=>updateChar(charIdx,c)} lore={data.lore} setLore={setLore} myPast={myPast} setMyPast={setMyPast} onOpenLore={openLore} isDM={isDM} onFindOnMap={findOnMap}/></div>}
       {visited.tales&&<div style={{height:"100%",display:page==="tales"?"block":"none"}}><TalesPanel/></div>}
       {visited.dm&&<div style={{height:"100%",display:page==="dm"?"block":"none"}}><DMTab data={data} setData={setData} lore={data.lore} setLore={setLore} onAuth={setIsDM} characters={data.characters}/></div>}
     </main>
@@ -2677,6 +2764,12 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 .sf-pin-icon:hover{filter:drop-shadow(0 0 8px rgba(232,200,96,0.95))}
 .sf-pin-icon img{width:100%!important;height:100%!important;object-fit:contain;pointer-events:none}
 .sf-pin-icon img.sf-blend{mix-blend-mode:multiply}
+.sf-piece{position:relative;cursor:grab;filter:drop-shadow(0 3px 3px rgba(0,0,0,.65));transition:filter .15s}
+.sf-piece:hover,.sf-piece.sel{filter:drop-shadow(0 0 6px rgba(255,220,120,1)) drop-shadow(0 3px 3px rgba(0,0,0,.65))}
+.sf-piece img{display:block;pointer-events:none;position:relative;z-index:1}
+.sf-piece-shadow{position:absolute;left:8%;right:8%;bottom:-3px;height:9px;border-radius:50%;background:rgba(0,0,0,.5);filter:blur(2px)}
+.sf-piece-arrow{text-align:center;color:#ffd75e;font-size:13px;line-height:16px;text-shadow:0 0 3px #000,0 0 6px #000;animation:sfbob 1.4s ease-in-out infinite}
+@keyframes sfbob{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
 .sf-pin-hidden{opacity:0.62}
 .sf-pin-hidden:after{content:"HIDDEN";position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);font:600 8px Cinzel,serif;letter-spacing:.08em;color:#fff;background:#a3241e;padding:1px 4px;border-radius:2px}
 .sf-pin-sel{filter:drop-shadow(0 0 10px rgba(255,255,255,0.95))}
@@ -2877,13 +2970,13 @@ function drawContext(places,parentId,excludeId){
 }
 
 /* ════ PLACE MAP — one Leaflet map, locked to the picture's edges ════ */
-function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,onPinMove,onMapClick,draw,onDrawDone,onDrawCancel,drawHint,cursor}){
+function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,onPinMove,onMapClick,draw,onDrawDone,onDrawCancel,drawHint,cursor,pieces,trails,onPieceClick,onPieceMove,centerOn}){
   const elRef=useRef(null),mapRef=useRef(null),layerRef=useRef(null),drawLayerRef=useRef(null),focusRef=useRef(null);
   const cb=useRef({});const firstFocus=useRef(true);
   const [pts,setPts]=useState([]);const ptsRef=useRef([]);
   const [zoom,setZoom]=useState(0);
   const drawing=!!draw;
-  cb.current={onShapeClick,onPinClick,onPinMove,onMapClick,drawing};
+  cb.current={onShapeClick,onPinClick,onPinMove,onMapClick,drawing,onPieceClick,onPieceMove};
   const W=canvas?canvas.W:0,H=canvas?canvas.H:0;
 
   const lock=(animate)=>{
@@ -2954,6 +3047,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
 
   // draw borders, icons, shields
   const shapesKey=JSON.stringify((shapes||[]).map(s=>[s.id,s.ring,s.label,s.state,s.shield?(s.shield.length>40?s.shield.length:s.shield):0,s.clickable]));
+  const piecesKey=JSON.stringify((pieces||[]).map(p=>[p.id,p.lat,p.lng,p.img?p.img.length:0,p.aspect,p.slotted,p.dx,p.selected,p.draggable,p.name]))+JSON.stringify(trails||[]);
   const pinsKey=JSON.stringify((pins||[]).map(p=>[p.id,p.lat,p.lng,p.img?p.img.length:0,p.hidden,p.selected,p.tip,p.draggable,p.glyph,p.size,p.aspect,p.label]))+"z"+zoom;
   useEffect(()=>{
     const L=window.L,map=mapRef.current,layer=layerRef.current;if(!map||!layer)return;
@@ -3018,7 +3112,21 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
       m.on("click",e=>{L.DomEvent.stopPropagation(e);cb.current.onPinClick&&cb.current.onPinClick(p.id);});
       m.on("dragend",()=>{const ll=m.getLatLng();cb.current.onPinMove&&cb.current.onPinMove(p.id,[Math.round(Math.min(H,Math.max(0,ll.lat))),Math.round(Math.min(W,Math.max(0,ll.lng)))]);});
     });
-  },[shapesKey,pinsKey,focusKey,drawing,canvas&&canvas.key,(zones||[]).length]);
+    // where the party has been: a faint dotted line
+    (trails||[]).forEach(t=>{if(t&&t.length>1)L.polyline(t,{color:"#f3d27a",weight:3,opacity:.8,dashArray:"1,9",lineCap:"round",interactive:false}).addTo(layer);});
+    // the characters' chess pieces — same size on screen at any zoom, standing on their spot
+    (pieces||[]).forEach(p=>{
+      if(p.lat==null||p.lng==null)return;
+      const h=p.slotted?62:88,w=Math.max(18,Math.round(h/(p.aspect||2))),ah=p.slotted?16:0;
+      const html=`<div class="sf-piece${p.selected?" sel":""}" style="width:${w}px;height:${h+ah}px"><img src="${p.img}" style="width:${w}px;height:${h}px"/>${p.slotted?'<div class="sf-piece-arrow">▼</div>':'<div class="sf-piece-shadow"></div>'}</div>`;
+      const m=L.marker([p.lat,p.lng],{icon:L.divIcon({html,className:"",iconSize:[w,h+ah],iconAnchor:[w/2-(p.dx||0),h+ah]}),draggable:!!p.draggable&&!drawing,keyboard:false,interactive:!drawing,zIndexOffset:3000+(p.selected?500:0)}).addTo(layer);
+      if(!p.selected)m.bindTooltip(escHtml(p.name||""),{direction:"top",offset:[p.dx||0,-(h+ah)],className:"sf-pin-tip"});
+      m.on("click",e=>{L.DomEvent.stopPropagation(e);cb.current.onPieceClick&&cb.current.onPieceClick(p.id);});
+      m.on("dragend",()=>{const ll=m.getLatLng();cb.current.onPieceMove&&cb.current.onPieceMove(p.id,[Math.round(Math.min(H,Math.max(0,ll.lat))),Math.round(Math.min(W,Math.max(0,ll.lng)))]);});
+    });
+  },[shapesKey,pinsKey,piecesKey,focusKey,drawing,canvas&&canvas.key,(zones||[]).length]);
+  // "find" a piece: centre the map on it
+  useEffect(()=>{if(!centerOn)return;const t=setTimeout(()=>{const map=mapRef.current;if(!map)return;map.setView([centerOn.lat,centerOn.lng],Math.max(map.getZoom(),map.getMinZoom()+1.2),{animate:true});},650);return()=>clearTimeout(t);},[centerOn&&centerOn.n]);
 
   // drawing preview
   useEffect(()=>{if(!drawing){ptsRef.current=[];setPts([]);}const map=mapRef.current;if(map){if(drawing)map.doubleClickZoom.disable();else map.doubleClickZoom.enable();}},[drawing]);
@@ -3045,7 +3153,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
 }
 
 /* ════ MAP EXPLORER (the Map tab) ════ */
-function MapExplorer({data,isDM,onOpenLore,setLore,myPast}){
+function MapExplorer({data,isDM,onOpenLore,setLore,myPast,onMovePiece,mapCmd,onOpenChar}){
   useCleanIcons();
   const lctx=useContext(LinkCtx);
   const lore=data.lore||{};
@@ -3058,6 +3166,10 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast}){
   const cur=placeById(places,view.mapId);
   const [editing,setEditing]=useState(false);   // ✏️ Draw: the map tools (everyone changes only what they added)
   const focus=placeById(places,view.focusId);
+  const chars=(data.characters||[]).filter(c=>(c.name||"").trim());
+  const [placing,setPlacing]=useState(null);     // a character waiting to be put down: tap the map
+  const [travelPick,setTravelPick]=useState(null); // choosing which map a character travels to
+  const [centerOn,setCenterOn]=useState(null);
 
   // if what we're looking at gets hidden or deleted, step back out
   useEffect(()=>{
@@ -3090,7 +3202,7 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast}){
     go({mapId:cv?cv.id:null,focusId:par&&isZoomType(placeType(par))&&hasRing(par)?par.id:null},true);
   };
   const wrapRef=useRef(null);
-  useEffect(()=>{const k=e=>{if(!wrapRef.current||!wrapRef.current.offsetParent)return;if(e.key==="Escape"){if(sel)setSel(null);else back();}};window.addEventListener("keydown",k);return()=>window.removeEventListener("keydown",k);});
+  useEffect(()=>{const k=e=>{if(!wrapRef.current||!wrapRef.current.offsetParent)return;if(e.key==="Escape"){if(placing)setPlacing(null);else if(sel)setSel(null);else back();}};window.addEventListener("keydown",k);return()=>window.removeEventListener("keydown",k);});
 
   // breadcrumb
   const crumbs=[{label:"🌍 World",to:{mapId:null,focusId:null},fade:!!cur}];
@@ -3111,9 +3223,42 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast}){
     return{id:"s:"+s.id,lat:s.mapY,lng:s.mapX,img:ic.img,size:s.iconSize||90,aspect:s.iconAspect||0.75,label:!ic.img?(s.name||"Unnamed"):null,hidden:!entryVisible(s),selected:sel&&sel.id==="s:"+s.id,
       tip:null};
   });
+  /* ── the characters' pieces on this map ── */
+  const pinSets=sets.filter(s=>s.placeId!=null&&pinIds.includes(String(s.placeId))&&s.mapX!=null&&(isDM||entryVisible(s)));
+  const here=cur?chars.filter(c=>c.pos&&String(c.pos.mapId)===String(cur.id)):[];
+  const slotOf=c=>c.pos.at!=null?pinSets.find(s=>String(s.id)===String(c.pos.at)):null;
+  const pieces=here.map(c=>{
+    const st=slotOf(c);
+    if(st){const mates=here.filter(o=>{const x=slotOf(o);return x&&String(x.id)===String(st.id);});const i=mates.indexOf(c);
+      return{id:c.id,name:c.name,img:pieceImg(c),aspect:pieceAspect(c),slotted:true,dx:Math.round((i-(mates.length-1)/2)*34),
+        lat:st.mapY+(st.iconSize||90)*(st.iconAspect||0.75)*0.42,lng:st.mapX,selected:sel&&sel.kind==="piece"&&String(sel.id)===String(c.id),draggable:canMovePiece(c,myPast,isDM)};}
+    return{id:c.id,name:c.name,img:pieceImg(c),aspect:pieceAspect(c),lat:c.pos.y,lng:c.pos.x,selected:sel&&sel.kind==="piece"&&String(sel.id)===String(c.id),draggable:canMovePiece(c,myPast,isDM)};
+  });
+  const trails=here.map(c=>{const pts=[];[...(c.trail||[]),{m:c.pos.mapId,x:c.pos.x,y:c.pos.y}].forEach(t=>{if(String(t.m)===String(cur.id)&&t.x!=null)pts.push([t.y,t.x]);else pts.length=0;});return pts;}).filter(t=>t.length>1);
+  // dropping a piece on (or near) a settlement slots it in; anywhere else it stands on the open map
+  const spotFor=ll=>{
+    let best=null,bd=1e9;
+    pinSets.forEach(s=>{const d=Math.hypot(s.mapY-ll[0],s.mapX-ll[1]);const r=Math.max(45,(s.iconSize||90)*0.6);if(d<=r&&d<bd){bd=d;best=s;}});
+    return best?{mapId:cur.id,x:best.mapX,y:best.mapY,at:best.id}:{mapId:cur.id,x:ll[1],y:ll[0],at:null};
+  };
+  const pieceMap=isBarony||isCity;   // pieces stand on barony and city maps
+  const putPiece=(cid,ll)=>{const c=chars.find(x=>String(x.id)===String(cid));if(!c||!pieceMap||!canMovePiece(c,myPast,isDM))return;onMovePiece&&onMovePiece(c.id,spotFor(ll));};
+  // "find" from the character sheet: open the map they're on and centre on them
+  useEffect(()=>{
+    if(!mapCmd)return;const c=chars.find(x=>String(x.id)===String(mapCmd.charId));if(!c)return;
+    const m=c.pos&&placeById(places,c.pos.mapId);
+    if(m&&vis(m)&&canvasInfo(m)){
+      setEditing(false);setPlacing(null);
+      if(String(view.mapId)!==String(m.id)||view.focusId)go({mapId:m.id,focusId:null},true);
+      setTimeout(()=>{setSel({kind:"piece",id:c.id});setCenterOn({lat:c.pos.y,lng:c.pos.x,n:Date.now()});},String(view.mapId)!==String(m.id)?520:0);
+    }else if(canMovePiece(c,myPast,isDM)){setEditing(false);setSel(null);setPlacing(c.id);}
+  },[mapCmd&&mapCmd.n]);
+  const onMapClick=ll=>{if(placing!=null){if(pieceMap){putPiece(placing,ll);setSel({kind:"piece",id:placing});setPlacing(null);}return;}setSel(null);};
+
   const zones=isBarony&&cur.mapId==="barony"&&!imgSrc(cur.mapImage)?BARONY_TERRAIN.map(t=>({id:"t:"+t.id,lat:1050-t.iy,lng:t.ix,label:t.name})):[];
 
   const onShapeClick=id=>{
+    if(placing!=null){const p=placeById(places,id);if(p)enter(p);return;}
     if(sel&&sel.kind==="place"&&String(sel.id)===String(id)){const p=placeById(places,id);if(p&&!enter(p))setSel({kind:"place",id,noMap:true});return;}
     setSel({kind:"place",id});
   };
@@ -3151,6 +3296,30 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast}){
         {desc&&desc!==hl&&<p style={{fontSize:13,lineHeight:1.55,marginBottom:8,whiteSpace:"pre-wrap",color:"#d8c4a0",maxHeight:150,overflowY:"auto"}}>{richNodes(desc,lctx)}</p>}
         <button className="btn" onClick={()=>onOpenLore&&onOpenLore("settlements",s.id)} style={{fontSize:12,color:"#e8d2a8"}}>📜 Open in Lore</button>
       </>);}
+  }else if(sel&&sel.kind==="piece"){
+    const c=chars.find(x=>String(x.id)===String(sel.id));
+    if(c&&c.pos){const st=slotOf(c);const can=canMovePiece(c,myPast,isDM);
+      const maps=places.filter(p=>vis(p)&&canvasInfo(p)&&["barony","citystate"].includes(placeType(p))&&String(p.id)!==String(cur&&cur.id));
+      popup=(<>
+        <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
+          <img src={pieceImg(c)} alt="" style={{height:54,width:"auto",maxWidth:40,objectFit:"contain"}}/>
+          <div><div style={{fontFamily:"Cinzel",fontSize:15,color:"var(--gold3)",letterSpacing:".05em"}}>{c.name}</div>
+            <div style={{fontSize:12.5,color:"#d8c4a0"}}>{st?<>In <b>{st.name}</b></>:<>On the road{cur?<> in {cur.name}</>:null}</>}</div></div>
+        </div>
+        {travelPick===c.id?<div>
+          <div style={{fontFamily:"Cinzel",fontSize:9.5,color:"#b89a68",letterSpacing:".08em",marginBottom:5}}>TRAVEL TO WHICH MAP?</div>
+          <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:180,overflowY:"auto",marginBottom:6}}>
+            {maps.length?maps.map(p=><button key={p.id} className="btn" style={{fontSize:12,color:"#e8d2a8",textAlign:"left"}} onClick={()=>{setTravelPick(null);go({mapId:p.id,focusId:null},true);setTimeout(()=>setPlacing(c.id),520);}}>{PLACE_TYPES[placeType(p)].icon} {p.name}</button>)
+              :<span style={{fontSize:12,color:"#9a8060",fontStyle:"italic"}}>There are no other maps yet.</span>}
+          </div>
+          <button className="btn" style={{fontSize:11,color:"#e8d2a8"}} onClick={()=>setTravelPick(null)}>✕ Cancel</button>
+        </div>
+        :<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {can&&<button className="btn act" style={{fontSize:12}} onClick={()=>setTravelPick(c.id)}>🧭 Travel to another map</button>}
+          <button className="btn" style={{fontSize:12,color:"#e8d2a8"}} onClick={()=>onOpenChar&&onOpenChar(c.id)}>📜 Character sheet</button>
+        </div>}
+        {can&&travelPick!==c.id&&<div style={{fontSize:11,color:"#9a8060",fontStyle:"italic",marginTop:6}}>Drag the piece to move. Drop it on a settlement to go inside.</div>}
+      </>);}
   }else if(sel&&sel.kind==="terrain"){
     const t=BARONY_TERRAIN.find(x=>"t:"+x.id===sel.id);
     if(t)popup=(<><div style={{fontFamily:"Cinzel",fontSize:15,color:"var(--gold3)",marginBottom:2}}>{t.name}</div><div style={{fontFamily:"Cinzel",fontSize:9,color:"#b89a68",letterSpacing:".08em",marginBottom:8}}>TERRAIN</div><p style={{fontSize:13.5,lineHeight:1.55}}>{t.desc}</p></>);
@@ -3161,8 +3330,13 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast}){
       onOpenOverview={(sec,id)=>onOpenLore&&onOpenLore(sec,id)} onDone={()=>setEditing(false)}/>
   </div>);
   return(<div ref={wrapRef} style={{position:"relative",width:"100%",height:"100%"}}>
-    <PlaceMap canvas={canvas} shapes={shapes} focusRing={focus?focus.polyCoords:null} pins={pins} zones={zones}
-      onShapeClick={onShapeClick} onPinClick={onPinClick} onMapClick={()=>setSel(null)}/>
+    <PlaceMap canvas={canvas} shapes={placing!=null&&pieceMap?shapes.map(x=>({...x,clickable:false})):shapes} focusRing={focus?focus.polyCoords:null} pins={pins} zones={zones}
+      onShapeClick={onShapeClick} onPinClick={id=>{if(placing!=null){const st=sets.find(x=>"s:"+x.id===id);if(st&&pieceMap){putPiece(placing,[st.mapY,st.mapX]);setSel({kind:"piece",id:placing});setPlacing(null);}return;}onPinClick(id);}} onMapClick={onMapClick} cursor={placing!=null&&pieceMap}
+      pieces={pieces} trails={trails} onPieceClick={id=>{setTravelPick(null);setSel({kind:"piece",id});}} onPieceMove={(id,ll)=>{putPiece(id,ll);setSel({kind:"piece",id});}} centerOn={centerOn}/>
+    {placing!=null&&(()=>{const c=chars.find(x=>String(x.id)===String(placing));return(<div className="sf-panel" style={{position:"absolute",top:54,left:"50%",transform:"translateX(-50%)",zIndex:1200,padding:"8px 14px",display:"flex",gap:10,alignItems:"center",maxWidth:"calc(100% - 28px)"}}>
+      <span style={{fontSize:13.5,color:"#f0dcb0"}}>{pieceMap?<>Tap where <b>{c?c.name:"they"}</b> {c&&c.pos?"arrives":"is"} — tap a settlement to go inside.</>:<>Open a barony or city map, then tap where <b>{c?c.name:"they"}</b> is.</>}</span>
+      <button className="btn" style={{fontSize:11,color:"#e8d2a8"}} onClick={()=>setPlacing(null)}>✕</button>
+    </div>);})()}
     {/* breadcrumb */}
     <div style={{position:"absolute",top:12,left:58,right:12,zIndex:1000,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",pointerEvents:"none"}}>
       {(cur||focus)&&<button className="btn act" onClick={back} style={{fontSize:12,pointerEvents:"all",background:"rgba(20,12,4,0.9)"}}>← Back</button>}
