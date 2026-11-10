@@ -2531,7 +2531,7 @@ function App(){
   const [mapCmd,setMapCmd]=useState(null);
   const findOnMap=id=>{setPage("map");setMapCmd({charId:id,n:Date.now()});};
   const movePiece=useCallback(moves=>setData(d=>moves.reduce((acc,m)=>movePieceData(acc,m.id,m.pos),d)),[]);
-  const clearTrail=useCallback(id=>setData(d=>({...d,characters:(d.characters||[]).map(c=>String(c.id)===String(id)?{...c,trail:[]}:c)})),[]);
+  const clearTrail=useCallback(ids=>{const L=[].concat(ids).map(String);setData(d=>({...d,characters:(d.characters||[]).map(c=>L.includes(String(c.id))?{...c,trail:[]}:c)}));},[]);
   const openChar=id=>{const i=((data&&data.characters)||[]).findIndex(c=>String(c.id)===String(id));if(i>=0){setCharIdx(i);setPage("chars");}};
   useEffect(()=>{setVisited(v=>v[page]?v:{...v,[page]:true});},[page]);
   const linkCtxVal=useMemo(()=>{
@@ -3359,7 +3359,7 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast,onMovePiece,onClearTra
         :<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           {can&&<button className="btn act" style={{fontSize:12}} onClick={()=>setTravelPick(c.id)}>🧭 {mates.length?"Party travels to another map":"Travel to another map"}</button>}
           {can&&mates.length>0&&<button className="btn" style={{fontSize:12,color:"#e8d2a8"}} onClick={()=>leaveParty(c)}>🚶 Leave party</button>}
-          {can&&(c.trail||[]).length>0&&<button className="btn" style={{fontSize:12,color:"#e8d2a8"}} onClick={()=>onClearTrail&&onClearTrail(c.id)}>🧹 Delete lines</button>}
+          {can&&party.some(o=>(o.trail||[]).length>0)&&<button className="btn" style={{fontSize:12,color:"#e8d2a8"}} onClick={()=>onClearTrail&&onClearTrail(party.map(o=>o.id))}>🧹 Delete lines</button>}
           <button className="btn" style={{fontSize:12,color:"#e8d2a8"}} onClick={()=>onOpenChar&&onOpenChar(c.id)}>📜 Character sheet</button>
         </div>}
         {can&&travelPick!==c.id&&<div style={{fontSize:11,color:"#9a8060",fontStyle:"italic",marginTop:6}}>{mates.length?"Dragging moves the whole party. Drop next to other pieces to join them, or on a settlement to go inside.":"Drag the piece to move. Drop it next to someone to join them, or on a settlement to go inside."}</div>}
