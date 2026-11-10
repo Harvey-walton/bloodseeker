@@ -3062,7 +3062,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
 
   // draw borders, icons, shields
   const shapesKey=JSON.stringify((shapes||[]).map(s=>[s.id,s.ring,s.label,s.state,s.shield?(s.shield.length>40?s.shield.length:s.shield):0,s.clickable]));
-  const piecesKey=JSON.stringify((pieces||[]).map(p=>[p.id,p.lat,p.lng,p.img?p.img.length:0,p.aspect,p.slotted,p.dx,p.dy,p.z,p.selected,p.draggable,p.name]))+JSON.stringify(trails||[]);
+  const piecesKey=JSON.stringify((pieces||[]).map(p=>[p.id,p.lat,p.lng,p.img?p.img.length:0,p.aspect,p.slotted,p.dx,p.dy,p.z,p.party,p.selected,p.draggable,p.name]))+JSON.stringify(trails||[]);
   const pinsKey=JSON.stringify((pins||[]).map(p=>[p.id,p.lat,p.lng,p.img?p.img.length:0,p.hidden,p.selected,p.tip,p.draggable,p.glyph,p.size,p.aspect,p.label]))+"z"+zoom;
   useEffect(()=>{
     const L=window.L,map=mapRef.current,layer=layerRef.current;if(!map||!layer)return;
@@ -3130,6 +3130,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
     // where the party has been: a faint dotted line
     (trails||[]).forEach(t=>{if(t&&t.length>1)L.polyline(t,{color:"#f3d27a",weight:3,opacity:.8,dashArray:"1,9",lineCap:"round",interactive:false}).addTo(layer);});
     // the characters' chess pieces — same size on screen at any zoom, standing on their spot
+    const pm={};   // piece markers, so a whole party slides along while one is dragged
     (pieces||[]).forEach(p=>{
       if(p.lat==null||p.lng==null)return;
       const h=p.slotted?0:88,w=p.slotted?22:Math.max(18,Math.round(h/(p.aspect||2))),ah=p.slotted?26:0;
@@ -3137,7 +3138,10 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
         :`<div class="sf-piece${p.selected?" sel":""}" style="width:${w}px;height:${h}px"><img src="${p.img}" style="width:${w}px;height:${h}px"/><div class="sf-piece-shadow"></div></div>`;
       const m=L.marker([p.lat,p.lng],{icon:L.divIcon({html,className:"",iconSize:[w,h+ah],iconAnchor:[w/2-(p.dx||0),h+ah-(p.dy||0)]}),draggable:!!p.draggable&&!drawing,keyboard:false,interactive:!drawing,zIndexOffset:3000+(p.z||0)+(p.selected?500:0)}).addTo(layer);
       if(!p.selected)m.bindTooltip(escHtml(p.name||""),{direction:"top",offset:[p.dx||0,-(h+ah)],className:"sf-pin-tip"});
+      pm[p.id]={m,p,start:L.latLng(p.lat,p.lng)};
       m.on("click",e=>{L.DomEvent.stopPropagation(e);cb.current.onPieceClick&&cb.current.onPieceClick(p.id);});
+      m.on("drag",()=>{if(!p.party)return;const ll=m.getLatLng(),d0=pm[p.id].start;
+        Object.values(pm).forEach(o=>{if(o.p.id!==p.id&&o.p.party===p.party)o.m.setLatLng([o.start.lat+(ll.lat-d0.lat),o.start.lng+(ll.lng-d0.lng)]);});});
       m.on("dragend",()=>{const ll=m.getLatLng();cb.current.onPieceMove&&cb.current.onPieceMove(p.id,[Math.round(Math.min(H,Math.max(0,ll.lat))),Math.round(Math.min(W,Math.max(0,ll.lng)))]);});
     });
   },[shapesKey,pinsKey,piecesKey,focusKey,drawing,canvas&&canvas.key,(zones||[]).length]);
@@ -3253,9 +3257,9 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast,onMovePiece,onClearTra
   const pieces=here.map(c=>{
     const st=slotOf(c);
     if(st){const mates=here.filter(o=>{const x=slotOf(o);return x&&String(x.id)===String(st.id);});const i=mates.indexOf(c);
-      return{id:c.id,name:c.name,img:pieceImg(c),aspect:pieceAspect(c),slotted:true,dx:Math.round((i-(mates.length-1)/2)*26),
+      return{id:c.id,name:c.name,party:gkey(c),img:pieceImg(c),aspect:pieceAspect(c),slotted:true,dx:Math.round((i-(mates.length-1)/2)*26),
         lat:st.mapY+(st.iconSize||90)*(st.iconAspect||0.75)*0.12,lng:st.mapX,selected:sel&&sel.kind==="piece"&&String(sel.id)===String(c.id),draggable:canMovePiece(c,myPast,isDM)};}
-    return{id:c.id,name:c.name,img:pieceImg(c),aspect:pieceAspect(c),lat:c.pos.y,lng:c.pos.x,...huddle(c),selected:sel&&sel.kind==="piece"&&String(sel.id)===String(c.id),draggable:canMovePiece(c,myPast,isDM)};
+    return{id:c.id,name:c.name,party:gkey(c),img:pieceImg(c),aspect:pieceAspect(c),lat:c.pos.y,lng:c.pos.x,...huddle(c),selected:sel&&sel.kind==="piece"&&String(sel.id)===String(c.id),draggable:canMovePiece(c,myPast,isDM)};
   });
   const trails=here.map(c=>{const pts=[];[...(c.trail||[]),{m:c.pos.mapId,x:c.pos.x,y:c.pos.y}].forEach(t=>{if(String(t.m)===String(cur.id)&&t.x!=null)pts.push([t.y,t.x]);else pts.length=0;});return pts;}).filter(t=>t.length>1);
   // dropping a piece on (or near) a settlement slots it in; anywhere else it stands on the open map
