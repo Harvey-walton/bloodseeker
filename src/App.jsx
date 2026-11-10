@@ -2008,11 +2008,14 @@ const fmtDate=c=>{const d=c.day||1;const sfx=(d%10===1&&d!==11)?"st":(d%10===2&&
 // char.piece = picture (white background removed), char.pieceAspect = height/width
 // char.pos = {mapId, x, y, at}  (at = the settlement it's slotted into, or null on the open road)
 // char.trail = the last few spots it stood, for the dotted line on the map
-const canMovePiece=(c,myPast,isDM)=>!!c&&(isDM||(!!myPast&&c.pastOwner===myPast));
+const canMovePiece=c=>!!c;   // anyone can move anyone's piece
+const canEditPiece=(c,myPast,isDM)=>!!c&&(isDM||(!!myPast&&c.pastOwner===myPast));
+// built-in pieces for Vafa and Teshin Khal (until they upload their own)
+const defaultPiece=c=>{const P=typeof DEFAULT_PIECES!=="undefined"?DEFAULT_PIECES:{};const n=((c&&c.name)||"").toLowerCase();return n.startsWith("vafa")?P.vafa:n.startsWith("teshin")?P.teshin:null;};
 const newestSession=lore=>{const ss=(lore&&lore.sessions)||[];if(!ss.length)return null;return ss.reduce((a,b)=>((parseFloat(b.sessionNumber)||0)>=(parseFloat(a.sessionNumber)||0)?b:a));};
 const PAWN_SVG="data:image/svg+xml;utf8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 80"><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#5a4a36"/><stop offset=".45" stop-color="#b9a688"/><stop offset="1" stop-color="#4a3c2a"/></linearGradient></defs><circle cx="20" cy="14" r="10" fill="url(#g)"/><path d="M13 26h14l-3 6 4 28H12l4-28z" fill="url(#g)"/><rect x="6" y="60" width="28" height="7" rx="2" fill="url(#g)"/><rect x="3" y="67" width="34" height="9" rx="3" fill="url(#g)"/></svg>');
-const pieceImg=c=>imgSrc(c&&c.piece)||PAWN_SVG;
-const pieceAspect=c=>(c&&c.piece&&c.pieceAspect)||2;
+const pieceImg=c=>imgSrc(c&&c.piece)||defaultPiece(c)||PAWN_SVG;
+const pieceAspect=c=>(c&&c.piece&&c.pieceAspect)||(defaultPiece(c)?2.55:2);
 // travel log: only leaving and arriving at settlements. "Set out from A" then "arrived at B" the same day becomes one line "A → B",
 // and people making the same trip on the same day share a line.
 function addTravel(lore,charId,from,to,clock){
@@ -2263,9 +2266,8 @@ function PastSection({char,commit,lore,setLore,myPast,setMyPast,onOpenLore,isDM}
 /* ════ MAP PIECE (bottom of the sheet, under Characters From Your Past) ════ */
 function MapPieceSection({char,commit,lore,myPast,isDM,onFind}){
   const [busy,setBusy]=useState(false);
-  const can=canMovePiece(char,myPast,isDM);
-  const pic=imgSrc(char.piece);
-  if(!pic&&!can)return null;
+  const can=canEditPiece(char,myPast,isDM);
+  const pic=imgSrc(char.piece)||defaultPiece(char);
   const sets=(lore&&lore.settlements)||[];const places=getPlaces(lore||{});
   const pos=char.pos;const st=pos&&pos.at!=null?sets.find(x=>String(x.id)===String(pos.at)):null;const m=pos?placeById(places,pos.mapId):null;
   const stOk=st&&(isDM||entryVisible(st));const mOk=m&&placeVisible(places,m,isDM);
@@ -2281,9 +2283,9 @@ function MapPieceSection({char,commit,lore,myPast,isDM,onFind}){
       <div style={{display:"flex",flexDirection:"column",gap:6,minWidth:0}}>
         <div style={{fontSize:13,color:"#3a2a10"}}>📍 {where}</div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {(pos||can)&&<button className="btn" onClick={()=>onFind&&onFind(char.id)} style={{fontSize:11,color:"#2a2a3a"}}>{pos?"🗺 Show on map":"🗺 Put on the map"}</button>}
+          {<button className="btn" onClick={()=>onFind&&onFind(char.id)} style={{fontSize:11,color:"#2a2a3a"}}>{pos?"🗺 Show on map":"🗺 Put on the map"}</button>}
           {can&&<label className="btn" style={{fontSize:11,color:"#2a2a3a",cursor:"pointer"}}>{busy?"Removing background…":pic?"🖼 Change piece":"🖼 Upload piece"}<input type="file" accept="image/*" style={{display:"none"}} onChange={up}/></label>}
-          {can&&pic&&<button className="btn" onClick={()=>commit("piece","")} style={{fontSize:11,color:"#2a2a3a"}}>Remove picture</button>}
+          {can&&imgSrc(char.piece)&&<button className="btn" onClick={()=>commit("piece","")} style={{fontSize:11,color:"#2a2a3a"}}>Remove picture</button>}
         </div>
         {can&&!pic&&<div style={{fontSize:11,color:"#777",fontStyle:"italic"}}>Use a picture on a plain white background — the white is cut away.</div>}
       </div>

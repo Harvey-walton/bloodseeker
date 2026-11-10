@@ -48,8 +48,13 @@ iconNames.forEach(name => {
 });
 console.log(`Icons: ${iconNames.length} icons, ${totalIconKB}KB total`);
 
+// Built-in map pieces (used until a player uploads their own)
+const pieces = {};
+for (const f of fs.readdirSync('assets/pieces')) if (f.endsWith('.png')) pieces[f.replace('.png','')] = 'data:image/png;base64,' + fs.readFileSync('assets/pieces/' + f).toString('base64');
+
 // Build constants block
 const constants = `
+var DEFAULT_PIECES = ${JSON.stringify(pieces)};
 var WORLD_MAP_IMG = "${worldMapB64}";
 var BARONY_MAP_IMG = "${baronyMapB64}";
 var BARONY_ICONS = ${JSON.stringify(icons)};
