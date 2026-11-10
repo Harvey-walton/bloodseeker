@@ -2011,7 +2011,7 @@ const fmtDate=c=>{const d=c.day||1;const sfx=(d%10===1&&d!==11)?"st":(d%10===2&&
 const canMovePiece=c=>!!c;   // anyone can move anyone's piece
 const canEditPiece=(c,myPast,isDM)=>!!c&&(isDM||(!!myPast&&c.pastOwner===myPast));
 // built-in pieces for Vafa and Teshin Khal (until they upload their own)
-const defaultPiece=c=>{const P=typeof DEFAULT_PIECES!=="undefined"?DEFAULT_PIECES:{};const n=((c&&c.name)||"").toLowerCase();return n.startsWith("vafa")?P.vafa:n.startsWith("teshin")?P.teshin:null;};
+const defaultPiece=c=>{const P=typeof DEFAULT_PIECES!=="undefined"?DEFAULT_PIECES:{};const n=((c&&c.name)||"").toLowerCase();const o=((c&&c.pastOwner)||"").toLowerCase();return(n.startsWith("vaf")||o.startsWith("vaf"))?P.vafa:(n.startsWith("teshin")||o==="karl"||o.startsWith("teshin"))?P.teshin:null;};
 const newestSession=lore=>{const ss=(lore&&lore.sessions)||[];if(!ss.length)return null;return ss.reduce((a,b)=>((parseFloat(b.sessionNumber)||0)>=(parseFloat(a.sessionNumber)||0)?b:a));};
 const PAWN_SVG="data:image/svg+xml;utf8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 80"><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#5a4a36"/><stop offset=".45" stop-color="#b9a688"/><stop offset="1" stop-color="#4a3c2a"/></linearGradient></defs><circle cx="20" cy="14" r="10" fill="url(#g)"/><path d="M13 26h14l-3 6 4 28H12l4-28z" fill="url(#g)"/><rect x="6" y="60" width="28" height="7" rx="2" fill="url(#g)"/><rect x="3" y="67" width="34" height="9" rx="3" fill="url(#g)"/></svg>');
 const pieceImg=c=>imgSrc(c&&c.piece)||defaultPiece(c)||PAWN_SVG;
@@ -2040,7 +2040,8 @@ function movePieceData(d,charId,pos){
   const old=ch.pos||null;const sets=(d.lore&&d.lore.settlements)||[];
   const ref=at=>{if(at==null)return null;const x=sets.find(q=>String(q.id)===String(at));return x?{id:x.id,name:x.name||"somewhere"}:null;};
   const from=old?ref(old.at):null,to=ref(pos&&pos.at);
-  const trail=[...(ch.trail||[]),...(old?[{m:old.mapId,x:old.x,y:old.y}]:[])].slice(-10);
+  const moved=old&&pos&&(String(old.mapId)!==String(pos.mapId)||old.x!==pos.x||old.y!==pos.y);
+  const trail=[...(ch.trail||[]),...(moved?[{m:old.mapId,x:old.x,y:old.y}]:[])].slice(-10);
   const lore=old&&String(old.at||"")!==String((pos&&pos.at)||"")?addTravel(d.lore||{},charId,from,to,clockOf(d)):d.lore;
   return{...d,lore,characters:chars.map(c=>c===ch?{...c,pos:pos?{...pos}:null,trail}:c)};
 }
@@ -2529,7 +2530,7 @@ function App(){
   const openLore=(sec,id)=>{setLoreTarget({s:sec,id,n:Date.now()});setPage("lore");};
   const [mapCmd,setMapCmd]=useState(null);
   const findOnMap=id=>{setPage("map");setMapCmd({charId:id,n:Date.now()});};
-  const movePiece=useCallback((id,pos)=>setData(d=>movePieceData(d,id,pos)),[]);
+  const movePiece=useCallback(moves=>setData(d=>moves.reduce((acc,m)=>movePieceData(acc,m.id,m.pos),d)),[]);
   const clearTrail=useCallback(id=>setData(d=>({...d,characters:(d.characters||[]).map(c=>String(c.id)===String(id)?{...c,trail:[]}:c)})),[]);
   const openChar=id=>{const i=((data&&data.characters)||[]).findIndex(c=>String(c.id)===String(id));if(i>=0){setCharIdx(i);setPage("chars");}};
   useEffect(()=>{setVisited(v=>v[page]?v:{...v,[page]:true});},[page]);
@@ -3061,7 +3062,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
 
   // draw borders, icons, shields
   const shapesKey=JSON.stringify((shapes||[]).map(s=>[s.id,s.ring,s.label,s.state,s.shield?(s.shield.length>40?s.shield.length:s.shield):0,s.clickable]));
-  const piecesKey=JSON.stringify((pieces||[]).map(p=>[p.id,p.lat,p.lng,p.img?p.img.length:0,p.aspect,p.slotted,p.dx,p.selected,p.draggable,p.name]))+JSON.stringify(trails||[]);
+  const piecesKey=JSON.stringify((pieces||[]).map(p=>[p.id,p.lat,p.lng,p.img?p.img.length:0,p.aspect,p.slotted,p.dx,p.dy,p.z,p.selected,p.draggable,p.name]))+JSON.stringify(trails||[]);
   const pinsKey=JSON.stringify((pins||[]).map(p=>[p.id,p.lat,p.lng,p.img?p.img.length:0,p.hidden,p.selected,p.tip,p.draggable,p.glyph,p.size,p.aspect,p.label]))+"z"+zoom;
   useEffect(()=>{
     const L=window.L,map=mapRef.current,layer=layerRef.current;if(!map||!layer)return;
@@ -3134,7 +3135,7 @@ function PlaceMap({canvas,shapes,focusRing,pins,zones,onShapeClick,onPinClick,on
       const h=p.slotted?0:88,w=p.slotted?22:Math.max(18,Math.round(h/(p.aspect||2))),ah=p.slotted?26:0;
       const html=p.slotted?`<div class="sf-piece sf-piece-mark${p.selected?" sel":""}" style="width:${w}px;height:${ah}px"><svg viewBox="0 0 22 26" width="22" height="26"><path d="M2 2h18v12l-9 10-9-10z" fill="#111" stroke="#e8c860" stroke-width="1.5" stroke-linejoin="round"/></svg><b>${escHtml(((p.name||"?").trim()[0]||"?").toUpperCase())}</b></div>`
         :`<div class="sf-piece${p.selected?" sel":""}" style="width:${w}px;height:${h}px"><img src="${p.img}" style="width:${w}px;height:${h}px"/><div class="sf-piece-shadow"></div></div>`;
-      const m=L.marker([p.lat,p.lng],{icon:L.divIcon({html,className:"",iconSize:[w,h+ah],iconAnchor:[w/2-(p.dx||0),h+ah]}),draggable:!!p.draggable&&!drawing,keyboard:false,interactive:!drawing,zIndexOffset:3000+(p.selected?500:0)}).addTo(layer);
+      const m=L.marker([p.lat,p.lng],{icon:L.divIcon({html,className:"",iconSize:[w,h+ah],iconAnchor:[w/2-(p.dx||0),h+ah-(p.dy||0)]}),draggable:!!p.draggable&&!drawing,keyboard:false,interactive:!drawing,zIndexOffset:3000+(p.z||0)+(p.selected?500:0)}).addTo(layer);
       if(!p.selected)m.bindTooltip(escHtml(p.name||""),{direction:"top",offset:[p.dx||0,-(h+ah)],className:"sf-pin-tip"});
       m.on("click",e=>{L.DomEvent.stopPropagation(e);cb.current.onPieceClick&&cb.current.onPieceClick(p.id);});
       m.on("dragend",()=>{const ll=m.getLatLng();cb.current.onPieceMove&&cb.current.onPieceMove(p.id,[Math.round(Math.min(H,Math.max(0,ll.lat))),Math.round(Math.min(W,Math.max(0,ll.lng)))]);});
@@ -3242,12 +3243,19 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast,onMovePiece,onClearTra
   const pinSets=sets.filter(s=>s.placeId!=null&&pinIds.includes(String(s.placeId))&&s.mapX!=null&&(isDM||entryVisible(s)));
   const here=cur?chars.filter(c=>c.pos&&String(c.pos.mapId)===String(cur.id)):[];
   const slotOf=c=>c.pos.at!=null?pinSets.find(s=>String(s.id)===String(c.pos.at)):null;
+  // a party = pieces with the same group on the same map (older pieces without one group by standing on the same spot)
+  const gkey=c=>c.pos.grp||("spot:"+(c.pos.at!=null?"at"+c.pos.at:Math.round(c.pos.x)+","+Math.round(c.pos.y)));
+  const partyOf=c=>!c||!c.pos?[c].filter(Boolean):chars.filter(o=>o.pos&&String(o.pos.mapId)===String(c.pos.mapId)&&gkey(o)===gkey(c));
+  const huddle=c=>{const g=partyOf(c).filter(o=>!slotOf(o)&&String(o.pos.at==null?"":o.pos.at)===String(c.pos.at==null?"":c.pos.at));const n=g.length,i=g.indexOf(c);
+    if(n<2)return{};const w=Math.max(18,Math.round(88/pieceAspect(c)));
+    // side by side and a little overlapping; the middle ones stand in front, slightly lower
+    const mid=(n-1)/2,off=Math.abs(i-mid);return{dx:Math.round((i-mid)*w*0.62),dy:Math.round(-off*7),z:Math.round(100-off*10)};};
   const pieces=here.map(c=>{
     const st=slotOf(c);
     if(st){const mates=here.filter(o=>{const x=slotOf(o);return x&&String(x.id)===String(st.id);});const i=mates.indexOf(c);
       return{id:c.id,name:c.name,img:pieceImg(c),aspect:pieceAspect(c),slotted:true,dx:Math.round((i-(mates.length-1)/2)*26),
         lat:st.mapY+(st.iconSize||90)*(st.iconAspect||0.75)*0.12,lng:st.mapX,selected:sel&&sel.kind==="piece"&&String(sel.id)===String(c.id),draggable:canMovePiece(c,myPast,isDM)};}
-    return{id:c.id,name:c.name,img:pieceImg(c),aspect:pieceAspect(c),lat:c.pos.y,lng:c.pos.x,selected:sel&&sel.kind==="piece"&&String(sel.id)===String(c.id),draggable:canMovePiece(c,myPast,isDM)};
+    return{id:c.id,name:c.name,img:pieceImg(c),aspect:pieceAspect(c),lat:c.pos.y,lng:c.pos.x,...huddle(c),selected:sel&&sel.kind==="piece"&&String(sel.id)===String(c.id),draggable:canMovePiece(c,myPast,isDM)};
   });
   const trails=here.map(c=>{const pts=[];[...(c.trail||[]),{m:c.pos.mapId,x:c.pos.x,y:c.pos.y}].forEach(t=>{if(String(t.m)===String(cur.id)&&t.x!=null)pts.push([t.y,t.x]);else pts.length=0;});return pts;}).filter(t=>t.length>1);
   // dropping a piece on (or near) a settlement slots it in; anywhere else it stands on the open map
@@ -3257,7 +3265,21 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast,onMovePiece,onClearTra
     return best?{mapId:cur.id,x:best.mapX,y:best.mapY,at:best.id}:{mapId:cur.id,x:ll[1],y:ll[0],at:null};
   };
   const pieceMap=isBarony||isCity;   // pieces stand on barony and city maps
-  const putPiece=(cid,ll)=>{const c=chars.find(x=>String(x.id)===String(cid));if(!c||!pieceMap||!canMovePiece(c,myPast,isDM))return;onMovePiece&&onMovePiece(c.id,spotFor(ll));};
+  const [placingIds,setPlacingIds]=useState(null);  // when a whole party travels to another map
+  // move a piece and everyone in its party; dropping next to other pieces (or into a settlement they're in) joins their party
+  const putPiece=(cid,ll,ids)=>{
+    const c=chars.find(x=>String(x.id)===String(cid));if(!c||!pieceMap||!canMovePiece(c,myPast,isDM))return;
+    const movers=ids?chars.filter(x=>ids.map(String).includes(String(x.id))):partyOf(c);
+    const mids=movers.map(x=>String(x.id));
+    let spot=spotFor(ll);let joinWith=[];
+    if(spot.at!=null)joinWith=here.filter(o=>!mids.includes(String(o.id))&&String(o.pos.at)===String(spot.at));
+    else{let best=null,bd=1e9;here.filter(o=>!mids.includes(String(o.id))&&o.pos.at==null).forEach(o=>{const d=Math.hypot(o.pos.y-ll[0],o.pos.x-ll[1]);if(d<=40&&d<bd){bd=d;best=o;}});
+      if(best){spot={...spot,x:best.pos.x,y:best.pos.y};joinWith=partyOf(best).filter(o=>o.pos.at==null);}}
+    const grp=(joinWith[0]&&joinWith[0].pos.grp)||(movers.length>1&&c.pos&&c.pos.grp)||("g"+Date.now().toString(36));
+    const moves=[...movers.map(m=>({id:m.id,pos:{...spot,grp}})),...joinWith.filter(o=>o.pos.grp!==grp).map(o=>({id:o.id,pos:{...o.pos,grp}}))];
+    onMovePiece&&onMovePiece(moves);
+  };
+  const leaveParty=c=>{if(!c||!c.pos)return;const pos={...c.pos,grp:"g"+Date.now().toString(36)};if(pos.at==null){pos.x=Math.min((canvas&&canvas.W)||1e9,pos.x+55);}onMovePiece&&onMovePiece([{id:c.id,pos}]);};
   // "find" from the character sheet: open the map they're on and centre on them
   useEffect(()=>{
     if(!mapCmd)return;const c=chars.find(x=>String(x.id)===String(mapCmd.charId));if(!c)return;
@@ -3268,7 +3290,7 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast,onMovePiece,onClearTra
       setTimeout(()=>{setSel({kind:"piece",id:c.id});setCenterOn({lat:c.pos.y,lng:c.pos.x,n:Date.now()});},String(view.mapId)!==String(m.id)?520:0);
     }else if(canMovePiece(c,myPast,isDM)){setEditing(false);setSel(null);setPlacing(c.id);}
   },[mapCmd&&mapCmd.n]);
-  const onMapClick=ll=>{if(placing!=null){if(pieceMap){putPiece(placing,ll);setSel({kind:"piece",id:placing});setPlacing(null);}return;}setSel(null);};
+  const onMapClick=ll=>{if(placing!=null){if(pieceMap){putPiece(placing,ll,placingIds);setSel({kind:"piece",id:placing});setPlacing(null);setPlacingIds(null);}return;}setSel(null);};
 
   const zones=isBarony&&cur.mapId==="barony"&&!imgSrc(cur.mapImage)?BARONY_TERRAIN.map(t=>({id:"t:"+t.id,lat:1050-t.iy,lng:t.ix,label:t.name})):[];
 
@@ -3313,28 +3335,30 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast,onMovePiece,onClearTra
       </>);}
   }else if(sel&&sel.kind==="piece"){
     const c=chars.find(x=>String(x.id)===String(sel.id));
-    if(c&&c.pos){const st=slotOf(c);const can=canMovePiece(c,myPast,isDM);
+    if(c&&c.pos){const st=slotOf(c);const can=canMovePiece(c,myPast,isDM);const party=partyOf(c);const mates=party.filter(o=>o!==c);
       const maps=places.filter(p=>vis(p)&&canvasInfo(p)&&["barony","citystate"].includes(placeType(p))&&String(p.id)!==String(cur&&cur.id));
       popup=(<>
         <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
           <img src={pieceImg(c)} alt="" style={{height:54,width:"auto",maxWidth:40,objectFit:"contain"}}/>
           <div><div style={{fontFamily:"Cinzel",fontSize:15,color:"var(--gold3)",letterSpacing:".05em"}}>{c.name}</div>
-            <div style={{fontSize:12.5,color:"#d8c4a0"}}>{st?<>In <b>{st.name}</b></>:<>On the road{cur?<> in {cur.name}</>:null}</>}</div></div>
+            <div style={{fontSize:12.5,color:"#d8c4a0"}}>{st?<>In <b>{st.name}</b></>:<>On the road{cur?<> in {cur.name}</>:null}</>}</div>
+            {mates.length>0&&<div style={{fontSize:12,color:"#c8b48a"}}>With {mates.map(o=>o.name).join(" & ")}</div>}</div>
         </div>
         {travelPick===c.id?<div>
           <div style={{fontFamily:"Cinzel",fontSize:9.5,color:"#b89a68",letterSpacing:".08em",marginBottom:5}}>TRAVEL TO WHICH MAP?</div>
           <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:180,overflowY:"auto",marginBottom:6}}>
-            {maps.length?maps.map(p=><button key={p.id} className="btn" style={{fontSize:12,color:"#e8d2a8",textAlign:"left"}} onClick={()=>{setTravelPick(null);go({mapId:p.id,focusId:null},true);setTimeout(()=>setPlacing(c.id),520);}}>{PLACE_TYPES[placeType(p)].icon} {p.name}</button>)
+            {maps.length?maps.map(p=><button key={p.id} className="btn" style={{fontSize:12,color:"#e8d2a8",textAlign:"left"}} onClick={()=>{setTravelPick(null);const ids=party.map(o=>o.id);go({mapId:p.id,focusId:null},true);setTimeout(()=>{setPlacing(c.id);setPlacingIds(ids);},520);}}>{PLACE_TYPES[placeType(p)].icon} {p.name}</button>)
               :<span style={{fontSize:12,color:"#9a8060",fontStyle:"italic"}}>There are no other maps yet.</span>}
           </div>
           <button className="btn" style={{fontSize:11,color:"#e8d2a8"}} onClick={()=>setTravelPick(null)}>✕ Cancel</button>
         </div>
         :<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {can&&<button className="btn act" style={{fontSize:12}} onClick={()=>setTravelPick(c.id)}>🧭 Travel to another map</button>}
+          {can&&<button className="btn act" style={{fontSize:12}} onClick={()=>setTravelPick(c.id)}>🧭 {mates.length?"Party travels to another map":"Travel to another map"}</button>}
+          {can&&mates.length>0&&<button className="btn" style={{fontSize:12,color:"#e8d2a8"}} onClick={()=>leaveParty(c)}>🚶 Leave party</button>}
           {can&&(c.trail||[]).length>0&&<button className="btn" style={{fontSize:12,color:"#e8d2a8"}} onClick={()=>onClearTrail&&onClearTrail(c.id)}>🧹 Delete lines</button>}
           <button className="btn" style={{fontSize:12,color:"#e8d2a8"}} onClick={()=>onOpenChar&&onOpenChar(c.id)}>📜 Character sheet</button>
         </div>}
-        {can&&travelPick!==c.id&&<div style={{fontSize:11,color:"#9a8060",fontStyle:"italic",marginTop:6}}>Drag the piece to move. Drop it on a settlement to go inside.</div>}
+        {can&&travelPick!==c.id&&<div style={{fontSize:11,color:"#9a8060",fontStyle:"italic",marginTop:6}}>{mates.length?"Dragging moves the whole party. Drop next to other pieces to join them, or on a settlement to go inside.":"Drag the piece to move. Drop it next to someone to join them, or on a settlement to go inside."}</div>}
       </>);}
   }else if(sel&&sel.kind==="terrain"){
     const t=BARONY_TERRAIN.find(x=>"t:"+x.id===sel.id);
@@ -3347,11 +3371,13 @@ function MapExplorer({data,isDM,onOpenLore,setLore,myPast,onMovePiece,onClearTra
   </div>);
   return(<div ref={wrapRef} style={{position:"relative",width:"100%",height:"100%"}}>
     <PlaceMap canvas={canvas} shapes={placing!=null&&pieceMap?shapes.map(x=>({...x,clickable:false})):shapes} focusRing={focus?focus.polyCoords:null} pins={pins} zones={zones}
-      onShapeClick={onShapeClick} onPinClick={id=>{if(placing!=null){const st=sets.find(x=>"s:"+x.id===id);if(st&&pieceMap){putPiece(placing,[st.mapY,st.mapX]);setSel({kind:"piece",id:placing});setPlacing(null);}return;}onPinClick(id);}} onMapClick={onMapClick} cursor={placing!=null&&pieceMap}
-      pieces={pieces} trails={trails} onPieceClick={id=>{setTravelPick(null);setSel({kind:"piece",id});}} onPieceMove={(id,ll)=>{putPiece(id,ll);setSel({kind:"piece",id});}} centerOn={centerOn}/>
+      onShapeClick={onShapeClick} onPinClick={id=>{if(placing!=null){const st=sets.find(x=>"s:"+x.id===id);if(st&&pieceMap){putPiece(placing,[st.mapY,st.mapX],placingIds);setSel({kind:"piece",id:placing});setPlacing(null);setPlacingIds(null);}return;}onPinClick(id);}} onMapClick={onMapClick} cursor={placing!=null&&pieceMap}
+      pieces={pieces} trails={trails} onPieceClick={id=>{
+        if(placing!=null){const o=chars.find(x=>String(x.id)===String(id));if(o&&o.pos&&pieceMap&&String(o.id)!==String(placing)){putPiece(placing,[o.pos.y,o.pos.x],placingIds);setSel({kind:"piece",id:placing});setPlacing(null);setPlacingIds(null);}return;}
+        setTravelPick(null);setSel({kind:"piece",id});}} onPieceMove={(id,ll)=>{putPiece(id,ll);setSel({kind:"piece",id});}} centerOn={centerOn}/>
     {placing!=null&&(()=>{const c=chars.find(x=>String(x.id)===String(placing));return(<div className="sf-panel" style={{position:"absolute",top:54,left:"50%",transform:"translateX(-50%)",zIndex:1200,padding:"8px 14px",display:"flex",gap:10,alignItems:"center",maxWidth:"calc(100% - 28px)"}}>
-      <span style={{fontSize:13.5,color:"#f0dcb0"}}>{pieceMap?<>Tap where <b>{c?c.name:"they"}</b> {c&&c.pos?"arrives":"is"} — tap a settlement to go inside.</>:<>Open a barony or city map, then tap where <b>{c?c.name:"they"}</b> is.</>}</span>
-      <button className="btn" style={{fontSize:11,color:"#e8d2a8"}} onClick={()=>setPlacing(null)}>✕</button>
+      <span style={{fontSize:13.5,color:"#f0dcb0"}}>{pieceMap?<>Tap where <b>{placingIds&&placingIds.length>1?"the party":c?c.name:"they"}</b> {c&&c.pos?"arrives":"is"} — tap a settlement to go inside.</>:<>Open a barony or city map, then tap where <b>{c?c.name:"they"}</b> is.</>}</span>
+      <button className="btn" style={{fontSize:11,color:"#e8d2a8"}} onClick={()=>{setPlacing(null);setPlacingIds(null);}}>✕</button>
     </div>);})()}
     {/* breadcrumb */}
     <div style={{position:"absolute",top:12,left:58,right:12,zIndex:1000,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",pointerEvents:"none"}}>
